@@ -1,9 +1,12 @@
 import type { RoleCode } from "./roles.js";
 
+export type UserPlatformRole = "USER" | "ADMIN";
+
 export interface AccessTokenPayload {
   sub: string;
   email: string;
   username: string;
+  role: UserPlatformRole;
   roles: RoleCode[];
   pilotProfileId?: string;
   type: "access";
@@ -19,6 +22,7 @@ export interface AuthenticatedUser {
   id: string;
   email: string;
   username: string;
+  role: UserPlatformRole;
   roles: RoleCode[];
   pilotProfileId?: string;
 }

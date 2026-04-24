@@ -15,6 +15,11 @@ enum UserStatus {
   DISABLED
 }
 
+enum UserPlatformRole {
+  USER
+  ADMIN
+}
+
 enum PilotStatus {
   ACTIVE
   ON_LEAVE
@@ -146,6 +151,7 @@ model User {
   email                 String               @unique
   username              String               @unique
   passwordHash          String
+  role                  UserPlatformRole     @default(USER)
   status                UserStatus           @default(PENDING)
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt

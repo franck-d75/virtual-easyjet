@@ -13,6 +13,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   PilotStatus,
   Prisma,
+  UserPlatformRole,
   UserStatus,
   type RefreshToken,
 } from "@va/database";
@@ -89,6 +90,7 @@ export class AuthService {
             email: payload.email,
             username: payload.username,
             passwordHash,
+            role: UserPlatformRole.USER,
             status: UserStatus.ACTIVE,
             roles: {
               create: {
@@ -232,6 +234,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       username: user.username,
+      role: user.role,
       roles,
       type: "access",
       ...(user.pilotProfile ? { pilotProfileId: user.pilotProfile.id } : {}),
@@ -299,6 +302,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       username: user.username,
+      role: user.role,
       roles: user.roles.map((item) => item.role.code as RoleCode),
       pilotProfile: user.pilotProfile
         ? {

@@ -20,13 +20,18 @@ const pilotLinks = [
 type PilotHeaderProps = {
   pilotName: string;
   pilotNumber: string;
+  isAdmin?: boolean;
 };
 
 export function PilotHeader({
   pilotName,
   pilotNumber,
+  isAdmin = false,
 }: PilotHeaderProps): JSX.Element {
   const pathname = usePathname();
+  const navigationLinks = isAdmin
+    ? [...pilotLinks, { href: "/admin", label: "Administration" }]
+    : pilotLinks;
 
   return (
     <header className="site-header">
@@ -40,7 +45,7 @@ export function PilotHeader({
         </Link>
 
         <nav className="site-nav" aria-label="Navigation pilote">
-          {pilotLinks.map((link) => (
+          {navigationLinks.map((link) => (
             <Link
               className={cn(
                 "site-nav__link",

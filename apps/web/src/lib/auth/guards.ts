@@ -11,6 +11,12 @@ type PilotSession = {
   };
 };
 
+type AdminSession = {
+  accessToken: string;
+  refreshToken: string | null;
+  user: UserMeResponse;
+};
+
 export async function requirePilotSession(): Promise<PilotSession> {
   const session = await getServerSession();
 
@@ -19,4 +25,18 @@ export async function requirePilotSession(): Promise<PilotSession> {
   }
 
   return session as PilotSession;
+}
+
+export async function requireAdminSession(): Promise<AdminSession> {
+  const session = await getServerSession();
+
+  if (!session) {
+    redirect("/connexion");
+  }
+
+  if (session.user.role !== "ADMIN") {
+    redirect("/dashboard");
+  }
+
+  return session;
 }

@@ -1,0 +1,67 @@
+"use client";
+
+import type { JSX } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+import { LogoutButton } from "@/components/auth/logout-button";
+import { BrandBadge } from "@/components/layout/brand-badge";
+import { APP_NAME } from "@/lib/config/env";
+import { cn } from "@/lib/utils/cn";
+
+const adminLinks = [
+  { href: "/admin", label: "Vue d’ensemble" },
+  { href: "/admin/flotte", label: "Flotte" },
+  { href: "/admin/hubs", label: "Hubs" },
+  { href: "/admin/routes", label: "Routes" },
+  { href: "/dashboard", label: "Espace pilote" },
+];
+
+type AdminHeaderProps = {
+  adminName: string;
+};
+
+export function AdminHeader({ adminName }: AdminHeaderProps): JSX.Element {
+  const pathname = usePathname();
+
+  return (
+    <header className="site-header">
+      <div className="page-shell page-shell--wide site-header__inner">
+        <Link className="brand-mark" href="/admin">
+          <BrandBadge />
+          <span className="brand-mark__text">
+            <strong>{APP_NAME}</strong>
+            <small>Administration</small>
+          </span>
+        </Link>
+
+        <nav className="site-nav" aria-label="Navigation administration">
+          {adminLinks.map((link) => {
+            const isActive =
+              link.href === "/admin"
+                ? pathname === "/admin"
+                : pathname.startsWith(link.href);
+
+            return (
+              <Link
+                className={cn("site-nav__link", isActive && "site-nav__link--active")}
+                href={link.href}
+                key={link.href}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="pilot-chip">
+          <div>
+            <strong>{adminName}</strong>
+            <small>Accès administrateur</small>
+          </div>
+          <LogoutButton />
+        </div>
+      </div>
+    </header>
+  );
+}

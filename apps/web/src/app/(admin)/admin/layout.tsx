@@ -3,29 +3,28 @@ import type { JSX, ReactNode } from "react";
 import { SessionKeepAlive } from "@/components/auth/session-keepalive";
 import { Footer } from "@/components/layout/footer";
 import { PageShell } from "@/components/layout/page-shell";
-import { PilotHeader } from "@/components/layout/pilot-header";
-import { requirePilotSession } from "@/lib/auth/guards";
+import { AdminHeader } from "@/components/layout/admin-header";
+import { requireAdminSession } from "@/lib/auth/guards";
 
-type PilotLayoutProps = {
+type AdminLayoutProps = {
   children: ReactNode;
 };
 
 export const dynamic = "force-dynamic";
 
-export default async function PilotLayout({
+export default async function AdminLayout({
   children,
-}: PilotLayoutProps): Promise<JSX.Element> {
-  const session = await requirePilotSession();
+}: AdminLayoutProps): Promise<JSX.Element> {
+  const session = await requireAdminSession();
   const pilotProfile = session.user.pilotProfile;
+  const adminName = pilotProfile
+    ? `${pilotProfile.firstName} ${pilotProfile.lastName}`
+    : session.user.username;
 
   return (
     <div className="site-frame site-frame--pilot">
       <SessionKeepAlive />
-      <PilotHeader
-        isAdmin={session.user.role === "ADMIN"}
-        pilotName={`${pilotProfile.firstName} ${pilotProfile.lastName}`}
-        pilotNumber={pilotProfile.pilotNumber}
-      />
+      <AdminHeader adminName={adminName} />
       <PageShell width="wide">{children}</PageShell>
       <Footer />
     </div>

@@ -1,4 +1,4 @@
-import type { AuthSessionUser } from "@va/shared";
+import type { AuthSessionUser, UserPlatformRole } from "@va/shared";
 
 export type { LiveMapAircraft, LiveMapPhase } from "@va/shared";
 
@@ -25,6 +25,7 @@ export interface UserMeResponse {
   id: string;
   email: string;
   username: string;
+  role: UserPlatformRole;
   status: string;
   lastLoginAt: string | null;
   createdAt: string;
@@ -390,4 +391,72 @@ export interface FlightResponse {
 export interface SessionEnvelope {
   authenticated: boolean;
   user: AuthSessionUser | UserMeResponse;
+}
+
+export interface AdminStatsResponse {
+  totalUsers: number;
+  totalPilots: number;
+  totalAircraft: number;
+  totalHubs: number;
+  totalRoutes: number;
+  activeBookings: number;
+  inProgressFlights: number;
+}
+
+export interface AdminAirportOptionResponse {
+  id: string;
+  icao: string;
+  iata: string | null;
+  name: string;
+  city: string | null;
+  countryCode: string;
+}
+
+export interface AdminHubOptionResponse {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface AdminAircraftTypeOptionResponse {
+  id: string;
+  icaoCode: string;
+  name: string;
+  manufacturer: string | null;
+}
+
+export interface AdminReferenceDataResponse {
+  airports: AdminAirportOptionResponse[];
+  hubs: AdminHubOptionResponse[];
+  aircraftTypes: AdminAircraftTypeOptionResponse[];
+}
+
+export interface AdminAircraftPayload {
+  registration: string;
+  label?: string | null;
+  aircraftTypeId: string;
+  hubId?: string | null;
+  status: string;
+  notes?: string | null;
+}
+
+export interface AdminHubPayload {
+  code: string;
+  name: string;
+  airportId: string;
+  isActive?: boolean;
+}
+
+export interface AdminRoutePayload {
+  code: string;
+  flightNumber: string;
+  departureAirportId: string;
+  arrivalAirportId: string;
+  departureHubId?: string | null;
+  arrivalHubId?: string | null;
+  aircraftTypeId?: string | null;
+  distanceNm?: number | null;
+  blockTimeMinutes?: number | null;
+  isActive?: boolean;
+  notes?: string | null;
 }

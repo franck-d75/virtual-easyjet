@@ -9,6 +9,7 @@ import { JwtAuthGuard } from "./common/guards/jwt-auth.guard.js";
 import { RolesGuard } from "./common/guards/roles.guard.js";
 import { validateApiEnv } from "./config/env.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
+import { AdminModule } from "./modules/admin/admin.module.js";
 import { AcarsLiveModule } from "./modules/acars-live/acars-live.module.js";
 import { AircraftModule } from "./modules/aircraft/aircraft.module.js";
 import { AirportsModule } from "./modules/airports/airports.module.js";
@@ -62,6 +63,7 @@ const repositoryRoot = findWorkspaceRoot(appModuleDirectory);
     PublicModule,
     AcarsLiveModule,
     AuthModule,
+    AdminModule,
     UsersModule,
     PilotProfilesModule,
     RolesModule,

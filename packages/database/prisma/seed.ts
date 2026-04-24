@@ -8,6 +8,7 @@ import {
   PirepStatus,
   PilotStatus,
   PrismaClient,
+  UserPlatformRole,
   UserStatus,
 } from "@prisma/client";
 import { loadRootEnvironment } from "./load-root-env.js";
@@ -411,12 +412,14 @@ async function seedAdminAndDemoPilot(): Promise<void> {
     update: {
       username: "admin",
       passwordHash: adminPasswordHash,
+      role: UserPlatformRole.ADMIN,
       status: UserStatus.ACTIVE,
     },
     create: {
       email: "admin@va.local",
       username: "admin",
       passwordHash: adminPasswordHash,
+      role: UserPlatformRole.ADMIN,
       status: UserStatus.ACTIVE,
     },
   });
@@ -426,12 +429,14 @@ async function seedAdminAndDemoPilot(): Promise<void> {
     update: {
       username: "pilotdemo",
       passwordHash: pilotPasswordHash,
+      role: UserPlatformRole.USER,
       status: UserStatus.ACTIVE,
     },
     create: {
       email: "pilot@va.local",
       username: "pilotdemo",
       passwordHash: pilotPasswordHash,
+      role: UserPlatformRole.USER,
       status: UserStatus.ACTIVE,
     },
   });
