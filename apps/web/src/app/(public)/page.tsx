@@ -7,10 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import {
-  getPublicAircraft,
-  getPublicHubs,
-  getPublicRoutes,
-  getPublicStats,
+  getPublicHome,
 } from "@/lib/api/public";
 import { logWebError } from "@/lib/observability/log";
 
@@ -18,12 +15,7 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage(): Promise<JSX.Element> {
   try {
-    const [stats, aircraft, hubs, routes] = await Promise.all([
-      getPublicStats(),
-      getPublicAircraft(),
-      getPublicHubs(),
-      getPublicRoutes(),
-    ]);
+    const { stats, aircraft, hubs, routes } = await getPublicHome();
 
     return (
       <>

@@ -9,6 +9,13 @@ export interface PublicStatsResponse {
   validatedPireps: number;
 }
 
+export interface PublicHomeResponse {
+  stats: PublicStatsResponse;
+  aircraft: AircraftResponse[];
+  hubs: HubResponse[];
+  routes: RouteResponse[];
+}
+
 export interface UserRoleSummary {
   code: string;
   name: string;
