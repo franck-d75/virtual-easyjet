@@ -9,7 +9,7 @@
     "start": "tsx src/main.ts",
     "start:prod": "node dist/apps/api/src/main.js",
     "build": "tsc -p tsconfig.build.json",
-    "vercel-build": "pnpm --dir ../.. --filter @va/database build && tsc -p tsconfig.build.json",
+    "vercel-build": "pnpm --dir ../.. --filter @va/shared build && pnpm --dir ../.. --filter @va/database build && tsc -p tsconfig.build.json",
     "lint": "echo \"No lint configured for @va/api\"",
     "test": "echo \"No tests configured for @va/api\""
   },
