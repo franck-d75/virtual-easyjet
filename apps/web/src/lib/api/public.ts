@@ -21,6 +21,20 @@ function toArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
+function normalizeLiveMapTraffic(payload: unknown): LiveMapAircraft[] {
+  const root = isRecord(payload) ? payload : {};
+
+  if (Array.isArray(payload)) {
+    return payload as LiveMapAircraft[];
+  }
+
+  if ("data" in root && Array.isArray(root.data)) {
+    return root.data as LiveMapAircraft[];
+  }
+
+  return [];
+}
+
 function normalizePublicStats(payload: unknown): PublicStatsResponse {
   const source = isRecord(payload) ? payload : {};
 
@@ -96,8 +110,46 @@ export async function getPublicRouteCatalog(): Promise<RouteDetailResponse[]> {
   );
 }
 
-export async function getAcarsLiveTraffic(): Promise<LiveMapAircraft[]> {
-  return apiRequest<LiveMapAircraft[]>("/acars/live", {
+export async function getBackendAcarsLiveTraffic(): Promise<LiveMapAircraft[]> {
+  const payload = await apiRequest<unknown>("/acars/live", {
     cache: "no-store",
   });
+
+  return normalizeLiveMapTraffic(payload);
+}
+
+export async function getAcarsLiveTraffic(): Promise<LiveMapAircraft[]> {
+  if (typeof window === "undefined") {
+    return getBackendAcarsLiveTraffic();
+  }
+
+  const response = await fetch("/api/public/acars/live", {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  const responseText = await response.text();
+  const responsePayload =
+    responseText.length > 0 ? tryParseJson(responseText) : undefined;
+
+  if (!response.ok) {
+    throw new Error(
+      typeof responsePayload === "object" &&
+        responsePayload !== null &&
+        "message" in responsePayload &&
+        typeof responsePayload.message === "string"
+        ? responsePayload.message
+        : "Le flux ACARS live n'a pas pu etre charge.",
+    );
+  }
+
+  return normalizeLiveMapTraffic(responsePayload);
+}
+
+function tryParseJson(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
 }
