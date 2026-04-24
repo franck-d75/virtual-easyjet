@@ -150,6 +150,7 @@ model User {
   id                    String               @id @default(cuid())
   email                 String               @unique
   username              String               @unique
+  avatarUrl             String?              @db.VarChar(2048)
   passwordHash          String
   role                  UserPlatformRole     @default(USER)
   status                UserStatus           @default(PENDING)

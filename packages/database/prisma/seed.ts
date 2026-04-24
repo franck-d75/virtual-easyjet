@@ -411,6 +411,7 @@ async function seedAdminAndDemoPilot(): Promise<void> {
     where: { email: "admin@va.local" },
     update: {
       username: "admin",
+      avatarUrl: "https://api.dicebear.com/9.x/initials/svg?seed=Virtual%20Admin",
       passwordHash: adminPasswordHash,
       role: UserPlatformRole.ADMIN,
       status: UserStatus.ACTIVE,
@@ -418,6 +419,7 @@ async function seedAdminAndDemoPilot(): Promise<void> {
     create: {
       email: "admin@va.local",
       username: "admin",
+      avatarUrl: "https://api.dicebear.com/9.x/initials/svg?seed=Virtual%20Admin",
       passwordHash: adminPasswordHash,
       role: UserPlatformRole.ADMIN,
       status: UserStatus.ACTIVE,
@@ -428,6 +430,7 @@ async function seedAdminAndDemoPilot(): Promise<void> {
     where: { email: "pilot@va.local" },
     update: {
       username: "pilotdemo",
+      avatarUrl: "https://api.dicebear.com/9.x/initials/svg?seed=Demo%20Pilot",
       passwordHash: pilotPasswordHash,
       role: UserPlatformRole.USER,
       status: UserStatus.ACTIVE,
@@ -435,6 +438,7 @@ async function seedAdminAndDemoPilot(): Promise<void> {
     create: {
       email: "pilot@va.local",
       username: "pilotdemo",
+      avatarUrl: "https://api.dicebear.com/9.x/initials/svg?seed=Demo%20Pilot",
       passwordHash: pilotPasswordHash,
       role: UserPlatformRole.USER,
       status: UserStatus.ACTIVE,

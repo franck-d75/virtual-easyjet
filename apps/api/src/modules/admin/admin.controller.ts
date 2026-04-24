@@ -10,13 +10,16 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import type { AuthenticatedUser } from "@va/shared";
 
+import { CurrentUser } from "../../common/decorators/current-user.decorator.js";
 import { AdminGuard } from "../../common/guards/admin.guard.js";
 import { AdminService } from "./admin.service.js";
 import {
   CreateAdminAircraftDto,
   CreateAdminHubDto,
   CreateAdminRouteDto,
+  UpdateAdminUserDto,
   UpdateAdminAircraftDto,
   UpdateAdminHubDto,
   UpdateAdminRouteDto,
@@ -38,6 +41,41 @@ export class AdminController {
   @Get("reference-data")
   public getReferenceData() {
     return this.adminService.getReferenceData();
+  }
+
+  @Get("users")
+  public listUsers() {
+    return this.adminService.listUsers();
+  }
+
+  @Get("users/:id")
+  public getUser(@Param("id") id: string) {
+    return this.adminService.getUser(id);
+  }
+
+  @Patch("users/:id")
+  public updateUser(
+    @Param("id") id: string,
+    @Body() payload: UpdateAdminUserDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.updateUser(id, payload, currentUser);
+  }
+
+  @Patch("users/:id/suspend")
+  public suspendUser(
+    @Param("id") id: string,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.suspendUser(id, currentUser);
+  }
+
+  @Patch("users/:id/activate")
+  public activateUser(
+    @Param("id") id: string,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.activateUser(id, currentUser);
   }
 
   @Get("aircraft")

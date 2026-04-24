@@ -19,6 +19,7 @@ export async function updateMyPilotProfile(
   accessToken: string,
   payload: {
     simbriefPilotId?: string | null;
+    avatarUrl?: string | null;
   },
 ): Promise<PilotProfileResponse> {
   return apiRequest<PilotProfileResponse>("/pilot-profiles/me", {

@@ -39,6 +39,7 @@ export interface AuthenticatedPilotProfileSummary {
 }
 
 export interface AuthSessionUser extends AuthenticatedUser {
+  avatarUrl: string | null;
   pilotProfile: AuthenticatedPilotProfileSummary | null;
 }
 

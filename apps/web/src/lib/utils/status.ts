@@ -86,6 +86,32 @@ export function getSessionStatusPresentation(status: string): StatusPresentation
   }
 }
 
+export function getUserStatusPresentation(status: string): StatusPresentation {
+  switch (status) {
+    case "ACTIVE":
+      return { label: "Actif", tone: "success" };
+    case "PENDING":
+      return { label: "En attente", tone: "warning" };
+    case "SUSPENDED":
+      return { label: "Suspendu", tone: "danger" };
+    case "DISABLED":
+      return { label: "Desactive", tone: "danger" };
+    default:
+      return { label: prettifyStatus(status), tone: "neutral" };
+  }
+}
+
+export function getUserRolePresentation(role: string): StatusPresentation {
+  switch (role) {
+    case "ADMIN":
+      return { label: "Administrateur", tone: "warning" };
+    case "USER":
+      return { label: "Utilisateur", tone: "info" };
+    default:
+      return { label: prettifyStatus(role), tone: "neutral" };
+  }
+}
+
 export function getSimbriefAvailabilityPresentation(
   status: string,
 ): StatusPresentation {

@@ -27,7 +27,11 @@ export default async function ProfilePage(): Promise<JSX.Element> {
       </section>
       <section className="panel-grid">
         <ProfileCard profile={profile} />
-        <SimbriefSettingsCard initialSimbriefPilotId={profile.simbriefPilotId} />
+        <SimbriefSettingsCard
+          displayName={`${profile.firstName} ${profile.lastName}`}
+          initialAvatarUrl={profile.user.avatarUrl}
+          initialSimbriefPilotId={profile.simbriefPilotId}
+        />
       </section>
       <section className="section-band">
         <div className="section-band__header">

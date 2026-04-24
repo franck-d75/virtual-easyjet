@@ -1,13 +1,20 @@
 import {
   ConflictException,
   Dependencies,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
 import {
+  BookingStatus,
+  FlightStatus,
+  PilotStatus,
   Prisma,
   type AircraftStatus,
+  UserPlatformRole,
+  UserStatus,
 } from "@va/database";
+import type { AuthenticatedUser } from "@va/shared";
 
 import { decimalToNumber } from "../../common/utils/decimal.utils.js";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -15,6 +22,7 @@ import type {
   CreateAdminAircraftDto,
   CreateAdminHubDto,
   CreateAdminRouteDto,
+  UpdateAdminUserDto,
   UpdateAdminAircraftDto,
   UpdateAdminHubDto,
   UpdateAdminRouteDto,
@@ -56,6 +64,96 @@ type AdminHubRecord = Prisma.HubGetPayload<{
 type AdminRouteRecord = Prisma.RouteGetPayload<{
   include: typeof adminRouteInclude;
 }>;
+
+const adminUserListInclude = {
+  pilotProfile: {
+    include: {
+      hub: true,
+      rank: true,
+      _count: {
+        select: {
+          bookings: true,
+          pireps: true,
+          flights: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.UserInclude;
+
+const adminUserDetailInclude = {
+  pilotProfile: {
+    include: {
+      hub: true,
+      rank: true,
+      bookings: {
+        orderBy: {
+          reservedAt: "desc",
+        },
+        take: 5,
+        include: {
+          aircraft: {
+            include: {
+              aircraftType: true,
+            },
+          },
+          departureAirport: true,
+          arrivalAirport: true,
+          flight: true,
+        },
+      },
+      pireps: {
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 5,
+        include: {
+          flight: true,
+          departureAirport: true,
+          arrivalAirport: true,
+          aircraft: {
+            include: {
+              aircraftType: true,
+            },
+          },
+        },
+      },
+      _count: {
+        select: {
+          bookings: true,
+          pireps: true,
+          flights: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.UserInclude;
+
+type AdminUserListRecord = Prisma.UserGetPayload<{
+  include: typeof adminUserListInclude;
+}>;
+
+type AdminUserDetailRecord = Prisma.UserGetPayload<{
+  include: typeof adminUserDetailInclude;
+}>;
+
+type AdminUserDetailCounts = {
+  activeBookingsCount: number;
+  completedFlightsCount: number;
+};
+
+function getAvatarUrl(value: unknown): string | null {
+  if (
+    value &&
+    typeof value === "object" &&
+    "avatarUrl" in value &&
+    (typeof value.avatarUrl === "string" || value.avatarUrl === null)
+  ) {
+    return value.avatarUrl;
+  }
+
+  return null;
+}
 
 function normalizeOptionalString(value: string | null | undefined): string | null {
   const normalized = value?.trim();
@@ -148,6 +246,215 @@ export class AdminService {
       hubs,
       aircraftTypes,
     };
+  }
+
+  public async listUsers() {
+    const users = await this.prisma.user.findMany({
+      orderBy: { createdAt: "desc" },
+      include: adminUserListInclude,
+    });
+
+    return users.map((user) => this.serializeAdminUserListItem(user));
+  }
+
+  public async getUser(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: adminUserDetailInclude,
+    });
+
+    if (!user) {
+      throw new NotFoundException("User not found.");
+    }
+
+    const counts = await this.getAdminUserDetailCounts(user.pilotProfile?.id ?? null);
+
+    return this.serializeAdminUserDetail(user, counts);
+  }
+
+  public async updateUser(
+    id: string,
+    payload: UpdateAdminUserDto,
+    currentUser: AuthenticatedUser,
+  ) {
+    if (currentUser.id === id && payload.status === UserStatus.SUSPENDED) {
+      throw new ForbiddenException("You cannot suspend your own administrator account.");
+    }
+
+    try {
+      const user = await this.prisma.$transaction(async (transaction) => {
+        const existingUser = await transaction.user.findUnique({
+          where: { id },
+          include: {
+            pilotProfile: true,
+          },
+        });
+
+        if (!existingUser) {
+          throw new NotFoundException("User not found.");
+        }
+
+        const pilotProfileUpdateData: Prisma.PilotProfileUpdateInput = {};
+
+        if (payload.firstName !== undefined) {
+          pilotProfileUpdateData.firstName = payload.firstName.trim();
+        }
+
+        if (payload.lastName !== undefined) {
+          pilotProfileUpdateData.lastName = payload.lastName.trim();
+        }
+
+        if (payload.countryCode !== undefined) {
+          pilotProfileUpdateData.countryCode = normalizeOptionalString(payload.countryCode);
+        }
+
+        if (payload.status === UserStatus.ACTIVE) {
+          pilotProfileUpdateData.status = PilotStatus.ACTIVE;
+        }
+
+        if (payload.status === UserStatus.SUSPENDED) {
+          pilotProfileUpdateData.status = PilotStatus.SUSPENDED;
+        }
+
+        if (
+          existingUser.pilotProfile === null &&
+          Object.keys(pilotProfileUpdateData).length > 0
+        ) {
+          throw new ConflictException("This user does not have a pilot profile to update.");
+        }
+
+        await transaction.user.update({
+          where: { id },
+          data: {
+            ...(payload.role !== undefined ? { role: payload.role } : {}),
+            ...(payload.status !== undefined ? { status: payload.status } : {}),
+            ...(payload.username !== undefined
+              ? { username: payload.username.trim().toLowerCase() }
+              : {}),
+            ...(payload.avatarUrl !== undefined
+              ? { avatarUrl: normalizeOptionalString(payload.avatarUrl) }
+              : {}),
+          },
+        });
+
+        if (
+          existingUser.pilotProfile &&
+          Object.keys(pilotProfileUpdateData).length > 0
+        ) {
+          await transaction.pilotProfile.update({
+            where: { id: existingUser.pilotProfile.id },
+            data: pilotProfileUpdateData,
+          });
+        }
+
+        return transaction.user.findUniqueOrThrow({
+          where: { id },
+          include: adminUserDetailInclude,
+        });
+      });
+
+      const counts = await this.getAdminUserDetailCounts(user.pilotProfile?.id ?? null);
+
+      return this.serializeAdminUserDetail(user, counts);
+    } catch (error) {
+      throw this.normalizePrismaError(error, "User");
+    }
+  }
+
+  public async suspendUser(id: string, currentUser: AuthenticatedUser) {
+    if (currentUser.id === id) {
+      throw new ForbiddenException("You cannot suspend your own administrator account.");
+    }
+
+    try {
+      const user = await this.prisma.$transaction(async (transaction) => {
+        const existingUser = await transaction.user.findUnique({
+          where: { id },
+          include: {
+            pilotProfile: true,
+          },
+        });
+
+        if (!existingUser) {
+          throw new NotFoundException("User not found.");
+        }
+
+        await transaction.user.update({
+          where: { id },
+          data: {
+            status: UserStatus.SUSPENDED,
+          },
+        });
+
+        if (existingUser.pilotProfile) {
+          await transaction.pilotProfile.update({
+            where: {
+              id: existingUser.pilotProfile.id,
+            },
+            data: {
+              status: PilotStatus.SUSPENDED,
+            },
+          });
+        }
+
+        return transaction.user.findUniqueOrThrow({
+          where: { id },
+          include: adminUserDetailInclude,
+        });
+      });
+
+      const counts = await this.getAdminUserDetailCounts(user.pilotProfile?.id ?? null);
+
+      return this.serializeAdminUserDetail(user, counts);
+    } catch (error) {
+      throw this.normalizePrismaError(error, "User");
+    }
+  }
+
+  public async activateUser(id: string, _currentUser: AuthenticatedUser) {
+    try {
+      const user = await this.prisma.$transaction(async (transaction) => {
+        const existingUser = await transaction.user.findUnique({
+          where: { id },
+          include: {
+            pilotProfile: true,
+          },
+        });
+
+        if (!existingUser) {
+          throw new NotFoundException("User not found.");
+        }
+
+        await transaction.user.update({
+          where: { id },
+          data: {
+            status: UserStatus.ACTIVE,
+          },
+        });
+
+        if (existingUser.pilotProfile) {
+          await transaction.pilotProfile.update({
+            where: {
+              id: existingUser.pilotProfile.id,
+            },
+            data: {
+              status: PilotStatus.ACTIVE,
+            },
+          });
+        }
+
+        return transaction.user.findUniqueOrThrow({
+          where: { id },
+          include: adminUserDetailInclude,
+        });
+      });
+
+      const counts = await this.getAdminUserDetailCounts(user.pilotProfile?.id ?? null);
+
+      return this.serializeAdminUserDetail(user, counts);
+    } catch (error) {
+      throw this.normalizePrismaError(error, "User");
+    }
   }
 
   public async listAircraft() {
@@ -411,6 +718,229 @@ export class AdminService {
     }
 
     return { success: true };
+  }
+
+  private async getAdminUserDetailCounts(
+    pilotProfileId: string | null,
+  ): Promise<AdminUserDetailCounts> {
+    if (!pilotProfileId) {
+      return {
+        activeBookingsCount: 0,
+        completedFlightsCount: 0,
+      };
+    }
+
+    const [activeBookingsCount, completedFlightsCount] = await Promise.all([
+      this.prisma.booking.count({
+        where: {
+          pilotProfileId,
+          status: {
+            in: [BookingStatus.RESERVED, BookingStatus.IN_PROGRESS],
+          },
+        },
+      }),
+      this.prisma.flight.count({
+        where: {
+          pilotProfileId,
+          status: FlightStatus.COMPLETED,
+        },
+      }),
+    ]);
+
+    return {
+      activeBookingsCount,
+      completedFlightsCount,
+    };
+  }
+
+  private serializeAdminUserListItem(user: AdminUserListRecord) {
+    return {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      avatarUrl: getAvatarUrl(user),
+      role: user.role,
+      status: user.status,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      lastLoginAt: user.lastLoginAt,
+      pilotProfile: user.pilotProfile
+        ? {
+            id: user.pilotProfile.id,
+            pilotNumber: user.pilotProfile.pilotNumber,
+            callsign: user.pilotProfile.callsign,
+            firstName: user.pilotProfile.firstName,
+            lastName: user.pilotProfile.lastName,
+            countryCode: user.pilotProfile.countryCode,
+            status: user.pilotProfile.status,
+            hoursFlownMinutes: user.pilotProfile.hoursFlownMinutes,
+            experiencePoints: user.pilotProfile.experiencePoints,
+            hub: user.pilotProfile.hub
+              ? {
+                  id: user.pilotProfile.hub.id,
+                  code: user.pilotProfile.hub.code,
+                  name: user.pilotProfile.hub.name,
+                }
+              : null,
+            rank: user.pilotProfile.rank
+              ? {
+                  id: user.pilotProfile.rank.id,
+                  code: user.pilotProfile.rank.code,
+                  name: user.pilotProfile.rank.name,
+                  sortOrder: user.pilotProfile.rank.sortOrder,
+                }
+              : null,
+          }
+        : null,
+      stats: {
+        hoursFlownMinutes: user.pilotProfile?.hoursFlownMinutes ?? 0,
+        bookingsCount: user.pilotProfile?._count.bookings ?? 0,
+        pirepsCount: user.pilotProfile?._count.pireps ?? 0,
+        flightsCount: user.pilotProfile?._count.flights ?? 0,
+      },
+    };
+  }
+
+  private serializeAdminUserDetail(
+    user: AdminUserDetailRecord,
+    counts: AdminUserDetailCounts,
+  ) {
+    return {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      avatarUrl: getAvatarUrl(user),
+      role: user.role,
+      status: user.status,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      lastLoginAt: user.lastLoginAt,
+      pilotProfile: user.pilotProfile
+        ? {
+            id: user.pilotProfile.id,
+            pilotNumber: user.pilotProfile.pilotNumber,
+            callsign: user.pilotProfile.callsign,
+            firstName: user.pilotProfile.firstName,
+            lastName: user.pilotProfile.lastName,
+            countryCode: user.pilotProfile.countryCode,
+            simbriefPilotId: user.pilotProfile.simbriefPilotId,
+            status: user.pilotProfile.status,
+            experiencePoints: user.pilotProfile.experiencePoints,
+            hoursFlownMinutes: user.pilotProfile.hoursFlownMinutes,
+            joinedAt: user.pilotProfile.joinedAt,
+            hub: user.pilotProfile.hub
+              ? {
+                  id: user.pilotProfile.hub.id,
+                  code: user.pilotProfile.hub.code,
+                  name: user.pilotProfile.hub.name,
+                }
+              : null,
+            rank: user.pilotProfile.rank
+              ? {
+                  id: user.pilotProfile.rank.id,
+                  code: user.pilotProfile.rank.code,
+                  name: user.pilotProfile.rank.name,
+                  sortOrder: user.pilotProfile.rank.sortOrder,
+                }
+              : null,
+          }
+        : null,
+      stats: {
+        hoursFlownMinutes: user.pilotProfile?.hoursFlownMinutes ?? 0,
+        bookingsCount: user.pilotProfile?._count.bookings ?? 0,
+        activeBookingsCount: counts.activeBookingsCount,
+        pirepsCount: user.pilotProfile?._count.pireps ?? 0,
+        flightsCount: user.pilotProfile?._count.flights ?? 0,
+        completedFlightsCount: counts.completedFlightsCount,
+      },
+      recentBookings:
+        user.pilotProfile?.bookings.map((booking) =>
+          this.serializeAdminRecentBooking(booking),
+        ) ?? [],
+      recentPireps:
+        user.pilotProfile?.pireps.map((pirep) => this.serializeAdminRecentPirep(pirep)) ??
+        [],
+    };
+  }
+
+  private serializeAdminRecentBooking(
+    booking: NonNullable<AdminUserDetailRecord["pilotProfile"]>["bookings"][number],
+  ) {
+    return {
+      id: booking.id,
+      status: booking.status,
+      reservedFlightNumber: booking.reservedFlightNumber,
+      bookedFor: booking.bookedFor,
+      reservedAt: booking.reservedAt,
+      aircraft: {
+        id: booking.aircraft.id,
+        registration: booking.aircraft.registration,
+        label: booking.aircraft.label,
+        aircraftType: {
+          id: booking.aircraft.aircraftType.id,
+          icaoCode: booking.aircraft.aircraftType.icaoCode,
+          name: booking.aircraft.aircraftType.name,
+        },
+      },
+      departureAirport: {
+        id: booking.departureAirport.id,
+        icao: booking.departureAirport.icao,
+        name: booking.departureAirport.name,
+      },
+      arrivalAirport: {
+        id: booking.arrivalAirport.id,
+        icao: booking.arrivalAirport.icao,
+        name: booking.arrivalAirport.name,
+      },
+      flight: booking.flight
+        ? {
+            id: booking.flight.id,
+            status: booking.flight.status,
+          }
+        : null,
+    };
+  }
+
+  private serializeAdminRecentPirep(
+    pirep: NonNullable<AdminUserDetailRecord["pilotProfile"]>["pireps"][number],
+  ) {
+    return {
+      id: pirep.id,
+      status: pirep.status,
+      source: pirep.source,
+      submittedAt: pirep.submittedAt,
+      createdAt: pirep.createdAt,
+      blockTimeMinutes: pirep.blockTimeMinutes,
+      flightTimeMinutes: pirep.flightTimeMinutes,
+      score: pirep.score,
+      landingRateFpm: pirep.landingRateFpm,
+      flight: pirep.flight
+        ? {
+            id: pirep.flight.id,
+            flightNumber: pirep.flight.flightNumber,
+          }
+        : null,
+      aircraft: {
+        id: pirep.aircraft.id,
+        registration: pirep.aircraft.registration,
+        label: pirep.aircraft.label,
+        aircraftType: {
+          id: pirep.aircraft.aircraftType.id,
+          icaoCode: pirep.aircraft.aircraftType.icaoCode,
+          name: pirep.aircraft.aircraftType.name,
+        },
+      },
+      departureAirport: {
+        id: pirep.departureAirport.id,
+        icao: pirep.departureAirport.icao,
+        name: pirep.departureAirport.name,
+      },
+      arrivalAirport: {
+        id: pirep.arrivalAirport.id,
+        icao: pirep.arrivalAirport.icao,
+        name: pirep.arrivalAirport.name,
+      },
+    };
   }
 
   private serializeAircraft(aircraft: AdminAircraftRecord) {

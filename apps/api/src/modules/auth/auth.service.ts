@@ -52,6 +52,19 @@ type AuthUserRecord = Prisma.UserGetPayload<{
   include: typeof authUserInclude;
 }>;
 
+function getAvatarUrl(value: unknown): string | null {
+  if (
+    value &&
+    typeof value === "object" &&
+    "avatarUrl" in value &&
+    (typeof value.avatarUrl === "string" || value.avatarUrl === null)
+  ) {
+    return value.avatarUrl;
+  }
+
+  return null;
+}
+
 @Injectable()
 @Dependencies(PrismaService, JwtService, ConfigService)
 export class AuthService {
@@ -302,6 +315,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       username: user.username,
+      avatarUrl: getAvatarUrl(user),
       role: user.role,
       roles: user.roles.map((item) => item.role.code as RoleCode),
       pilotProfile: user.pilotProfile

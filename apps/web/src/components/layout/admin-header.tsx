@@ -6,11 +6,13 @@ import { usePathname } from "next/navigation";
 
 import { LogoutButton } from "@/components/auth/logout-button";
 import { BrandBadge } from "@/components/layout/brand-badge";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { APP_NAME } from "@/lib/config/env";
 import { cn } from "@/lib/utils/cn";
 
 const adminLinks = [
-  { href: "/admin", label: "Vue d’ensemble" },
+  { href: "/admin", label: "Vue d'ensemble" },
+  { href: "/admin/utilisateurs", label: "Utilisateurs" },
   { href: "/admin/flotte", label: "Flotte" },
   { href: "/admin/hubs", label: "Hubs" },
   { href: "/admin/routes", label: "Routes" },
@@ -19,9 +21,13 @@ const adminLinks = [
 
 type AdminHeaderProps = {
   adminName: string;
+  avatarUrl?: string | null;
 };
 
-export function AdminHeader({ adminName }: AdminHeaderProps): JSX.Element {
+export function AdminHeader({
+  adminName,
+  avatarUrl = null,
+}: AdminHeaderProps): JSX.Element {
   const pathname = usePathname();
 
   return (
@@ -55,9 +61,12 @@ export function AdminHeader({ adminName }: AdminHeaderProps): JSX.Element {
         </nav>
 
         <div className="pilot-chip">
-          <div>
-            <strong>{adminName}</strong>
-            <small>Accès administrateur</small>
+          <div className="pilot-chip__identity">
+            <UserAvatar avatarUrl={avatarUrl} name={adminName} size="sm" />
+            <div>
+              <strong>{adminName}</strong>
+              <small>Acces administrateur</small>
+            </div>
           </div>
           <LogoutButton />
         </div>

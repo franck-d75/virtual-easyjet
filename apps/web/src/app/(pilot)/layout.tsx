@@ -22,6 +22,7 @@ export default async function PilotLayout({
     <div className="site-frame site-frame--pilot">
       <SessionKeepAlive />
       <PilotHeader
+        avatarUrl={session.user.avatarUrl}
         isAdmin={session.user.role === "ADMIN"}
         pilotName={`${pilotProfile.firstName} ${pilotProfile.lastName}`}
         pilotNumber={pilotProfile.pilotNumber}

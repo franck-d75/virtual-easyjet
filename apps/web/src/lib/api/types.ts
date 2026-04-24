@@ -25,6 +25,7 @@ export interface UserMeResponse {
   id: string;
   email: string;
   username: string;
+  avatarUrl: string | null;
   role: UserPlatformRole;
   status: string;
   lastLoginAt: string | null;
@@ -123,6 +124,7 @@ export interface PilotProfileResponse {
     id: string;
     email: string;
     username: string;
+    avatarUrl: string | null;
     status: string;
   };
   hub: {
@@ -403,6 +405,160 @@ export interface AdminStatsResponse {
   inProgressFlights: number;
 }
 
+export interface AdminUserSummaryResponse {
+  id: string;
+  email: string;
+  username: string;
+  avatarUrl: string | null;
+  role: UserPlatformRole;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string | null;
+  pilotProfile: {
+    id: string;
+    pilotNumber: string;
+    callsign: string | null;
+    firstName: string;
+    lastName: string;
+    countryCode: string | null;
+    status: string;
+    hoursFlownMinutes: number;
+    experiencePoints: number;
+    hub: {
+      id: string;
+      code: string;
+      name: string;
+    } | null;
+    rank: {
+      id: string;
+      code: string;
+      name: string;
+      sortOrder: number;
+    } | null;
+  } | null;
+  stats: {
+    hoursFlownMinutes: number;
+    bookingsCount: number;
+    pirepsCount: number;
+    flightsCount: number;
+  };
+}
+
+export interface AdminRecentBookingResponse {
+  id: string;
+  status: string;
+  reservedFlightNumber: string;
+  bookedFor: string;
+  reservedAt: string;
+  aircraft: {
+    id: string;
+    registration: string;
+    label: string | null;
+    aircraftType: {
+      id: string;
+      icaoCode: string;
+      name: string;
+    };
+  };
+  departureAirport: {
+    id: string;
+    icao: string;
+    name: string;
+  };
+  arrivalAirport: {
+    id: string;
+    icao: string;
+    name: string;
+  };
+  flight: {
+    id: string;
+    status: string;
+  } | null;
+}
+
+export interface AdminRecentPirepResponse {
+  id: string;
+  status: string;
+  source: string;
+  submittedAt: string | null;
+  createdAt: string;
+  blockTimeMinutes: number | null;
+  flightTimeMinutes: number | null;
+  score: number | null;
+  landingRateFpm: number | null;
+  flight: {
+    id: string;
+    flightNumber: string;
+  } | null;
+  aircraft: {
+    id: string;
+    registration: string;
+    label: string | null;
+    aircraftType: {
+      id: string;
+      icaoCode: string;
+      name: string;
+    };
+  };
+  departureAirport: {
+    id: string;
+    icao: string;
+    name: string;
+  };
+  arrivalAirport: {
+    id: string;
+    icao: string;
+    name: string;
+  };
+}
+
+export interface AdminUserDetailResponse {
+  id: string;
+  email: string;
+  username: string;
+  avatarUrl: string | null;
+  role: UserPlatformRole;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string | null;
+  pilotProfile: {
+    id: string;
+    pilotNumber: string;
+    callsign: string | null;
+    firstName: string;
+    lastName: string;
+    countryCode: string | null;
+    simbriefPilotId: string | null;
+    status: string;
+    experiencePoints: number;
+    hoursFlownMinutes: number;
+    joinedAt: string;
+    hub: {
+      id: string;
+      code: string;
+      name: string;
+    } | null;
+    rank: {
+      id: string;
+      code: string;
+      name: string;
+      sortOrder: number;
+    } | null;
+  } | null;
+  stats: {
+    hoursFlownMinutes: number;
+    bookingsCount: number;
+    activeBookingsCount: number;
+    pirepsCount: number;
+    flightsCount: number;
+    completedFlightsCount: number;
+  };
+  recentBookings: AdminRecentBookingResponse[];
+  recentPireps: AdminRecentPirepResponse[];
+}
+
 export interface AdminAirportOptionResponse {
   id: string;
   icao: string;
@@ -459,4 +615,14 @@ export interface AdminRoutePayload {
   blockTimeMinutes?: number | null;
   isActive?: boolean;
   notes?: string | null;
+}
+
+export interface AdminUserPayload {
+  role?: UserPlatformRole;
+  status?: string;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  countryCode?: string | null;
+  avatarUrl?: string | null;
 }

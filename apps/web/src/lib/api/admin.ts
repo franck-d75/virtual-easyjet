@@ -1,6 +1,9 @@
 import { apiRequest } from "./client";
 import type {
   AdminAircraftPayload,
+  AdminUserDetailResponse,
+  AdminUserPayload,
+  AdminUserSummaryResponse,
   AdminHubPayload,
   AdminReferenceDataResponse,
   AdminRoutePayload,
@@ -26,6 +29,66 @@ export async function getAdminReferenceData(
     accessToken,
     cache: "no-store",
   });
+}
+
+export async function listAdminUsers(
+  accessToken: string,
+): Promise<AdminUserSummaryResponse[]> {
+  return apiRequest<AdminUserSummaryResponse[]>("/admin/users", {
+    accessToken,
+    cache: "no-store",
+  });
+}
+
+export async function getAdminUser(
+  accessToken: string,
+  id: string,
+): Promise<AdminUserDetailResponse> {
+  return apiRequest<AdminUserDetailResponse>(`/admin/users/${encodeURIComponent(id)}`, {
+    accessToken,
+    cache: "no-store",
+  });
+}
+
+export async function updateAdminUser(
+  accessToken: string,
+  id: string,
+  payload: AdminUserPayload,
+): Promise<AdminUserDetailResponse> {
+  return apiRequest<AdminUserDetailResponse>(`/admin/users/${encodeURIComponent(id)}`, {
+    accessToken,
+    method: "PATCH",
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+}
+
+export async function suspendAdminUser(
+  accessToken: string,
+  id: string,
+): Promise<AdminUserDetailResponse> {
+  return apiRequest<AdminUserDetailResponse>(
+    `/admin/users/${encodeURIComponent(id)}/suspend`,
+    {
+      accessToken,
+      method: "PATCH",
+      cache: "no-store",
+    },
+  );
+}
+
+export async function activateAdminUser(
+  accessToken: string,
+  id: string,
+): Promise<AdminUserDetailResponse> {
+  return apiRequest<AdminUserDetailResponse>(
+    `/admin/users/${encodeURIComponent(id)}/activate`,
+    {
+      accessToken,
+      method: "PATCH",
+      cache: "no-store",
+    },
+  );
 }
 
 export async function listAdminAircraft(

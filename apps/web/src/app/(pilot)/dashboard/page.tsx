@@ -7,6 +7,7 @@ import { PirepsTable } from "@/components/pilot/pireps-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { getMyBookings, getMyFlights, getMyPilotProfile } from "@/lib/api/pilot";
 import type { BookingResponse, FlightResponse } from "@/lib/api/types";
 import { requirePilotSession } from "@/lib/auth/guards";
@@ -183,6 +184,34 @@ export default async function DashboardPage(): Promise<JSX.Element> {
             },
           ]}
         />
+      </section>
+
+      <section className="section-band">
+        <section className="panel-grid">
+          <Card className="ops-card ops-card--profile">
+            <span className="section-eyebrow">IdentitÃ© pilote</span>
+            <div className="profile-spotlight">
+              <UserAvatar
+                avatarUrl={profile.user.avatarUrl}
+                name={`${profile.firstName} ${profile.lastName}`}
+                size="xl"
+              />
+              <div>
+                <h2>
+                  {profile.firstName} {profile.lastName}
+                </h2>
+                <p>
+                  {profile.user.username} â€¢ {profile.rank?.name ?? "Rang non attribuÃ©"}
+                </p>
+              </div>
+            </div>
+            <div className="inline-actions">
+              <Button href="/profil" variant="secondary">
+                Ouvrir mon profil
+              </Button>
+            </div>
+          </Card>
+        </section>
       </section>
 
       <section className="section-band">

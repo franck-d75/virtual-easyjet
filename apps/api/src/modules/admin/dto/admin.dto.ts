@@ -1,13 +1,20 @@
 import {
   AircraftStatus,
+  UserPlatformRole,
+  UserStatus,
 } from "@va/database";
+import { Transform } from "class-transformer";
 import {
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
+  IsUrl,
   Length,
+  Matches,
+  MaxLength,
   Min,
 } from "class-validator";
 
@@ -199,4 +206,72 @@ export class UpdateAdminRouteDto {
   @IsString()
   @Length(1, 500)
   public notes?: string | null;
+}
+
+const ADMIN_USER_STATUSES = [
+  UserStatus.ACTIVE,
+  UserStatus.PENDING,
+  UserStatus.SUSPENDED,
+] as const;
+
+export class UpdateAdminUserDto {
+  @IsOptional()
+  @IsEnum(UserPlatformRole)
+  public role?: UserPlatformRole;
+
+  @IsOptional()
+  @IsIn(ADMIN_USER_STATUSES)
+  public status?: UserStatus;
+
+  @IsOptional()
+  @IsString()
+  @Length(3, 24)
+  @Matches(/^[a-z0-9._-]+$/i)
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim().toLowerCase() : value,
+  )
+  public username?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim() : value,
+  )
+  public firstName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim() : value,
+  )
+  public lastName?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(2, 2)
+  @Matches(/^[A-Z]{2}$/)
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim().toUpperCase() : value,
+  )
+  public countryCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  @IsUrl(
+    {
+      protocols: ["https"],
+      require_protocol: true,
+      require_tld: true,
+    },
+    {
+      message: "avatarUrl must be a valid https URL.",
+    },
+  )
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim() : value,
+  )
+  public avatarUrl?: string | null;
 }

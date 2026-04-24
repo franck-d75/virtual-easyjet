@@ -2,6 +2,19 @@ import { Dependencies, Injectable, NotFoundException } from "@nestjs/common";
 
 import { PrismaService } from "../prisma/prisma.service.js";
 
+function getAvatarUrl(value: unknown): string | null {
+  if (
+    value &&
+    typeof value === "object" &&
+    "avatarUrl" in value &&
+    (typeof value.avatarUrl === "string" || value.avatarUrl === null)
+  ) {
+    return value.avatarUrl;
+  }
+
+  return null;
+}
+
 @Injectable()
 @Dependencies(PrismaService)
 export class UsersService {
@@ -33,6 +46,7 @@ export class UsersService {
       id: user.id,
       email: user.email,
       username: user.username,
+      avatarUrl: getAvatarUrl(user),
       role: user.role,
       status: user.status,
       lastLoginAt: user.lastLoginAt,
@@ -86,6 +100,7 @@ export class UsersService {
       id: user.id,
       email: user.email,
       username: user.username,
+      avatarUrl: getAvatarUrl(user),
       role: user.role,
       status: user.status,
       createdAt: user.createdAt,

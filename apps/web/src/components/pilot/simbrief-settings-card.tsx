@@ -6,9 +6,12 @@ import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { UserAvatar } from "@/components/ui/user-avatar";
 
 type SimbriefSettingsCardProps = {
   initialSimbriefPilotId: string | null;
+  initialAvatarUrl: string | null;
+  displayName: string;
 };
 
 type FormFeedback = {
@@ -38,25 +41,50 @@ function parsePayload(value: string): unknown {
 
 export function SimbriefSettingsCard({
   initialSimbriefPilotId,
+  initialAvatarUrl,
+  displayName,
 }: SimbriefSettingsCardProps): JSX.Element {
   const router = useRouter();
   const [simbriefPilotId, setSimbriefPilotId] = useState(
     initialSimbriefPilotId ?? "",
   );
+  const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl ?? "");
   const [feedback, setFeedback] = useState<FormFeedback | null>(null);
   const [isPending, startTransition] = useTransition();
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
 
-    const normalizedValue = simbriefPilotId.trim();
+    const normalizedSimbriefPilotId = simbriefPilotId.trim();
+    const normalizedAvatarUrl = avatarUrl.trim();
 
-    if (normalizedValue.length > 0 && !/^\d+$/.test(normalizedValue)) {
+    if (
+      normalizedSimbriefPilotId.length > 0 &&
+      !/^\d+$/.test(normalizedSimbriefPilotId)
+    ) {
       setFeedback({
         tone: "danger",
         message: "Le SimBrief Pilot ID doit contenir uniquement des chiffres.",
       });
       return;
+    }
+
+    if (normalizedAvatarUrl.length > 0) {
+      let parsedUrl: URL | null = null;
+
+      try {
+        parsedUrl = new URL(normalizedAvatarUrl);
+      } catch {
+        parsedUrl = null;
+      }
+
+      if (!parsedUrl || parsedUrl.protocol !== "https:") {
+        setFeedback({
+          tone: "danger",
+          message: "L'URL de l'avatar doit etre une URL HTTPS valide.",
+        });
+        return;
+      }
     }
 
     setFeedback(null);
@@ -67,7 +95,9 @@ export function SimbriefSettingsCard({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        simbriefPilotId: normalizedValue.length > 0 ? normalizedValue : null,
+        simbriefPilotId:
+          normalizedSimbriefPilotId.length > 0 ? normalizedSimbriefPilotId : null,
+        avatarUrl: normalizedAvatarUrl.length > 0 ? normalizedAvatarUrl : null,
       }),
     });
 
@@ -79,7 +109,7 @@ export function SimbriefSettingsCard({
         tone: "danger",
         message: extractMessage(
           payload,
-          "Impossible de mettre à jour votre identifiant SimBrief.",
+          "Impossible de mettre a jour votre profil pilote.",
         ),
       });
       return;
@@ -87,10 +117,7 @@ export function SimbriefSettingsCard({
 
     setFeedback({
       tone: "success",
-      message:
-        normalizedValue.length > 0
-          ? "Identifiant SimBrief enregistré."
-          : "Identifiant SimBrief supprimé.",
+      message: "Profil pilote mis a jour.",
     });
 
     startTransition(() => {
@@ -101,33 +128,49 @@ export function SimbriefSettingsCard({
   return (
     <Card className="profile-card simbrief-card">
       <div className="profile-card__header">
-        <div>
-          <span className="section-eyebrow">SimBrief</span>
-          <h2>Préparation du plan de vol</h2>
-          <p className="simbrief-card__note">
-            Renseignez votre SimBrief Pilot ID numérique. C’est l’identifiant
-            le plus stable pour préparer la récupération future de votre
-            dernier plan de vol dans le web et dans ACARS.
-          </p>
+        <div className="profile-card__hero">
+          <UserAvatar avatarUrl={avatarUrl} name={displayName} size="lg" />
+          <div>
+            <span className="section-eyebrow">Identite et SimBrief</span>
+            <h2>Parametres du profil</h2>
+            <p className="simbrief-card__note">
+              Ajoutez une URL d'avatar HTTPS et votre SimBrief Pilot ID pour
+              enrichir votre identite pilote sur le web.
+            </p>
+          </div>
         </div>
         <div className="profile-card__identity">
-          <strong>{initialSimbriefPilotId ?? "Non configuré"}</strong>
-          <span>{initialSimbriefPilotId ? "Identifiant actif" : "À renseigner"}</span>
+          <strong>{initialSimbriefPilotId ?? "Non configure"}</strong>
+          <span>{initialAvatarUrl ? "Avatar actif" : "Avatar non renseigne"}</span>
         </div>
       </div>
 
       <div className="definition-grid">
         <div>
-          <span>Stratégie retenue</span>
-          <strong>SimBrief Pilot ID</strong>
+          <span>Avatar</span>
+          <strong>{initialAvatarUrl ? "URL HTTPS active" : "Fallback initiales"}</strong>
         </div>
         <div>
-          <span>Usage futur</span>
-          <strong>Récupération du dernier OFP</strong>
+          <span>Preparation OFP</span>
+          <strong>{initialSimbriefPilotId ? "Pret" : "Non configure"}</strong>
         </div>
       </div>
 
       <form className="auth-form" onSubmit={handleSubmit}>
+        <div className="field">
+          <label htmlFor="profile-avatar-url">Avatar URL</label>
+          <input
+            autoComplete="off"
+            id="profile-avatar-url"
+            onChange={(event) => {
+              setAvatarUrl(event.target.value);
+            }}
+            placeholder="https://..."
+            type="url"
+            value={avatarUrl}
+          />
+        </div>
+
         <div className="field">
           <label htmlFor="simbrief-pilot-id">SimBrief Pilot ID</label>
           <input
@@ -145,8 +188,8 @@ export function SimbriefSettingsCard({
         </div>
 
         <p className="simbrief-card__note">
-          Laissez ce champ vide puis enregistrez si vous souhaitez retirer la
-          liaison SimBrief de votre profil.
+          Laissez un champ vide puis enregistrez pour supprimer la valeur
+          actuellement configuree.
         </p>
 
         {feedback ? (

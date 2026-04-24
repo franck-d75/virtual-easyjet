@@ -24,7 +24,7 @@ export default async function AdminLayout({
   return (
     <div className="site-frame site-frame--pilot">
       <SessionKeepAlive />
-      <AdminHeader adminName={adminName} />
+      <AdminHeader adminName={adminName} avatarUrl={session.user.avatarUrl} />
       <PageShell width="wide">{children}</PageShell>
       <Footer />
     </div>

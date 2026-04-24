@@ -6,13 +6,14 @@ import { usePathname } from "next/navigation";
 
 import { LogoutButton } from "@/components/auth/logout-button";
 import { BrandBadge } from "@/components/layout/brand-badge";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { APP_NAME } from "@/lib/config/env";
 import { cn } from "@/lib/utils/cn";
 
 const pilotLinks = [
   { href: "/dashboard", label: "Tableau de bord" },
   { href: "/profil", label: "Profil" },
-  { href: "/bookings", label: "Réservations" },
+  { href: "/bookings", label: "Reservations" },
   { href: "/vols", label: "Vols" },
   { href: "/pireps", label: "PIREPs" },
 ];
@@ -20,12 +21,14 @@ const pilotLinks = [
 type PilotHeaderProps = {
   pilotName: string;
   pilotNumber: string;
+  avatarUrl?: string | null;
   isAdmin?: boolean;
 };
 
 export function PilotHeader({
   pilotName,
   pilotNumber,
+  avatarUrl = null,
   isAdmin = false,
 }: PilotHeaderProps): JSX.Element {
   const pathname = usePathname();
@@ -60,9 +63,12 @@ export function PilotHeader({
         </nav>
 
         <div className="pilot-chip">
-          <div>
-            <strong>{pilotName}</strong>
-            <small>{pilotNumber}</small>
+          <div className="pilot-chip__identity">
+            <UserAvatar avatarUrl={avatarUrl} name={pilotName} size="sm" />
+            <div>
+              <strong>{pilotName}</strong>
+              <small>{pilotNumber}</small>
+            </div>
           </div>
           <LogoutButton />
         </div>

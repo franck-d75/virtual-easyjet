@@ -12,12 +12,17 @@ export async function PATCH(request: Request) {
   try {
     const payload = (await request.json()) as {
       simbriefPilotId?: string | null;
+      avatarUrl?: string | null;
     };
 
     const simbriefPilotId =
       typeof payload.simbriefPilotId === "string"
         ? payload.simbriefPilotId.trim() || null
         : payload.simbriefPilotId ?? null;
+    const avatarUrl =
+      typeof payload.avatarUrl === "string"
+        ? payload.avatarUrl.trim() || null
+        : payload.avatarUrl ?? null;
 
     if (
       simbriefPilotId !== null &&
@@ -34,9 +39,31 @@ export async function PATCH(request: Request) {
       );
     }
 
+    if (avatarUrl !== null) {
+      let parsedUrl: URL | null = null;
+
+      try {
+        parsedUrl = new URL(avatarUrl);
+      } catch {
+        parsedUrl = null;
+      }
+
+      if (!parsedUrl || parsedUrl.protocol !== "https:") {
+        return NextResponse.json(
+          {
+            message: "L’URL de l’avatar doit être une URL HTTPS valide.",
+          },
+          {
+            status: 400,
+          },
+        );
+      }
+    }
+
     const result = await executeWithBackendAccess((accessToken) =>
       updateMyPilotProfile(accessToken, {
         simbriefPilotId,
+        avatarUrl,
       }),
     );
 

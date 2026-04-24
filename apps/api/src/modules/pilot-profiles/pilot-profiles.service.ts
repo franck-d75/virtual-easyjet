@@ -28,6 +28,19 @@ type PilotProfileRecord = Prisma.PilotProfileGetPayload<{
   include: typeof pilotProfileInclude;
 }>;
 
+function getAvatarUrl(value: unknown): string | null {
+  if (
+    value &&
+    typeof value === "object" &&
+    "avatarUrl" in value &&
+    (typeof value.avatarUrl === "string" || value.avatarUrl === null)
+  ) {
+    return value.avatarUrl;
+  }
+
+  return null;
+}
+
 @Injectable()
 @Dependencies(PrismaService, SimbriefClient)
 export class PilotProfilesService {
@@ -89,14 +102,26 @@ export class PilotProfilesService {
   ) {
     const pilotProfileId = getRequiredPilotProfileId(user);
     const simbriefPilotId = payload.simbriefPilotId?.trim() ?? null;
+    const avatarUrl = payload.avatarUrl?.trim() ?? null;
 
     try {
-      const profile = await this.prisma.pilotProfile.update({
-        where: { id: pilotProfileId },
-        data: {
-          simbriefPilotId,
-        },
-        include: pilotProfileInclude,
+      const profile = await this.prisma.$transaction(async (transaction) => {
+        await transaction.user.update({
+          where: {
+            id: user.id,
+          },
+          data: {
+            avatarUrl,
+          },
+        });
+
+        return transaction.pilotProfile.update({
+          where: { id: pilotProfileId },
+          data: {
+            simbriefPilotId,
+          },
+          include: pilotProfileInclude,
+        });
       });
 
       return this.serializeProfile(profile);
@@ -236,6 +261,7 @@ export class PilotProfilesService {
         id: profile.user.id,
         email: profile.user.email,
         username: profile.user.username,
+        avatarUrl: getAvatarUrl(profile.user),
         status: profile.user.status,
       },
       hub: profile.hub
