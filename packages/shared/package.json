@@ -7,8 +7,8 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
@@ -20,3 +20,4 @@
     "typescript": "6.0.3"
   }
 }
+
