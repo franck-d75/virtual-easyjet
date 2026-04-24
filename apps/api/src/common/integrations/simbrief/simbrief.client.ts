@@ -88,17 +88,18 @@ export class SimbriefClient {
         signal: AbortSignal.timeout(SIMBRIEF_FETCH_TIMEOUT_MS),
       });
 
-      const rawPayload = await response.text();
+      const httpResponse = response as any;
+      const rawPayload = await httpResponse.text();
       const payload = tryParseJson(rawPayload);
       const fetchStatus = readString(payload, ["fetch", "status"]);
 
-      if (!response.ok) {
+      if (!httpResponse.ok) {
         return {
-          status: response.status === 400 ? "NOT_FOUND" : "ERROR",
+          status: httpResponse.status === 400 ? "NOT_FOUND" : "ERROR",
           pilotId: normalizedPilotId,
           detail:
             fetchStatus ??
-            `SimBrief returned HTTP ${String(response.status)}.`,
+            `SimBrief returned HTTP ${String(httpResponse.status)}.`,
           fetchStatus,
           fetchedAt,
           source,
@@ -517,3 +518,4 @@ function parseCoordinateValue(value: unknown): number | null {
 
   return absoluteValue;
 }
+
