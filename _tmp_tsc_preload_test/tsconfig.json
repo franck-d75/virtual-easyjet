@@ -1,0 +1,1 @@
+{"compilerOptions":{"module":"CommonJS","target":"ES2022","outDir":"dist"},"include":["foo.cts"]}

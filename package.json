@@ -1,0 +1,35 @@
+{
+  "name": "virtual-airline-platform",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "dev:local": "node scripts/local-dev.mjs",
+    "build": "turbo build",
+    "start:web:prod": "pnpm --filter @va/web start",
+    "start:api:prod": "pnpm --filter @va/api start:prod",
+    "start:acars-service:prod": "pnpm --filter @va/acars-service start:prod",
+    "test": "turbo test",
+    "test:e2e": "node --import tsx --test tests/e2e/flow.e2e.test.ts",
+    "lint": "turbo lint",
+    "dev:web": "pnpm --filter @va/web dev",
+    "dev:api": "pnpm --filter @va/api dev",
+    "dev:acars-service": "pnpm --filter @va/acars-service dev",
+    "dev:acars-desktop": "pnpm --filter @va/acars-desktop dev",
+    "build:acars-desktop": "pnpm --filter @va/acars-desktop build",
+    "package:acars-desktop": "pnpm --filter @va/acars-desktop package:win",
+    "package:acars-desktop:dir": "pnpm --filter @va/acars-desktop package:dir",
+    "db:generate": "pnpm --filter @va/database prisma:generate",
+    "db:migrate": "pnpm --filter @va/database prisma:migrate",
+    "db:migrate:deploy": "pnpm --filter @va/database exec prisma migrate deploy",
+    "db:seed": "pnpm --filter @va/database prisma:seed"
+  },
+  "devDependencies": {
+    "tsx": "4.21.0",
+    "turbo": "2.9.6"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "appId": "com.virtualeasyjet.acars",
+  "productName": "Virtual Easyjet ACARS",
+  "artifactName": "${productName}-${version}-${arch}.${ext}",
+  "asar": true,
+  "npmRebuild": false,
+  "afterPack": "./scripts/after-pack.cjs",
+  "directories": {
+    "output": "release",
+    "buildResources": "build-resources"
+  },
+  "files": [
+    "dist/**/*",
+    "src/renderer/**/*",
+    "package.json",
+    "!dist/**/*.map"
+  ],
+  "win": {
+    "icon": "build-resources/icon.ico",
+    "signAndEditExecutable": false,
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      },
+      {
+        "target": "portable",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  },
+  "nsis": {
+    "artifactName": "Virtual-Easyjet-ACARS-Setup-${version}-${arch}.${ext}",
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "installerIcon": "build-resources/icon.ico",
+    "uninstallerIcon": "build-resources/icon.ico",
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Virtual Easyjet ACARS"
+  },
+  "portable": {
+    "artifactName": "Virtual-Easyjet-ACARS-Portable-${version}-${arch}.${ext}"
+  }
+}

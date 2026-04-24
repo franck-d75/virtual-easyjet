@@ -1,0 +1,25 @@
+{
+  "name": "@va/acars-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Client desktop ACARS Windows pour Virtual Easyjet.",
+  "author": "Virtual Easyjet",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.preload.json",
+    "dev": "pnpm run build && electron dist/main/main.js",
+    "start": "electron dist/main/main.js",
+    "package:dir": "pnpm run build && electron-builder --config electron-builder.json --dir",
+    "package:win": "pnpm run build && electron-builder --config electron-builder.json --win nsis portable",
+    "lint": "echo \"No lint configured for @va/acars-desktop\"",
+    "test": "echo \"No tests configured for @va/acars-desktop\""
+  },
+  "devDependencies": {
+    "@types/node": "25.6.0",
+    "electron": "41.2.1",
+    "electron-builder": "^26.8.1",
+    "rcedit": "^5.0.2",
+    "typescript": "6.0.3"
+  }
+}

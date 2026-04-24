@@ -1,0 +1,38 @@
+{
+  "extends": "./packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@va/shared": [
+        "packages/shared/src/index.ts"
+      ],
+      "@va/shared/*": [
+        "packages/shared/src/*"
+      ],
+      "@va/database": [
+        "packages/database/src/index.ts"
+      ],
+      "@va/database/*": [
+        "packages/database/src/*"
+      ],
+      "@va/sdk": [
+        "packages/sdk/src/index.ts"
+      ],
+      "@va/sdk/*": [
+        "packages/sdk/src/*"
+      ],
+      "@va/ui": [
+        "packages/ui/src/index.ts"
+      ],
+      "@va/ui/*": [
+        "packages/ui/src/*"
+      ]
+    }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    ".next",
+    "coverage"
+  ]
+}

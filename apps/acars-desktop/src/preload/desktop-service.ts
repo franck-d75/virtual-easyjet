@@ -1,0 +1,1193 @@
+import {
+  DEFAULT_DESKTOP_CONFIG,
+  normalizeBaseUrl,
+} from "../shared/defaults.js";
+import { createMockTelemetrySequence } from "../shared/mock-telemetry.js";
+import { loadDesktopRuntimeConfig } from "./runtime-config.js";
+import type {
+  AircraftSummary,
+  AirportSummary,
+  AuthSession,
+  BookingSummary,
+  CurrentPosition,
+  DesktopConfig,
+  DesktopSnapshot,
+  FlightSummary,
+  FuelState,
+  LatestTelemetry,
+  LoadOperationsResult,
+  LoginInput,
+  MockProgress,
+  MockResetResult,
+  MockTelemetryStep,
+  SessionSummary,
+  TelemetryInput,
+} from "../shared/types.js";
+
+type RequestInitWithJson = {
+  method?: "GET" | "POST";
+  headers?: Record<string, string>;
+  body?: unknown;
+};
+
+type MockSequenceState = {
+  nextIndex: number;
+  steps: MockTelemetryStep[];
+};
+
+type MockDispatchState = {
+  bookings: BookingSummary[];
+  flights: FlightSummary[];
+};
+
+type MockSessionState = {
+  session: SessionSummary;
+  telemetryCount: number;
+};
+
+const MOCK_PHASE_SEQUENCE = [
+  "PRE_FLIGHT",
+  "DEPARTURE_PARKING",
+  "PUSHBACK",
+  "TAXI_OUT",
+  "TAKEOFF",
+  "CLIMB",
+  "CRUISE",
+  "DESCENT",
+  "APPROACH",
+  "LANDING",
+  "TAXI_IN",
+  "ARRIVAL_PARKING",
+  "COMPLETED",
+] as const;
+
+const MOCK_ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  PRE_FLIGHT: ["DEPARTURE_PARKING"],
+  DEPARTURE_PARKING: ["PUSHBACK", "TAXI_OUT"],
+  PUSHBACK: ["DEPARTURE_PARKING", "TAXI_OUT"],
+  TAXI_OUT: ["DEPARTURE_PARKING", "TAKEOFF"],
+  TAKEOFF: ["CLIMB"],
+  CLIMB: ["CRUISE", "DESCENT"],
+  CRUISE: ["DESCENT"],
+  DESCENT: ["APPROACH"],
+  APPROACH: ["LANDING", "CLIMB"],
+  LANDING: ["TAXI_IN", "ARRIVAL_PARKING"],
+  TAXI_IN: ["ARRIVAL_PARKING"],
+  ARRIVAL_PARKING: ["COMPLETED"],
+  COMPLETED: ["COMPLETED"],
+};
+
+const POST_ARRIVAL_PHASES = [
+  "LANDING",
+  "TAXI_IN",
+  "ARRIVAL_PARKING",
+  "COMPLETED",
+];
+
+const AIRBORNE_PHASES = [
+  "TAKEOFF",
+  "CLIMB",
+  "CRUISE",
+  "DESCENT",
+  "APPROACH",
+];
+
+function buildMockAuthSession(input: LoginInput): AuthSession {
+  const identifier = input.identifier.trim();
+  const username =
+    identifier.length > 0
+      ? (identifier.includes("@")
+          ? (identifier.split("@")[0] ?? "mockpilot")
+          : identifier)
+      : "mockpilot";
+  const email =
+    identifier.length > 0 && identifier.includes("@")
+      ? identifier
+      : "mock.pilot@desktop.local";
+  const issuedAt = Date.now().toString(36);
+
+  return {
+    user: {
+      id: "mock-user-1",
+      email,
+      username,
+      roles: ["pilot"],
+      pilotProfileId: "mock-pilot-profile-1",
+      pilotProfile: {
+        id: "mock-pilot-profile-1",
+        pilotNumber: "MOCK001",
+        firstName: "Mock",
+        lastName: "Pilot",
+        status: "ACTIVE",
+        rankId: "mock-rank-cpt",
+        hubId: "mock-hub-par",
+      },
+    },
+    tokens: {
+      accessToken: `mock-access-${issuedAt}`,
+      refreshToken: `mock-refresh-${issuedAt}`,
+      accessTokenExpiresIn: "15m",
+      refreshTokenExpiresIn: "30d",
+    },
+  };
+}
+
+function cloneValue<T>(value: T): T {
+  return structuredClone(value);
+}
+
+function buildAirport(
+  id: string,
+  icao: string,
+  name: string,
+): AirportSummary {
+  return {
+    id,
+    icao,
+    name,
+  };
+}
+
+function buildAircraft(
+  id: string,
+  registration: string,
+  label: string,
+  icaoCode: string,
+  name: string,
+): AircraftSummary {
+  return {
+    id,
+    registration,
+    label,
+    aircraftType: {
+      id: `${id}-type`,
+      icaoCode,
+      name,
+    },
+  };
+}
+
+function buildEmptyPosition(): CurrentPosition {
+  return {
+    latitude: null,
+    longitude: null,
+    altitudeFt: null,
+    groundspeedKts: null,
+    headingDeg: null,
+    verticalSpeedFpm: null,
+    onGround: null,
+  };
+}
+
+function buildEmptyFuelState(): FuelState {
+  return {
+    departureFuelKg: null,
+    arrivalFuelKg: null,
+  };
+}
+
+function buildLatestTelemetry(
+  telemetryId: string,
+  payload: TelemetryInput,
+  capturedAt: string,
+): LatestTelemetry {
+  return {
+    id: telemetryId,
+    capturedAt,
+    latitude: payload.latitude,
+    longitude: payload.longitude,
+    altitudeFt: payload.altitudeFt,
+    groundspeedKts: payload.groundspeedKts,
+    headingDeg: payload.headingDeg,
+    verticalSpeedFpm: payload.verticalSpeedFpm,
+    onGround: payload.onGround,
+    fuelTotalKg: payload.fuelTotalKg ?? null,
+    gearPercent: payload.gearPercent ?? null,
+    flapsPercent: payload.flapsPercent ?? null,
+    parkingBrake: payload.parkingBrake ?? null,
+  };
+}
+
+function buildMockDispatchState(referenceTime: Date): MockDispatchState {
+  const reservedBookedFor = new Date(
+    referenceTime.getTime() + 2 * 60 * 60_000,
+  ).toISOString();
+  const inProgressBookedFor = new Date(
+    referenceTime.getTime() - 45 * 60_000,
+  ).toISOString();
+
+  const reservedDepartureAirport = buildAirport(
+    "mock-airport-lfpo",
+    "LFPO",
+    "Paris Orly",
+  );
+  const reservedArrivalAirport = buildAirport(
+    "mock-airport-eham",
+    "EHAM",
+    "Amsterdam Schiphol",
+  );
+  const flightDepartureAirport = buildAirport(
+    "mock-airport-lfpg",
+    "LFPG",
+    "Paris Charles de Gaulle",
+  );
+  const flightArrivalAirport = buildAirport(
+    "mock-airport-egll",
+    "EGLL",
+    "London Heathrow",
+  );
+
+  const reservedAircraft = buildAircraft(
+    "mock-aircraft-atr72",
+    "F-MOCK",
+    "ATR 72 Demo",
+    "AT76",
+    "ATR 72-600",
+  );
+  const inProgressAircraft = buildAircraft(
+    "mock-aircraft-a320",
+    "F-HMVP",
+    "A320neo MVP",
+    "A20N",
+    "Airbus A320neo",
+  );
+
+  const flights: FlightSummary[] = [
+    {
+      id: "mock-flight-1",
+      status: "IN_PROGRESS",
+      flightNumber: "VA1401",
+      booking: {
+        id: "mock-booking-in-progress-1",
+        status: "IN_PROGRESS",
+        bookedFor: inProgressBookedFor,
+      },
+      departureAirport: flightDepartureAirport,
+      arrivalAirport: flightArrivalAirport,
+      aircraft: inProgressAircraft,
+      acarsSession: null,
+      pirep: null,
+    },
+  ];
+
+  const bookings: BookingSummary[] = [
+    {
+      id: "mock-booking-reserved-1",
+      status: "RESERVED",
+      reservedFlightNumber: "VA2402",
+      bookedFor: reservedBookedFor,
+      departureAirport: reservedDepartureAirport,
+      arrivalAirport: reservedArrivalAirport,
+      aircraft: reservedAircraft,
+      flight: null,
+    },
+    {
+      id: "mock-booking-in-progress-1",
+      status: "IN_PROGRESS",
+      reservedFlightNumber: "VA1401",
+      bookedFor: inProgressBookedFor,
+      departureAirport: flightDepartureAirport,
+      arrivalAirport: flightArrivalAirport,
+      aircraft: inProgressAircraft,
+      flight: {
+        id: "mock-flight-1",
+        status: "IN_PROGRESS",
+      },
+    },
+  ];
+
+  return {
+    bookings,
+    flights,
+  };
+}
+
+function buildLoadOperationsResult(
+  dispatch: MockDispatchState,
+): LoadOperationsResult {
+  const bookings = cloneValue(dispatch.bookings);
+  const flights = cloneValue(dispatch.flights);
+
+  return {
+    bookings,
+    usableBookings: bookings.filter(
+      (booking) => booking.status === "RESERVED" && booking.flight === null,
+    ),
+    flights,
+    usableFlights: flights.filter(
+      (flight) =>
+        flight.status === "IN_PROGRESS" && flight.acarsSession === null,
+    ),
+  };
+}
+
+function buildMockSessionSummary(
+  config: DesktopConfig,
+  flight: FlightSummary,
+  sessionId: string,
+  startedAt: string,
+): SessionSummary {
+  return {
+    id: sessionId,
+    flightId: flight.id,
+    simulatorProvider: config.simulatorProvider,
+    clientVersion: config.clientVersion,
+    status: "CONNECTED",
+    startedAt,
+    endedAt: null,
+    disconnectedAt: null,
+    connectCount: 1,
+    lastTelemetryAt: null,
+    lastHeartbeatAt: startedAt,
+    detectedPhase: "PRE_FLIGHT",
+    currentPosition: buildEmptyPosition(),
+    fuel: buildEmptyFuelState(),
+    latestTelemetry: null,
+    eventSummary: null,
+    flight: {
+      id: flight.id,
+      status: flight.status,
+      flightNumber: flight.flightNumber,
+      bookingId: flight.booking.id,
+      departureAirport: cloneValue(flight.departureAirport),
+      arrivalAirport: cloneValue(flight.arrivalAirport),
+      aircraft: {
+        registration: flight.aircraft.registration,
+        label: flight.aircraft.label,
+        aircraftType: {
+          icaoCode: flight.aircraft.aircraftType.icaoCode,
+          name: flight.aircraft.aircraftType.name,
+        },
+      },
+    },
+    pirep: null,
+  };
+}
+
+function isPostArrivalPhase(phase: string): boolean {
+  return POST_ARRIVAL_PHASES.includes(phase);
+}
+
+function resolveMockCandidatePhase(
+  previousPhase: string,
+  payload: TelemetryInput,
+): string {
+  if (previousPhase === "COMPLETED") {
+    return "COMPLETED";
+  }
+
+  if (payload.onGround) {
+    if (
+      payload.parkingBrake === true &&
+      payload.groundspeedKts <= 1
+    ) {
+      return isPostArrivalPhase(previousPhase)
+        ? "ARRIVAL_PARKING"
+        : "DEPARTURE_PARKING";
+    }
+
+    if (isPostArrivalPhase(previousPhase)) {
+      return payload.groundspeedKts >= 5 ? "TAXI_IN" : "ARRIVAL_PARKING";
+    }
+
+    if (
+      (previousPhase === "PRE_FLIGHT" ||
+        previousPhase === "DEPARTURE_PARKING") &&
+      payload.parkingBrake === false &&
+      payload.groundspeedKts <= 5
+    ) {
+      return "PUSHBACK";
+    }
+
+    if (payload.groundspeedKts >= 5) {
+      return "TAXI_OUT";
+    }
+
+    return previousPhase === "PRE_FLIGHT"
+      ? "DEPARTURE_PARKING"
+      : previousPhase;
+  }
+
+  if (previousPhase === "PRE_FLIGHT" || previousPhase === "DEPARTURE_PARKING") {
+    return "TAKEOFF";
+  }
+
+  if (payload.altitudeFt <= 3_000 && payload.verticalSpeedFpm <= -500) {
+    return "APPROACH";
+  }
+
+  if (payload.verticalSpeedFpm <= -500) {
+    return payload.altitudeFt >= 10_000 ? "DESCENT" : "APPROACH";
+  }
+
+  if (payload.altitudeFt <= 1_500 && payload.verticalSpeedFpm >= 300) {
+    return "TAKEOFF";
+  }
+
+  if (payload.verticalSpeedFpm >= 500) {
+    return "CLIMB";
+  }
+
+  if (
+    Math.abs(payload.verticalSpeedFpm) <= 300 &&
+    payload.altitudeFt >= 10_000
+  ) {
+    return "CRUISE";
+  }
+
+  return AIRBORNE_PHASES.includes(previousPhase) ? previousPhase : "CLIMB";
+}
+
+function resolveAllowedMockPhase(
+  previousPhase: string,
+  candidatePhase: string,
+): string {
+  if (previousPhase === candidatePhase) {
+    return previousPhase;
+  }
+
+  const allowedTransitions = MOCK_ALLOWED_TRANSITIONS[previousPhase] ?? [];
+
+  if (allowedTransitions.includes(candidatePhase)) {
+    return candidatePhase;
+  }
+
+  const previousIndex = MOCK_PHASE_SEQUENCE.indexOf(
+    previousPhase as (typeof MOCK_PHASE_SEQUENCE)[number],
+  );
+  const candidateIndex = MOCK_PHASE_SEQUENCE.indexOf(
+    candidatePhase as (typeof MOCK_PHASE_SEQUENCE)[number],
+  );
+
+  if (previousIndex === -1 || candidateIndex === -1) {
+    return previousPhase;
+  }
+
+  if (candidateIndex > previousIndex) {
+    return allowedTransitions[0] ?? previousPhase;
+  }
+
+  return previousPhase;
+}
+
+function detectMockPhase(
+  previousPhase: string,
+  payload: TelemetryInput,
+): string {
+  return resolveAllowedMockPhase(
+    previousPhase,
+    resolveMockCandidatePhase(previousPhase, payload),
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function extractErrorMessage(payload: unknown): string | null {
+  if (typeof payload === "string" && payload.trim().length > 0) {
+    return payload;
+  }
+
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const message = payload.message;
+
+  if (typeof message === "string" && message.trim().length > 0) {
+    return message;
+  }
+
+  if (
+    Array.isArray(message) &&
+    message.every((item) => typeof item === "string")
+  ) {
+    return message.join(" ");
+  }
+
+  const error = payload.error;
+
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error;
+  }
+
+  return null;
+}
+
+class HttpError extends Error {
+  public constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
+
+const INVALID_DESKTOP_AUTH_SESSION_MESSAGE =
+  "Invalid authentication session. Log in again to continue.";
+
+export class DesktopService {
+  private readonly initialConfig = loadDesktopRuntimeConfig();
+  private config = this.initialConfig;
+  private authSession: AuthSession | null = null;
+  private readonly mockSequences = new Map<string, MockSequenceState>();
+  private readonly mockSessionStates = new Map<string, MockSessionState>();
+  private mockDispatchState: MockDispatchState | null = null;
+  private mockSessionCounter = 1;
+
+  public constructor() {
+    this.log("desktop runtime config loaded", {
+      backendMode: this.config.backendMode,
+      apiBaseUrl: this.config.apiBaseUrl,
+      acarsBaseUrl: this.config.acarsBaseUrl,
+      clientVersion: this.config.clientVersion,
+      simulatorProvider: this.config.simulatorProvider,
+    });
+  }
+
+  public async getSnapshot(): Promise<DesktopSnapshot> {
+    return cloneValue(this.buildSnapshot());
+  }
+
+  public async login(input: LoginInput): Promise<DesktopSnapshot> {
+    this.config = {
+      ...this.initialConfig,
+      apiBaseUrl:
+        normalizeBaseUrl(input.apiBaseUrl) ||
+        this.initialConfig.apiBaseUrl,
+      acarsBaseUrl:
+        normalizeBaseUrl(input.acarsBaseUrl) ||
+        this.initialConfig.acarsBaseUrl,
+      backendMode: input.backendMode,
+    };
+
+    this.resetMockState();
+
+    if (this.isMockBackend()) {
+      this.log("mock desktop login requested", {
+        identifier: input.identifier.trim() || "mockpilot",
+      });
+      this.authSession = buildMockAuthSession(input);
+    } else {
+      this.log("live desktop login requested", {
+        apiBaseUrl: this.config.apiBaseUrl,
+        identifier: input.identifier.trim(),
+      });
+      this.authSession = await this.requestJson<AuthSession>(
+        this.config.apiBaseUrl,
+        "/auth/login",
+        {
+          method: "POST",
+          body: {
+            identifier: input.identifier,
+            password: input.password,
+          },
+        },
+      );
+      this.log("live desktop login succeeded", {
+        userId: this.authSession.user.id,
+        pilotProfileId: this.authSession.user.pilotProfileId ?? null,
+      });
+    }
+
+    return cloneValue(this.buildSnapshot());
+  }
+
+  public async logout(): Promise<DesktopSnapshot> {
+    if (this.authSession && !this.isMockBackend()) {
+      try {
+        await this.requestJson(
+          this.config.apiBaseUrl,
+          "/auth/logout",
+          {
+            method: "POST",
+            body: {
+              refreshToken: this.authSession.tokens.refreshToken,
+            },
+          },
+        );
+      } catch {
+        // Best effort for MVP. We still clear the local desktop state.
+      }
+    }
+
+    this.authSession = null;
+    this.resetMockState();
+
+    return cloneValue(this.buildSnapshot());
+  }
+
+  public async loadDispatchData(): Promise<LoadOperationsResult> {
+    if (this.isMockBackend()) {
+      return buildLoadOperationsResult(this.ensureMockDispatchState());
+    }
+
+    const [bookings, flights] = await Promise.all([
+      this.authorizedRequestJson<BookingSummary[]>(
+        this.config.apiBaseUrl,
+        "/bookings/me",
+      ),
+      this.authorizedRequestJson<FlightSummary[]>(
+        this.config.apiBaseUrl,
+        "/flights/me",
+      ),
+    ]);
+
+    return {
+      bookings,
+      usableBookings: bookings.filter(
+        (booking) => booking.status === "RESERVED" && booking.flight === null,
+      ),
+      flights,
+      usableFlights: flights.filter(
+        (flight) =>
+          flight.status === "IN_PROGRESS" && flight.acarsSession === null,
+      ),
+    };
+  }
+
+  public async createSession(flightId: string): Promise<SessionSummary> {
+    if (this.isMockBackend()) {
+      return this.createMockSession(flightId);
+    }
+
+    return this.authorizedRequestJson<SessionSummary>(
+      this.config.acarsBaseUrl,
+      "/sessions",
+      {
+        method: "POST",
+        body: {
+          flightId,
+          clientVersion: this.config.clientVersion,
+          simulatorProvider: this.config.simulatorProvider,
+        },
+      },
+    );
+  }
+
+  public async getSession(sessionId: string): Promise<SessionSummary> {
+    if (this.isMockBackend()) {
+      return cloneValue(this.ensureMockSessionState(sessionId).session);
+    }
+
+    return this.authorizedRequestJson<SessionSummary>(
+      this.config.acarsBaseUrl,
+      `/sessions/${encodeURIComponent(sessionId)}`,
+    );
+  }
+
+  public async sendManualTelemetry(
+    sessionId: string,
+    payload: TelemetryInput,
+  ): Promise<SessionSummary> {
+    if (this.isMockBackend()) {
+      return this.sendMockTelemetry(sessionId, payload);
+    }
+
+    return this.authorizedRequestJson<SessionSummary>(
+      this.config.acarsBaseUrl,
+      `/sessions/${encodeURIComponent(sessionId)}/telemetry`,
+      {
+        method: "POST",
+        body: payload,
+      },
+    );
+  }
+
+  public async sendNextMockTelemetry(
+    sessionId: string,
+  ): Promise<MockProgress> {
+    if (!this.isMockBackend()) {
+      throw new Error(
+        "Mock telemetry automation is available only when the desktop backend mode is set to mock.",
+      );
+    }
+
+    const mockState = this.getOrCreateMockSequence(sessionId);
+    const step = mockState.steps[mockState.nextIndex] ?? null;
+
+    if (!step) {
+      const session = await this.getSession(sessionId);
+
+      return {
+        session,
+        step: null,
+        sentSteps: mockState.nextIndex,
+        totalSteps: mockState.steps.length,
+        remainingSteps: 0,
+      };
+    }
+
+    const session = this.sendMockTelemetry(
+      sessionId,
+      step.telemetry,
+      step.expectedPhase,
+    );
+    mockState.nextIndex += 1;
+
+    return {
+      session,
+      step,
+      sentSteps: mockState.nextIndex,
+      totalSteps: mockState.steps.length,
+      remainingSteps: Math.max(0, mockState.steps.length - mockState.nextIndex),
+    };
+  }
+
+  public async resetMockSequence(
+    sessionId: string,
+  ): Promise<MockResetResult> {
+    if (!this.isMockBackend()) {
+      throw new Error(
+        "Mock telemetry sequence reset is available only in desktop mock backend mode.",
+      );
+    }
+
+    const steps = createMockTelemetrySequence(new Date());
+
+    this.mockSequences.set(sessionId, {
+      nextIndex: 0,
+      steps,
+    });
+
+    return {
+      totalSteps: steps.length,
+      remainingSteps: steps.length,
+    };
+  }
+
+  public async completeSession(
+    sessionId: string,
+    pilotComment: string,
+  ): Promise<SessionSummary> {
+    if (this.isMockBackend()) {
+      return this.completeMockSession(sessionId, pilotComment);
+    }
+
+    return this.authorizedRequestJson<SessionSummary>(
+      this.config.acarsBaseUrl,
+      `/sessions/${encodeURIComponent(sessionId)}/complete`,
+      {
+        method: "POST",
+        body: {
+          pilotComment: pilotComment.trim() || undefined,
+        },
+      },
+    );
+  }
+
+  private isMockBackend(): boolean {
+    return this.config.backendMode === "mock";
+  }
+
+  private buildSnapshot(): DesktopSnapshot {
+    return {
+      config: this.config,
+      isAuthenticated: this.authSession !== null,
+      user: this.authSession?.user ?? null,
+    };
+  }
+
+  private resetMockState(): void {
+    this.mockSequences.clear();
+    this.mockSessionStates.clear();
+    this.mockDispatchState = null;
+    this.mockSessionCounter = 1;
+  }
+
+  private ensureMockDispatchState(): MockDispatchState {
+    this.ensureAuthenticated();
+
+    if (!this.mockDispatchState) {
+      this.mockDispatchState = buildMockDispatchState(new Date());
+    }
+
+    return this.mockDispatchState;
+  }
+
+  private getOrCreateMockSequence(sessionId: string): MockSequenceState {
+    const existingState = this.mockSequences.get(sessionId);
+
+    if (existingState) {
+      return existingState;
+    }
+
+    const state = {
+      nextIndex: 0,
+      steps: createMockTelemetrySequence(new Date()),
+    };
+
+    this.mockSequences.set(sessionId, state);
+
+    return state;
+  }
+
+  private ensureMockSessionState(sessionId: string): MockSessionState {
+    const state = this.mockSessionStates.get(sessionId);
+
+    if (!state) {
+      throw new Error(`Mock ACARS session not found: ${sessionId}.`);
+    }
+
+    return state;
+  }
+
+  private createMockSession(flightId: string): SessionSummary {
+    const dispatch = this.ensureMockDispatchState();
+    const flight = dispatch.flights.find((item) => item.id === flightId);
+
+    if (!flight) {
+      throw new Error(`Mock flight not found: ${flightId}.`);
+    }
+
+    if (flight.status !== "IN_PROGRESS") {
+      throw new Error("Only in-progress mock flights can start an ACARS session.");
+    }
+
+    if (flight.acarsSession) {
+      throw new Error("A mock ACARS session already exists for this flight.");
+    }
+
+    const startedAt = new Date().toISOString();
+    const sessionId = `mock-session-${String(this.mockSessionCounter).padStart(4, "0")}`;
+    this.mockSessionCounter += 1;
+
+    const session = buildMockSessionSummary(
+      this.config,
+      flight,
+      sessionId,
+      startedAt,
+    );
+
+    this.mockSessionStates.set(session.id, {
+      session,
+      telemetryCount: 0,
+    });
+
+    this.mockSequences.set(session.id, {
+      nextIndex: 0,
+      steps: createMockTelemetrySequence(new Date(startedAt)),
+    });
+
+    flight.acarsSession = {
+      id: session.id,
+      status: session.status,
+      detectedPhase: session.detectedPhase,
+    };
+
+    return cloneValue(session);
+  }
+
+  private sendMockTelemetry(
+    sessionId: string,
+    payload: TelemetryInput,
+    expectedPhase?: string,
+  ): SessionSummary {
+    const state = this.ensureMockSessionState(sessionId);
+
+    if (state.session.status === "COMPLETED") {
+      throw new Error("This mock ACARS session is already completed.");
+    }
+
+    if (state.session.status === "ABORTED") {
+      throw new Error("This mock ACARS session is already aborted.");
+    }
+
+    const capturedAtDate = payload.capturedAt
+      ? new Date(payload.capturedAt)
+      : new Date();
+
+    if (Number.isNaN(capturedAtDate.getTime())) {
+      throw new Error("capturedAt must be a valid ISO-8601 datetime.");
+    }
+
+    const capturedAt = capturedAtDate.toISOString();
+    state.telemetryCount += 1;
+
+    const latestTelemetry = buildLatestTelemetry(
+      `mock-telemetry-${sessionId}-${state.telemetryCount}`,
+      payload,
+      capturedAt,
+    );
+    const nextPhase =
+      expectedPhase ??
+      detectMockPhase(state.session.detectedPhase, payload);
+
+    state.session = {
+      ...state.session,
+      status: "TRACKING",
+      lastTelemetryAt: capturedAt,
+      lastHeartbeatAt: capturedAt,
+      detectedPhase: nextPhase,
+      currentPosition: {
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        altitudeFt: payload.altitudeFt,
+        groundspeedKts: payload.groundspeedKts,
+        headingDeg: payload.headingDeg,
+        verticalSpeedFpm: payload.verticalSpeedFpm,
+        onGround: payload.onGround,
+      },
+      fuel: {
+        departureFuelKg:
+          state.session.fuel.departureFuelKg ??
+          payload.fuelTotalKg ??
+          null,
+        arrivalFuelKg: payload.fuelTotalKg ?? state.session.fuel.arrivalFuelKg,
+      },
+      latestTelemetry,
+    };
+
+    this.syncMockFlightState(state.session);
+
+    return cloneValue(state.session);
+  }
+
+  private completeMockSession(
+    sessionId: string,
+    pilotComment: string,
+  ): SessionSummary {
+    const state = this.ensureMockSessionState(sessionId);
+
+    if (state.session.status === "COMPLETED") {
+      throw new Error("This mock ACARS session is already completed.");
+    }
+
+    if (state.session.status === "ABORTED") {
+      throw new Error("This mock ACARS session is already aborted.");
+    }
+
+    const completedAt = state.session.lastTelemetryAt ?? new Date().toISOString();
+    const previousPhase = state.session.detectedPhase;
+    const normalizedComment = pilotComment.trim() || null;
+    const finalParkingDetected =
+      previousPhase === "ARRIVAL_PARKING" ||
+      (state.session.latestTelemetry?.onGround === true &&
+        state.session.latestTelemetry.parkingBrake === true);
+
+    state.session = {
+      ...state.session,
+      status: "COMPLETED",
+      endedAt: completedAt,
+      lastHeartbeatAt: completedAt,
+      detectedPhase: "COMPLETED",
+      flight: {
+        ...state.session.flight,
+        status: "COMPLETED",
+      },
+      pirep: {
+        id: `mock-pirep-${sessionId}`,
+        status: "SUBMITTED",
+        source: "AUTO",
+        submittedAt: completedAt,
+      },
+      eventSummary: {
+        source: "desktop-mock",
+        telemetryPointCount: state.telemetryCount,
+        finalParkingDetected,
+        completionPhase: previousPhase,
+        sessionCompletedAt: completedAt,
+        pilotComment: normalizedComment,
+      },
+    };
+
+    this.syncMockFlightState(state.session);
+
+    return cloneValue(state.session);
+  }
+
+  private syncMockFlightState(session: SessionSummary): void {
+    const dispatch = this.ensureMockDispatchState();
+    const flight = dispatch.flights.find((item) => item.id === session.flightId);
+
+    if (!flight) {
+      return;
+    }
+
+    flight.status = session.flight.status;
+    flight.acarsSession = {
+      id: session.id,
+      status: session.status,
+      detectedPhase: session.detectedPhase,
+    };
+    flight.pirep = session.pirep
+      ? {
+          id: session.pirep.id,
+          status: session.pirep.status,
+          source: session.pirep.source,
+        }
+      : null;
+
+    const booking = dispatch.bookings.find(
+      (item) => item.id === session.flight.bookingId,
+    );
+
+    if (booking) {
+      if (session.flight.status === "COMPLETED") {
+        booking.status = "COMPLETED";
+        flight.booking.status = "COMPLETED";
+      }
+
+      booking.flight = {
+        id: flight.id,
+        status: flight.status,
+      };
+    }
+  }
+
+  private ensureAuthenticated(): AuthSession {
+    if (!this.authSession) {
+      throw new Error("Log in to the desktop client before using ACARS actions.");
+    }
+
+    return this.authSession;
+  }
+
+  private async refreshAuthSession(): Promise<void> {
+    if (this.isMockBackend()) {
+      return;
+    }
+
+    const currentSession = this.ensureAuthenticated();
+
+    try {
+      this.authSession = await this.requestJson<AuthSession>(
+        this.config.apiBaseUrl,
+        "/auth/refresh",
+        {
+          method: "POST",
+          body: {
+            refreshToken: currentSession.tokens.refreshToken,
+          },
+        },
+      );
+      this.log("desktop auth session refreshed");
+    } catch {
+      this.authSession = null;
+      throw new Error(INVALID_DESKTOP_AUTH_SESSION_MESSAGE);
+    }
+  }
+
+  private async authorizedRequestJson<T>(
+    baseUrl: string,
+    path: string,
+    init: RequestInitWithJson = {},
+  ): Promise<T> {
+    const execute = async () => {
+      const currentSession = this.ensureAuthenticated();
+
+      return this.requestJson<T>(baseUrl, path, {
+        ...init,
+        headers: {
+          ...(init.headers ?? {}),
+          Authorization: `Bearer ${currentSession.tokens.accessToken}`,
+        },
+      });
+    };
+
+    try {
+      return await execute();
+    } catch (error) {
+      if (!(error instanceof HttpError) || error.status !== 401) {
+        throw error;
+      }
+
+      await this.refreshAuthSession();
+
+      try {
+        return await execute();
+      } catch (secondError) {
+        if (secondError instanceof HttpError && secondError.status === 401) {
+          this.authSession = null;
+          throw new Error(INVALID_DESKTOP_AUTH_SESSION_MESSAGE);
+        }
+
+        throw secondError;
+      }
+    }
+  }
+
+  private async requestJson<T>(
+    baseUrl: string,
+    path: string,
+    init: RequestInitWithJson = {},
+  ): Promise<T> {
+    let response: Response;
+
+    try {
+      const headers = {
+        ...(init.body !== undefined
+          ? {
+              "content-type": "application/json",
+            }
+          : {}),
+        ...(init.headers ?? {}),
+      };
+      const requestInit: RequestInit = {
+        method: init.method ?? "GET",
+        headers,
+      };
+
+      if (init.body !== undefined) {
+        requestInit.body = JSON.stringify(init.body);
+      }
+
+      this.log("request started", {
+        method: requestInit.method ?? "GET",
+        url: `${baseUrl}${path}`,
+      });
+      response = await fetch(`${baseUrl}${path}`, {
+        ...requestInit,
+      });
+      this.log("request completed", {
+        method: requestInit.method ?? "GET",
+        url: `${baseUrl}${path}`,
+        status: response.status,
+      });
+    } catch {
+      throw new Error(
+        `Unable to reach ${baseUrl}. Check that the backend is running.`,
+      );
+    }
+
+    const payload = await this.readPayload(response);
+
+    if (!response.ok) {
+      throw new HttpError(
+        response.status,
+        extractErrorMessage(payload) ??
+          `Request failed with status ${response.status}.`,
+      );
+    }
+
+    return payload as T;
+  }
+
+  private async readPayload(response: Response): Promise<unknown> {
+    const rawPayload = await response.text();
+
+    if (!rawPayload) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(rawPayload);
+    } catch {
+      return rawPayload;
+    }
+  }
+
+  private log(
+    message: string,
+    details?: Record<string, unknown>,
+  ): void {
+    if (details) {
+      console.info("[desktop-service]", message, details);
+      return;
+    }
+
+    console.info("[desktop-service]", message);
+  }
+}

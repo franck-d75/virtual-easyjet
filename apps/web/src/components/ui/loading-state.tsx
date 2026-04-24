@@ -1,0 +1,16 @@
+import type { JSX } from "react";
+
+type LoadingStateProps = {
+  label?: string;
+};
+
+export function LoadingState({
+  label = "Chargement...",
+}: LoadingStateProps): JSX.Element {
+  return (
+    <div className="loading-state" aria-live="polite">
+      <span className="loading-state__spinner" aria-hidden="true" />
+      <span>{label}</span>
+    </div>
+  );
+}

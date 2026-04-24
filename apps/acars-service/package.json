@@ -1,0 +1,37 @@
+{
+  "name": "@va/acars-service",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Backend NestJS pour l'ingestion ACARS et le moteur d'evenements.",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "start:prod": "node dist/apps/acars-service/src/main.js",
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "echo \"No lint configured for @va/acars-service\"",
+    "test": "echo \"No tests configured for @va/acars-service\""
+  },
+  "dependencies": {
+    "@nestjs/common": "11.1.19",
+    "@nestjs/config": "4.0.4",
+    "@nestjs/core": "11.1.19",
+    "@nestjs/passport": "11.0.5",
+    "@nestjs/platform-express": "11.1.19",
+    "@va/database": "workspace:*",
+    "@va/shared": "workspace:*",
+    "class-transformer": "0.5.1",
+    "class-validator": "0.15.1",
+    "passport": "0.7.0",
+    "passport-jwt": "4.0.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.0",
+    "@types/passport-jwt": "4.0.1",
+    "tsx": "4.21.0",
+    "typescript": "6.0.3"
+  }
+}

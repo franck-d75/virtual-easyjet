@@ -1,0 +1,694 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum PilotStatus {
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  BANNED
+}
+
+enum AircraftStatus {
+  ACTIVE
+  MAINTENANCE
+  RETIRED
+}
+
+enum BookingStatus {
+  RESERVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum FlightStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  ABORTED
+  CANCELLED
+}
+
+enum SessionStatus {
+  CREATED
+  CONNECTED
+  TRACKING
+  DISCONNECTED
+  COMPLETED
+  ABORTED
+}
+
+enum FlightPhase {
+  PRE_FLIGHT
+  DEPARTURE_PARKING
+  PUSHBACK
+  TAXI_OUT
+  TAKEOFF
+  CLIMB
+  CRUISE
+  DESCENT
+  APPROACH
+  LANDING
+  TAXI_IN
+  ARRIVAL_PARKING
+  COMPLETED
+}
+
+enum FlightEventType {
+  BOOKING_VALIDATED
+  SESSION_STARTED
+  SESSION_RESUMED
+  SESSION_DISCONNECTED
+  PHASE_CHANGED
+  VIOLATION_RECORDED
+  PIREP_GENERATED
+  FLIGHT_COMPLETED
+  FLIGHT_ABORTED
+}
+
+enum EventSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum PirepSource {
+  MANUAL
+  AUTO
+}
+
+enum PirepStatus {
+  DRAFT
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+}
+
+enum ViolationSeverity {
+  MINOR
+  MAJOR
+  CRITICAL
+}
+
+enum ViolationType {
+  NO_BOOKING
+  AIRCRAFT_MISMATCH
+  AIRPORT_MISMATCH
+  ROUTE_MISMATCH
+  CRASH
+  ABNORMAL_DISCONNECT
+  OVERSPEED
+  HARD_LANDING
+  INCOMPLETE_FLIGHT
+  INVALID_AIRFRAME
+}
+
+enum QualificationKind {
+  GENERAL
+  AIRCRAFT
+  AIRPORT
+  PROCEDURE
+  RANK
+}
+
+enum CheckrideStatus {
+  REQUESTED
+  SCHEDULED
+  PASSED
+  FAILED
+  CANCELED
+  EXPIRED
+}
+
+enum NewsPostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model User {
+  id                    String               @id @default(cuid())
+  email                 String               @unique
+  username              String               @unique
+  passwordHash          String
+  status                UserStatus           @default(PENDING)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  lastLoginAt           DateTime?
+  roles                 UserRole[]
+  refreshTokens         RefreshToken[]
+  pilotProfile          PilotProfile?
+  authoredStaffNotes    StaffNote[]          @relation("StaffNotesAuthored")
+  reviewedPireps        Pirep[]              @relation("PirepReviewedBy")
+  awardedQualifications PilotQualification[] @relation("PilotQualificationAwardedBy")
+  examinedCheckrides    Checkride[]          @relation("CheckridesExaminedBy")
+  updatedSettings       Setting[]            @relation("SettingsUpdatedBy")
+  newsPostsAuthored     NewsPost[]           @relation("NewsPostsAuthored")
+  contentPagesAuthored  ContentPage[]        @relation("ContentPagesAuthored")
+}
+
+model Role {
+  id          String     @id @default(cuid())
+  code        String     @unique
+  name        String
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  users       UserRole[]
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PilotProfile {
+  id                String               @id @default(cuid())
+  userId            String               @unique
+  pilotNumber       String               @unique
+  callsign          String?              @unique
+  firstName         String
+  lastName          String
+  countryCode       String?
+  /// Stable SimBrief pilot identifier used for future OFP retrieval.
+  simbriefPilotId   String?              @unique @db.VarChar(32)
+  hubId             String?
+  rankId            String?
+  status            PilotStatus          @default(ACTIVE)
+  experiencePoints  Int                  @default(0)
+  hoursFlownMinutes Int                  @default(0)
+  joinedAt          DateTime             @default(now())
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hub               Hub?                 @relation(fields: [hubId], references: [id])
+  rank              Rank?                @relation(fields: [rankId], references: [id])
+  bookings          Booking[]
+  flights           Flight[]
+  pireps            Pirep[]
+  qualifications    PilotQualification[]
+  checkrides        Checkride[]
+  staffNotes        StaffNote[]
+  violations        Violation[]
+
+  @@index([hubId])
+  @@index([rankId])
+}
+
+model Rank {
+  id              String          @id @default(cuid())
+  code            String          @unique
+  name            String
+  sortOrder       Int             @default(0)
+  minFlights      Int             @default(0)
+  minHoursMinutes Int             @default(0)
+  minScore        Int             @default(0)
+  description     String?
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  pilots          PilotProfile[]
+  aircraftTypes   AircraftType[]
+}
+
+model Hub {
+  id         String         @id @default(cuid())
+  code       String         @unique
+  name       String
+  airportId  String         @unique
+  isActive   Boolean        @default(true)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  airport    Airport        @relation(fields: [airportId], references: [id])
+  pilots     PilotProfile[]
+  aircraft   Aircraft[]
+  routesFrom Route[]        @relation("RouteDepartureHub")
+  routesTo   Route[]        @relation("RouteArrivalHub")
+}
+
+model Airport {
+  id                 String          @id @default(cuid())
+  icao               String          @unique
+  iata               String?
+  name               String
+  city               String?
+  countryCode        String
+  latitude           Decimal         @db.Decimal(10, 7)
+  longitude          Decimal         @db.Decimal(10, 7)
+  elevationFt        Int?
+  isActive           Boolean         @default(true)
+  hubs               Hub[]
+  departures         Route[]         @relation("RouteDepartureAirport")
+  arrivals           Route[]         @relation("RouteArrivalAirport")
+  scheduleDepartures Schedule[]      @relation("ScheduleDepartureAirport")
+  scheduleArrivals   Schedule[]      @relation("ScheduleArrivalAirport")
+  bookingDepartures  Booking[]       @relation("BookingDepartureAirport")
+  bookingArrivals    Booking[]       @relation("BookingArrivalAirport")
+  flightDepartures   Flight[]        @relation("FlightDepartureAirport")
+  flightArrivals     Flight[]        @relation("FlightArrivalAirport")
+  pirepDepartures    Pirep[]         @relation("PirepDepartureAirport")
+  pirepArrivals      Pirep[]         @relation("PirepArrivalAirport")
+  qualifications     Qualification[] @relation("QualificationAirport")
+}
+
+model AircraftType {
+  id              String          @id @default(cuid())
+  icaoCode        String          @unique
+  name            String
+  manufacturer    String?
+  category        String?
+  minRankId       String?
+  cruiseSpeedKts  Int?
+  isActive        Boolean         @default(true)
+  minRank         Rank?           @relation(fields: [minRankId], references: [id])
+  aircraft        Aircraft[]
+  routes          Route[]
+  qualifications  Qualification[] @relation("QualificationAircraftType")
+  checkrides      Checkride[]
+}
+
+model Aircraft {
+  id             String         @id @default(cuid())
+  registration   String         @unique
+  label          String?
+  aircraftTypeId String
+  hubId          String?
+  status         AircraftStatus @default(ACTIVE)
+  notes          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  aircraftType   AircraftType   @relation(fields: [aircraftTypeId], references: [id])
+  hub            Hub?           @relation(fields: [hubId], references: [id])
+  schedules      Schedule[]
+  bookings       Booking[]
+  flights        Flight[]
+  pireps         Pirep[]
+
+  @@index([aircraftTypeId])
+  @@index([hubId])
+}
+
+model Route {
+  id                 String       @id @default(cuid())
+  code               String       @unique
+  flightNumber       String
+  departureAirportId String
+  arrivalAirportId   String
+  departureHubId     String?
+  arrivalHubId       String?
+  aircraftTypeId     String?
+  distanceNm         Int?
+  blockTimeMinutes   Int?
+  isActive           Boolean      @default(true)
+  notes              String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  departureAirport   Airport      @relation("RouteDepartureAirport", fields: [departureAirportId], references: [id])
+  arrivalAirport     Airport      @relation("RouteArrivalAirport", fields: [arrivalAirportId], references: [id])
+  departureHub       Hub?         @relation("RouteDepartureHub", fields: [departureHubId], references: [id])
+  arrivalHub         Hub?         @relation("RouteArrivalHub", fields: [arrivalHubId], references: [id])
+  aircraftType       AircraftType? @relation(fields: [aircraftTypeId], references: [id])
+  schedules          Schedule[]
+  bookings           Booking[]
+  flights            Flight[]
+
+  @@index([departureAirportId, arrivalAirportId])
+  @@index([aircraftTypeId])
+}
+
+model Schedule {
+  id                 String    @id @default(cuid())
+  routeId            String
+  aircraftId         String?
+  departureAirportId String
+  arrivalAirportId   String
+  callsign           String
+  /// ISO-8601 weekdays: 1 = Monday, 7 = Sunday. Values must be unique and sorted ascending.
+  daysOfWeek         Int[]
+  /// UTC wall-clock time in 24-hour HH:MM format.
+  departureTimeUtc   String    @db.VarChar(5)
+  /// UTC wall-clock time in 24-hour HH:MM format.
+  arrivalTimeUtc     String    @db.VarChar(5)
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  route              Route     @relation(fields: [routeId], references: [id])
+  aircraft           Aircraft? @relation(fields: [aircraftId], references: [id])
+  departureAirport   Airport   @relation("ScheduleDepartureAirport", fields: [departureAirportId], references: [id])
+  arrivalAirport     Airport   @relation("ScheduleArrivalAirport", fields: [arrivalAirportId], references: [id])
+  bookings           Booking[]
+
+  @@index([routeId, isActive])
+}
+
+model Booking {
+  id                 String        @id @default(cuid())
+  pilotProfileId     String
+  scheduleId         String?
+  routeId            String?
+  aircraftId         String
+  departureAirportId String
+  arrivalAirportId   String
+  reservedFlightNumber String
+  bookedFor          DateTime
+  status             BookingStatus @default(RESERVED)
+  reservedAt         DateTime      @default(now())
+  expiresAt          DateTime?
+  cancelledAt        DateTime?
+  notes              String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  pilotProfile       PilotProfile  @relation(fields: [pilotProfileId], references: [id])
+  schedule           Schedule?     @relation(fields: [scheduleId], references: [id])
+  route              Route?        @relation(fields: [routeId], references: [id])
+  aircraft           Aircraft      @relation(fields: [aircraftId], references: [id])
+  departureAirport   Airport       @relation("BookingDepartureAirport", fields: [departureAirportId], references: [id])
+  arrivalAirport     Airport       @relation("BookingArrivalAirport", fields: [arrivalAirportId], references: [id])
+  flight             Flight?
+
+  @@index([pilotProfileId, status])
+  @@index([bookedFor, status])
+}
+
+model Flight {
+  id                 String         @id @default(cuid())
+  /// Unique to enforce one canonical execution per booking in the MVP.
+  bookingId          String         @unique
+  pilotProfileId     String
+  routeId            String?
+  aircraftId         String
+  departureAirportId String
+  arrivalAirportId   String
+  flightNumber       String
+  status             FlightStatus   @default(PLANNED)
+  plannedOffBlockAt  DateTime?
+  actualOffBlockAt   DateTime?
+  actualTakeoffAt    DateTime?
+  actualLandingAt    DateTime?
+  actualOnBlockAt    DateTime?
+  distanceFlownNm    Int?
+  durationMinutes    Int?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  booking            Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  pilotProfile       PilotProfile   @relation(fields: [pilotProfileId], references: [id])
+  route              Route?         @relation(fields: [routeId], references: [id])
+  aircraft           Aircraft       @relation(fields: [aircraftId], references: [id])
+  departureAirport   Airport        @relation("FlightDepartureAirport", fields: [departureAirportId], references: [id])
+  arrivalAirport     Airport        @relation("FlightArrivalAirport", fields: [arrivalAirportId], references: [id])
+  acarsSession       AcarsSession?
+  flightEvents       FlightEvent[]
+  pirep              Pirep?
+  violations         Violation[]
+
+  @@index([pilotProfileId, status])
+  @@index([status, createdAt])
+}
+
+model AcarsSession {
+  id                   String          @id @default(cuid())
+  /// Immediate MVP rule: one logical ACARS session row per flight. Reconnects reuse this row.
+  flightId             String          @unique
+  simulatorProvider    String          @default("MSFS")
+  clientVersion        String?
+  status               SessionStatus   @default(CREATED)
+  startedAt            DateTime?
+  endedAt              DateTime?
+  disconnectedAt       DateTime?
+  resumeToken          String?         @unique
+  connectCount         Int             @default(0)
+  lastTelemetryAt      DateTime?
+  lastHeartbeatAt      DateTime?
+  detectedPhase        FlightPhase     @default(PRE_FLIGHT)
+  currentLatitude      Decimal?        @db.Decimal(10, 7)
+  currentLongitude     Decimal?        @db.Decimal(10, 7)
+  currentAltitudeFt    Int?
+  currentGroundspeedKts Int?
+  currentHeadingDeg    Int?
+  currentVerticalSpeedFpm Int?
+  currentOnGround      Boolean?
+  departureFuelKg      Decimal?        @db.Decimal(10, 2)
+  arrivalFuelKg        Decimal?        @db.Decimal(10, 2)
+  eventSummary         Json?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  flight               Flight          @relation(fields: [flightId], references: [id], onDelete: Cascade)
+  telemetryPoints      TelemetryPoint[]
+  flightEvents         FlightEvent[]
+  pirep                Pirep?
+  violations           Violation[]
+
+  @@index([status, lastTelemetryAt])
+}
+
+model TelemetryPoint {
+  id               BigInt       @id @default(autoincrement())
+  sessionId        String
+  capturedAt       DateTime
+  latitude         Decimal      @db.Decimal(10, 7)
+  longitude        Decimal      @db.Decimal(10, 7)
+  altitudeFt       Int
+  groundspeedKts   Int
+  headingDeg       Int
+  verticalSpeedFpm Int
+  onGround         Boolean
+  fuelTotalKg      Decimal?     @db.Decimal(10, 2)
+  gearPercent      Int?
+  flapsPercent     Int?
+  parkingBrake     Boolean?
+  createdAt        DateTime     @default(now())
+  session          AcarsSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, capturedAt])
+}
+
+model FlightEvent {
+  id         BigInt        @id @default(autoincrement())
+  sessionId  String
+  flightId   String
+  type       FlightEventType
+  phase      FlightPhase?
+  severity   EventSeverity @default(INFO)
+  code       String?
+  title      String
+  message    String?
+  payload    Json?
+  occurredAt DateTime
+  createdAt  DateTime      @default(now())
+  session    AcarsSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  flight     Flight        @relation(fields: [flightId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, occurredAt])
+  @@index([flightId, occurredAt])
+  @@index([flightId, type, occurredAt])
+}
+
+model Pirep {
+  id                 String       @id @default(cuid())
+  flightId           String       @unique
+  /// Canonical ACARS session used to generate/finalize an automatic PIREP. Null for manual-only cases.
+  sessionId          String?      @unique
+  pilotProfileId     String
+  source             PirepSource  @default(AUTO)
+  status             PirepStatus  @default(DRAFT)
+  submittedAt        DateTime?
+  reviewedAt         DateTime?
+  reviewedById       String?
+  departureAirportId String
+  arrivalAirportId   String
+  aircraftId         String
+  blockTimeMinutes   Int?
+  flightTimeMinutes  Int?
+  fuelUsedKg         Decimal?     @db.Decimal(10, 2)
+  landingRateFpm     Int?
+  score              Int?
+  summary            Json?
+  pilotComment       String?
+  reviewerComment    String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  flight             Flight       @relation(fields: [flightId], references: [id], onDelete: Cascade)
+  session            AcarsSession? @relation(fields: [sessionId], references: [id])
+  pilotProfile       PilotProfile @relation(fields: [pilotProfileId], references: [id])
+  reviewedBy         User?        @relation("PirepReviewedBy", fields: [reviewedById], references: [id])
+  departureAirport   Airport      @relation("PirepDepartureAirport", fields: [departureAirportId], references: [id])
+  arrivalAirport     Airport      @relation("PirepArrivalAirport", fields: [arrivalAirportId], references: [id])
+  aircraft           Aircraft     @relation(fields: [aircraftId], references: [id])
+  violations         Violation[]
+
+  @@index([pilotProfileId, status])
+}
+
+model Violation {
+  id            String            @id @default(cuid())
+  flightId      String?
+  sessionId     String?
+  pirepId       String?
+  pilotProfileId String
+  type          ViolationType
+  severity      ViolationSeverity @default(MINOR)
+  title         String
+  description   String?
+  thresholdNumeric Decimal?       @db.Decimal(10, 2)
+  measuredNumeric Decimal?        @db.Decimal(10, 2)
+  payload       Json?
+  detectedAt    DateTime
+  createdAt     DateTime          @default(now())
+  flight        Flight?           @relation(fields: [flightId], references: [id], onDelete: SetNull)
+  session       AcarsSession?     @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  pirep         Pirep?            @relation(fields: [pirepId], references: [id], onDelete: SetNull)
+  pilotProfile  PilotProfile      @relation(fields: [pilotProfileId], references: [id])
+
+  @@index([pilotProfileId, detectedAt])
+  @@index([flightId, type])
+}
+
+model Qualification {
+  id             String               @id @default(cuid())
+  code           String               @unique
+  name           String
+  kind           QualificationKind
+  description    String?
+  aircraftTypeId String?
+  airportId      String?
+  isActive       Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  aircraftType   AircraftType?        @relation("QualificationAircraftType", fields: [aircraftTypeId], references: [id])
+  airport        Airport?             @relation("QualificationAirport", fields: [airportId], references: [id])
+  exams          Exam[]
+  checkrides     Checkride[]
+  pilots         PilotQualification[]
+}
+
+model PilotQualification {
+  pilotProfileId  String
+  qualificationId String
+  awardedAt       DateTime  @default(now())
+  expiresAt       DateTime?
+  awardedById     String?
+  notes           String?
+  pilotProfile    PilotProfile @relation(fields: [pilotProfileId], references: [id], onDelete: Cascade)
+  qualification   Qualification @relation(fields: [qualificationId], references: [id], onDelete: Cascade)
+  awardedBy       User?      @relation("PilotQualificationAwardedBy", fields: [awardedById], references: [id])
+
+  @@id([pilotProfileId, qualificationId])
+}
+
+model Exam {
+  id              String        @id @default(cuid())
+  qualificationId String
+  title           String
+  description     String?
+  passingScore    Int           @default(70)
+  durationMinutes Int?
+  questionBank    Json?
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  qualification   Qualification @relation(fields: [qualificationId], references: [id], onDelete: Cascade)
+}
+
+model Checkride {
+  id              String          @id @default(cuid())
+  pilotProfileId  String
+  qualificationId String
+  aircraftTypeId  String?
+  examinerId      String?
+  status          CheckrideStatus @default(REQUESTED)
+  scheduledAt     DateTime?
+  completedAt     DateTime?
+  score           Int?
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  pilotProfile    PilotProfile    @relation(fields: [pilotProfileId], references: [id])
+  qualification   Qualification   @relation(fields: [qualificationId], references: [id])
+  aircraftType    AircraftType?   @relation(fields: [aircraftTypeId], references: [id])
+  examiner        User?           @relation("CheckridesExaminedBy", fields: [examinerId], references: [id])
+
+  @@index([pilotProfileId, status])
+}
+
+model StaffNote {
+  id             String       @id @default(cuid())
+  pilotProfileId String
+  authorId       String
+  title          String
+  body           String
+  isConfidential Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  pilotProfile   PilotProfile @relation(fields: [pilotProfileId], references: [id], onDelete: Cascade)
+  author         User         @relation("StaffNotesAuthored", fields: [authorId], references: [id])
+
+  @@index([pilotProfileId, createdAt])
+}
+
+model Setting {
+  key         String   @id
+  value       Json
+  description String?
+  isPublic    Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+  updatedBy   User?    @relation("SettingsUpdatedBy", fields: [updatedById], references: [id])
+}
+
+model NewsPost {
+  id          String         @id @default(cuid())
+  slug        String         @unique
+  title       String
+  excerpt     String?
+  content     String
+  status      NewsPostStatus @default(DRAFT)
+  publishedAt DateTime?
+  authorId    String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  author      User           @relation("NewsPostsAuthored", fields: [authorId], references: [id])
+
+  @@index([status, publishedAt])
+}
+
+model ContentPage {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  content     String
+  isPublished Boolean  @default(true)
+  authorId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  author      User     @relation("ContentPagesAuthored", fields: [authorId], references: [id])
+}
