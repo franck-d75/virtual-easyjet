@@ -21,6 +21,20 @@ function buildUrl(path: string): string {
   return `${baseUrl}/${normalizedPath}`;
 }
 
+function serializeError(error: unknown): { type: string; message: string } {
+  if (error instanceof Error) {
+    return {
+      type: error.name,
+      message: error.message,
+    };
+  }
+
+  return {
+    type: typeof error,
+    message: String(error),
+  };
+}
+
 function extractMessage(payload: unknown, fallback: string): string {
   if (typeof payload === "string" && payload.trim().length > 0) {
     return payload;
@@ -44,6 +58,7 @@ export async function apiRequest<TResponse>(
 ): Promise<TResponse> {
   const { accessToken, headers: inputHeaders, ...init } = options;
   const headers = new Headers(inputHeaders);
+  const url = buildUrl(path);
 
   if (init.body !== undefined && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -53,10 +68,26 @@ export async function apiRequest<TResponse>(
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
 
-  const response = await fetch(buildUrl(path), {
-    ...init,
-    headers,
+  console.info("[web] api request", {
+    method: init.method ?? "GET",
+    url,
   });
+
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers,
+    });
+  } catch (error) {
+    console.error("[web] api request failed", {
+      method: init.method ?? "GET",
+      url,
+      error: serializeError(error),
+    });
+    throw error;
+  }
 
   const responseText = await response.text();
   const responsePayload =
