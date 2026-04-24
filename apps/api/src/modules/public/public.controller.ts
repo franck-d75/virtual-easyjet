@@ -11,6 +11,11 @@ import { PublicService } from "./public.service.js";
 export class PublicController {
   public constructor(private readonly publicService: PublicService) {}
 
+  @Get("home")
+  public home() {
+    return this.publicService.getHome();
+  }
+
   @Get("stats")
   public stats() {
     return this.publicService.getStats();
