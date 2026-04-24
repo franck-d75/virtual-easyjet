@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+﻿import type { JSX } from "react";
 
 import { Card } from "@/components/ui/card";
 import { UserAvatar } from "@/components/ui/user-avatar";
@@ -40,18 +40,18 @@ export function ProfileCard({ profile }: ProfileCardProps): JSX.Element {
       <div className="definition-grid">
         <div>
           <span>Rang</span>
-          <strong>{profile.rank?.name ?? "Non attribue"}</strong>
+          <strong>{profile.rank?.name ?? "Non attribué"}</strong>
         </div>
         <div>
           <span>Hub</span>
-          <strong>{profile.hub?.name ?? "Non attribue"}</strong>
+          <strong>{profile.hub?.name ?? "Non attribué"}</strong>
         </div>
         <div>
           <span>Heures de vol</span>
           <strong>{formatDurationMinutes(profile.hoursFlownMinutes)}</strong>
         </div>
         <div>
-          <span>Experience</span>
+          <span>Expérience</span>
           <strong>{formatNumber(profile.experiencePoints)} XP</strong>
         </div>
         <div>
@@ -72,7 +72,7 @@ export function ProfileCard({ profile }: ProfileCardProps): JSX.Element {
         </div>
         <div>
           <span>Avatar</span>
-          <strong>{profile.user.avatarUrl ? "Configure" : "Aucun avatar"}</strong>
+          <strong>{profile.user.avatarUrl ? "Configuré" : "Aucun avatar"}</strong>
         </div>
         <div>
           <span>SimBrief Pilot ID</span>
@@ -82,3 +82,4 @@ export function ProfileCard({ profile }: ProfileCardProps): JSX.Element {
     </Card>
   );
 }
+

@@ -95,7 +95,7 @@ export function getUserStatusPresentation(status: string): StatusPresentation {
     case "SUSPENDED":
       return { label: "Suspendu", tone: "danger" };
     case "DISABLED":
-      return { label: "Desactive", tone: "danger" };
+      return { label: "Désactivé", tone: "danger" };
     default:
       return { label: prettifyStatus(status), tone: "neutral" };
   }

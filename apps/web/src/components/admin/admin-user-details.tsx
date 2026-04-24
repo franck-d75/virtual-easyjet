@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import type { FormEvent, JSX } from "react";
 import { useRouter } from "next/navigation";
@@ -42,6 +42,8 @@ type FormState = {
   username: string;
   firstName: string;
   lastName: string;
+  pilotNumber: string;
+  callsign: string;
   countryCode: string;
   avatarUrl: string;
   role: "USER" | "ADMIN";
@@ -53,6 +55,8 @@ function createFormState(user: AdminUserDetailResponse): FormState {
     username: user.username,
     firstName: user.pilotProfile?.firstName ?? "",
     lastName: user.pilotProfile?.lastName ?? "",
+    pilotNumber: user.pilotProfile?.pilotNumber ?? "",
+    callsign: user.pilotProfile?.callsign ?? "",
     countryCode: user.pilotProfile?.countryCode ?? "",
     avatarUrl: user.avatarUrl ?? "",
     role: user.role,
@@ -114,7 +118,7 @@ export function AdminUserDetails({
         tone: "danger",
         message: extractApiMessage(
           responsePayload,
-          "Impossible de mettre a jour cet utilisateur.",
+          "Impossible de mettre à jour cet utilisateur.",
         ),
       });
       return;
@@ -135,19 +139,28 @@ export function AdminUserDetails({
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
 
+    const payload: AdminUserPayload = {
+      username: formState.username.trim(),
+      firstName: formState.firstName.trim(),
+      lastName: formState.lastName.trim(),
+      countryCode: formState.countryCode.trim()
+        ? formState.countryCode.trim().toUpperCase()
+        : null,
+      avatarUrl: formState.avatarUrl.trim() ? formState.avatarUrl.trim() : null,
+      role: formState.role,
+      status: formState.status,
+    };
+
+    if (user.pilotProfile) {
+      payload.pilotNumber = formState.pilotNumber.trim().toUpperCase();
+      payload.callsign = formState.callsign.trim()
+        ? formState.callsign.trim().toUpperCase()
+        : null;
+    }
+
     await submitPatch(
-      {
-        username: formState.username.trim(),
-        firstName: formState.firstName.trim(),
-        lastName: formState.lastName.trim(),
-        countryCode: formState.countryCode.trim()
-          ? formState.countryCode.trim().toUpperCase()
-          : null,
-        avatarUrl: formState.avatarUrl.trim() ? formState.avatarUrl.trim() : null,
-        role: formState.role,
-        status: formState.status,
-      },
-      "Utilisateur mis a jour avec succes.",
+      payload,
+      "Utilisateur mis à jour avec succès.",
     );
   }
 
@@ -156,7 +169,7 @@ export function AdminUserDetails({
       {
         role: "ADMIN",
       },
-      "Le role administrateur a ete attribue.",
+      "Le rôle administrateur a été attribué.",
     );
   }
 
@@ -206,7 +219,7 @@ export function AdminUserDetails({
         tone: "danger",
         message: extractApiMessage(
           responsePayload,
-          "Impossible de reactiver cet utilisateur.",
+          "Impossible de réactiver cet utilisateur.",
         ),
       });
       return;
@@ -216,7 +229,7 @@ export function AdminUserDetails({
       applyUser(responsePayload as AdminUserDetailResponse);
       setFeedback({
         tone: "success",
-        message: "Utilisateur reactive.",
+        message: "Utilisateur réactivé.",
       });
       router.refresh();
     });
@@ -250,7 +263,7 @@ export function AdminUserDetails({
               onClick={() => void handleActivate()}
               variant="secondary"
             >
-              Reactiver
+              Réactiver
             </Button>
           ) : (
             <Button
@@ -266,7 +279,7 @@ export function AdminUserDetails({
 
       <section className="admin-stats-grid">
         <Card className="admin-stat-card">
-          <span>Numero pilote</span>
+          <span>Numéro pilote</span>
           <strong>{user.pilotProfile?.pilotNumber ?? "-"}</strong>
         </Card>
         <Card className="admin-stat-card">
@@ -274,7 +287,7 @@ export function AdminUserDetails({
           <strong>{formatDurationMinutes(user.stats.hoursFlownMinutes)}</strong>
         </Card>
         <Card className="admin-stat-card">
-          <span>Reservations</span>
+          <span>Réservations</span>
           <strong>{formatNumber(user.stats.bookingsCount)}</strong>
         </Card>
         <Card className="admin-stat-card">
@@ -307,11 +320,11 @@ export function AdminUserDetails({
             </div>
             <div>
               <span>Rang</span>
-              <strong>{user.pilotProfile?.rank?.name ?? "Non attribue"}</strong>
+              <strong>{user.pilotProfile?.rank?.name ?? "Non attribué"}</strong>
             </div>
             <div>
               <span>Hub</span>
-              <strong>{user.pilotProfile?.hub?.name ?? "Non attribue"}</strong>
+              <strong>{user.pilotProfile?.hub?.name ?? "Non attribué"}</strong>
             </div>
             <div>
               <span>SimBrief Pilot ID</span>
@@ -322,7 +335,7 @@ export function AdminUserDetails({
               <strong>{formatDate(user.createdAt)}</strong>
             </div>
             <div>
-              <span>Derniere connexion</span>
+              <span>Dernière connexion</span>
               <strong>{formatDateTime(user.lastLoginAt)}</strong>
             </div>
           </div>
@@ -331,12 +344,12 @@ export function AdminUserDetails({
         <Card className="admin-form-card">
           <div className="admin-card-head">
             <div>
-              <span className="section-eyebrow">Edition</span>
-              <h2>Mettre a jour l'utilisateur</h2>
+              <span className="section-eyebrow">Édition</span>
+              <h2>Mettre à jour l'utilisateur</h2>
             </div>
             <p>
-              Modifiez l'acces, l'identite pilote et l'URL de l'avatar sans
-              televersement de fichier.
+              Modifiez l'accès, l'identité pilote et l'URL de l'avatar sans
+              téléversement de fichier.
             </p>
           </div>
 
@@ -364,7 +377,31 @@ export function AdminUserDetails({
             </div>
 
             <div className="field">
-              <label htmlFor="admin-user-first-name">Prenom</label>
+              <label htmlFor="admin-user-pilot-number">Numéro pilote</label>
+              <input
+                disabled={!user.pilotProfile}
+                id="admin-user-pilot-number"
+                onChange={(event) => updateField("pilotNumber", event.target.value)}
+                required={Boolean(user.pilotProfile)}
+                type="text"
+                value={formState.pilotNumber}
+              />
+            </div>
+
+            <div className="field">
+              <label htmlFor="admin-user-callsign">Indicatif</label>
+              <input
+                disabled={!user.pilotProfile}
+                id="admin-user-callsign"
+                onChange={(event) => updateField("callsign", event.target.value)}
+                placeholder="VAU5CNIR"
+                type="text"
+                value={formState.callsign}
+              />
+            </div>
+
+            <div className="field">
+              <label htmlFor="admin-user-first-name">Prénom</label>
               <input
                 disabled={!user.pilotProfile}
                 id="admin-user-first-name"
@@ -399,7 +436,7 @@ export function AdminUserDetails({
             </div>
 
             <div className="field">
-              <label htmlFor="admin-user-role">Role</label>
+              <label htmlFor="admin-user-role">Rôle</label>
               <select
                 id="admin-user-role"
                 onChange={(event) =>
@@ -449,16 +486,16 @@ export function AdminUserDetails({
         <Card>
           <div className="admin-card-head">
             <div>
-              <span className="section-eyebrow">Reservations</span>
-              <h2>Dernieres reservations</h2>
+              <span className="section-eyebrow">Réservations</span>
+              <h2>Dernières réservations</h2>
             </div>
-            <p>{formatNumber(user.recentBookings.length)} element(s) affiches.</p>
+            <p>{formatNumber(user.recentBookings.length)} élément(s) affiché(s).</p>
           </div>
 
           {user.recentBookings.length === 0 ? (
             <EmptyState
-              title="Aucune reservation recente"
-              description="Les futures reservations de ce pilote apparaitront ici."
+              title="Aucune réservation récente"
+              description="Les futures réservations de ce pilote apparaîtront ici."
             />
           ) : (
             <DataTable
@@ -506,13 +543,13 @@ export function AdminUserDetails({
               <span className="section-eyebrow">PIREPs</span>
               <h2>Derniers rapports</h2>
             </div>
-            <p>{formatNumber(user.recentPireps.length)} rapport(s) affiches.</p>
+            <p>{formatNumber(user.recentPireps.length)} rapport(s) affiché(s).</p>
           </div>
 
           {user.recentPireps.length === 0 ? (
             <EmptyState
-              title="Aucun PIREP recent"
-              description="Les prochains rapports soumis par ce pilote apparaitront ici."
+              title="Aucun PIREP récent"
+              description="Les prochains rapports soumis par ce pilote apparaîtront ici."
             />
           ) : (
             <DataTable
@@ -561,3 +598,4 @@ export function AdminUserDetails({
     </div>
   );
 }
+

@@ -13,8 +13,9 @@ import { cn } from "@/lib/utils/cn";
 const pilotLinks = [
   { href: "/dashboard", label: "Tableau de bord" },
   { href: "/profil", label: "Profil" },
-  { href: "/bookings", label: "Reservations" },
+  { href: "/bookings", label: "Réservations" },
   { href: "/vols", label: "Vols" },
+  { href: "/live-map", label: "Carte en direct" },
   { href: "/pireps", label: "PIREPs" },
 ];
 

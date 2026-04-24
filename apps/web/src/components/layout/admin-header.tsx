@@ -16,6 +16,7 @@ const adminLinks = [
   { href: "/admin/flotte", label: "Flotte" },
   { href: "/admin/hubs", label: "Hubs" },
   { href: "/admin/routes", label: "Routes" },
+  { href: "/live-map", label: "Carte en direct" },
   { href: "/dashboard", label: "Espace pilote" },
 ];
 
@@ -65,7 +66,7 @@ export function AdminHeader({
             <UserAvatar avatarUrl={avatarUrl} name={adminName} size="sm" />
             <div>
               <strong>{adminName}</strong>
-              <small>Acces administrateur</small>
+              <small>Accès administrateur</small>
             </div>
           </div>
           <LogoutButton />

@@ -623,6 +623,8 @@ export interface AdminUserPayload {
   username?: string;
   firstName?: string;
   lastName?: string;
+  pilotNumber?: string;
+  callsign?: string | null;
   countryCode?: string | null;
   avatarUrl?: string | null;
 }

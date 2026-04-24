@@ -304,6 +304,17 @@ export class AdminService {
           pilotProfileUpdateData.lastName = payload.lastName.trim();
         }
 
+        if (payload.pilotNumber !== undefined) {
+          pilotProfileUpdateData.pilotNumber = payload.pilotNumber
+            .trim()
+            .toUpperCase();
+        }
+
+        if (payload.callsign !== undefined) {
+          pilotProfileUpdateData.callsign =
+            normalizeOptionalString(payload.callsign)?.toUpperCase() ?? null;
+        }
+
         if (payload.countryCode !== undefined) {
           pilotProfileUpdateData.countryCode = normalizeOptionalString(payload.countryCode);
         }

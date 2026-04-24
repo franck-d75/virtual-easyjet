@@ -139,7 +139,7 @@ export async function getAcarsLiveTraffic(): Promise<LiveMapAircraft[]> {
         "message" in responsePayload &&
         typeof responsePayload.message === "string"
         ? responsePayload.message
-        : "Le flux ACARS live n'a pas pu etre charge.",
+        : "Le flux ACARS live n'a pas pu être chargé.",
     );
   }
 

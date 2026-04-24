@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+﻿import type { JSX } from "react";
 
 import { BookingsTable } from "@/components/pilot/bookings-table";
 import { DashboardStats } from "@/components/pilot/dashboard-stats";
@@ -189,7 +189,7 @@ export default async function DashboardPage(): Promise<JSX.Element> {
       <section className="section-band">
         <section className="panel-grid">
           <Card className="ops-card ops-card--profile">
-            <span className="section-eyebrow">IdentitÃ© pilote</span>
+            <span className="section-eyebrow">Identité pilote</span>
             <div className="profile-spotlight">
               <UserAvatar
                 avatarUrl={profile.user.avatarUrl}
@@ -201,7 +201,7 @@ export default async function DashboardPage(): Promise<JSX.Element> {
                   {profile.firstName} {profile.lastName}
                 </h2>
                 <p>
-                  {profile.user.username} â€¢ {profile.rank?.name ?? "Rang non attribuÃ©"}
+                  {profile.user.username} • {profile.rank?.name ?? "Rang non attribué"}
                 </p>
               </div>
             </div>
@@ -399,3 +399,4 @@ export default async function DashboardPage(): Promise<JSX.Element> {
     </>
   );
 }
+

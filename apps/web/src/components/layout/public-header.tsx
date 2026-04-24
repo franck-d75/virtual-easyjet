@@ -43,9 +43,7 @@ export function PublicHeader(): JSX.Element {
         <nav className="site-nav" aria-label="Navigation publique">
           {publicLinks.map((link) => {
             const isActive =
-              link.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(link.href);
+              link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
 
             return (
               <Link

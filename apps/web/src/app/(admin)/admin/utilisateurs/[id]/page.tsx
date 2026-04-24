@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+﻿import type { JSX } from "react";
 
 import { AdminUserDetails } from "@/components/admin/admin-user-details";
 import { getAdminUser } from "@/lib/api/admin";
@@ -26,8 +26,8 @@ export default async function AdminUserDetailsPage({
           <span className="section-eyebrow">Administration utilisateurs</span>
           <h1>Fiche utilisateur</h1>
           <p>
-            Consultez l'historique recent, ajustez l'acces et gerez l'identite
-            pilote depuis une fiche privee unique.
+            Consultez l'historique récent, ajustez l'accès et gérez l'identité
+            pilote depuis une fiche privée unique.
           </p>
         </div>
       </section>
@@ -36,3 +36,4 @@ export default async function AdminUserDetailsPage({
     </div>
   );
 }
+

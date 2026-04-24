@@ -13,7 +13,7 @@ export async function GET() {
     logWebError("public acars live proxy failed", error);
     return NextResponse.json(
       {
-        message: "Le flux ACARS live n'a pas pu etre charge.",
+        message: "Le flux ACARS live n'a pas pu être chargé.",
       },
       {
         status: 502,

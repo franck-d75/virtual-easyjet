@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import type { JSX } from "react";
 import Link from "next/link";
@@ -74,7 +74,7 @@ export function AdminUsersManager({
             <h2>Recherche et filtres</h2>
           </div>
           <p>
-            Recherchez un pilote par nom, identifiant, e-mail, numero pilote ou
+            Recherchez un pilote par nom, identifiant, e-mail, numéro pilote ou
             callsign.
           </p>
         </div>
@@ -92,7 +92,7 @@ export function AdminUsersManager({
           </div>
 
           <div className="field">
-            <label htmlFor="admin-user-role-filter">Role</label>
+            <label htmlFor="admin-user-role-filter">Rôle</label>
             <select
               id="admin-user-role-filter"
               onChange={(event) =>
@@ -100,7 +100,7 @@ export function AdminUsersManager({
               }
               value={roleFilter}
             >
-              <option value="ALL">Tous les roles</option>
+              <option value="ALL">Tous les rôles</option>
               <option value="ADMIN">Administrateurs</option>
               <option value="USER">Utilisateurs</option>
             </select>
@@ -129,7 +129,7 @@ export function AdminUsersManager({
       <Card>
         <div className="admin-card-head">
           <div>
-            <span className="section-eyebrow">Annuaire prive</span>
+            <span className="section-eyebrow">Annuaire privé</span>
             <h2>Utilisateurs de la plateforme</h2>
           </div>
           <p>{formatNumber(filteredUsers.length)} utilisateur(s) visible(s).</p>
@@ -182,7 +182,7 @@ export function AdminUsersManager({
               },
               {
                 id: "access",
-                header: "Acces",
+                header: "Accès",
                 render: (user) => {
                   const role = getUserRolePresentation(user.role);
                   const status = getUserStatusPresentation(user.status);
@@ -233,3 +233,4 @@ export function AdminUsersManager({
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+﻿import type { JSX } from "react";
 
 import { ProfileCard } from "@/components/pilot/profile-card";
 import { SimbriefLatestOfpCard } from "@/components/pilot/simbrief-latest-ofp-card";
@@ -51,3 +51,4 @@ export default async function ProfilePage(): Promise<JSX.Element> {
     </>
   );
 }
+

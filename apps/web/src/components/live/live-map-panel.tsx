@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import type { LayerGroup, Map } from "leaflet";
 import type { JSX, ReactNode } from "react";
@@ -166,7 +166,7 @@ export function LiveMapPanel({
       }
     } catch (refreshError) {
       logWebWarning("live map refresh failed", refreshError);
-      setError("La carte en direct n'a pas pu etre actualisee depuis l'API.");
+      setError("La carte en direct n'a pas pu être actualisée depuis l'API.");
     } finally {
       if (!silent) {
         setIsRefreshing(false);
@@ -214,7 +214,7 @@ export function LiveMapPanel({
 
     initializeMap().catch((mapError) => {
       logWebWarning("live map init failed", mapError);
-      setError("La carte Leaflet n'a pas pu etre initialisee dans le navigateur.");
+      setError("La carte Leaflet n'a pas pu être initialisée dans le navigateur.");
     });
 
     return () => {
@@ -868,3 +868,4 @@ function escapeHtml(value: string): string {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
+

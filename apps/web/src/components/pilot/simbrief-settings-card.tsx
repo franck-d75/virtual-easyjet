@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import type { FormEvent, JSX } from "react";
 import { useRouter } from "next/navigation";
@@ -81,7 +81,7 @@ export function SimbriefSettingsCard({
       if (!parsedUrl || parsedUrl.protocol !== "https:") {
         setFeedback({
           tone: "danger",
-          message: "L'URL de l'avatar doit etre une URL HTTPS valide.",
+          message: "L'URL de l'avatar doit être une URL HTTPS valide.",
         });
         return;
       }
@@ -109,7 +109,7 @@ export function SimbriefSettingsCard({
         tone: "danger",
         message: extractMessage(
           payload,
-          "Impossible de mettre a jour votre profil pilote.",
+          "Impossible de mettre à jour votre profil pilote.",
         ),
       });
       return;
@@ -117,7 +117,7 @@ export function SimbriefSettingsCard({
 
     setFeedback({
       tone: "success",
-      message: "Profil pilote mis a jour.",
+      message: "Profil pilote mis à jour.",
     });
 
     startTransition(() => {
@@ -131,17 +131,17 @@ export function SimbriefSettingsCard({
         <div className="profile-card__hero">
           <UserAvatar avatarUrl={avatarUrl} name={displayName} size="lg" />
           <div>
-            <span className="section-eyebrow">Identite et SimBrief</span>
-            <h2>Parametres du profil</h2>
+            <span className="section-eyebrow">Identité et SimBrief</span>
+            <h2>Paramètres du profil</h2>
             <p className="simbrief-card__note">
               Ajoutez une URL d'avatar HTTPS et votre SimBrief Pilot ID pour
-              enrichir votre identite pilote sur le web.
+              enrichir votre identité pilote sur le web.
             </p>
           </div>
         </div>
         <div className="profile-card__identity">
-          <strong>{initialSimbriefPilotId ?? "Non configure"}</strong>
-          <span>{initialAvatarUrl ? "Avatar actif" : "Avatar non renseigne"}</span>
+          <strong>{initialSimbriefPilotId ?? "Non configuré"}</strong>
+          <span>{initialAvatarUrl ? "Avatar actif" : "Avatar non renseigné"}</span>
         </div>
       </div>
 
@@ -151,8 +151,8 @@ export function SimbriefSettingsCard({
           <strong>{initialAvatarUrl ? "URL HTTPS active" : "Fallback initiales"}</strong>
         </div>
         <div>
-          <span>Preparation OFP</span>
-          <strong>{initialSimbriefPilotId ? "Pret" : "Non configure"}</strong>
+          <span>Préparation OFP</span>
+          <strong>{initialSimbriefPilotId ? "Prêt" : "Non configuré"}</strong>
         </div>
       </div>
 
@@ -189,7 +189,7 @@ export function SimbriefSettingsCard({
 
         <p className="simbrief-card__note">
           Laissez un champ vide puis enregistrez pour supprimer la valeur
-          actuellement configuree.
+          actuellement configurée.
         </p>
 
         {feedback ? (
@@ -210,3 +210,4 @@ export function SimbriefSettingsCard({
     </Card>
   );
 }
+

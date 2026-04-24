@@ -250,6 +250,35 @@ export class UpdateAdminUserDto {
 
   @IsOptional()
   @IsString()
+  @Length(3, 16, {
+    message:
+      "Le numéro pilote doit contenir entre 3 et 16 caractères.",
+  })
+  @Matches(/^[A-Z0-9-]+$/, {
+    message:
+      "Le numéro pilote ne peut contenir que des lettres, des chiffres ou des tirets.",
+  })
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim().toUpperCase() : value,
+  )
+  public pilotNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(2, 16, {
+    message: "L'indicatif doit contenir entre 2 et 16 caractères.",
+  })
+  @Matches(/^[A-Z0-9-]+$/, {
+    message:
+      "L'indicatif ne peut contenir que des lettres, des chiffres ou des tirets.",
+  })
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim().toUpperCase() : value,
+  )
+  public callsign?: string | null;
+
+  @IsOptional()
+  @IsString()
   @Length(2, 2)
   @Matches(/^[A-Z]{2}$/)
   @Transform(({ value }) =>
@@ -267,7 +296,7 @@ export class UpdateAdminUserDto {
       require_tld: true,
     },
     {
-      message: "avatarUrl must be a valid https URL.",
+      message: "L'URL de l'avatar doit être une URL HTTPS valide.",
     },
   )
   @Transform(({ value }) =>
