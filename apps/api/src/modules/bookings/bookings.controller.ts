@@ -51,3 +51,4 @@ export class BookingsController {
     return this.bookingsService.cancel(id, user);
   }
 }
+

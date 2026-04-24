@@ -46,3 +46,4 @@ export class CompleteFlightDto {
   @Min(0)
   public durationMinutes?: number;
 }
+

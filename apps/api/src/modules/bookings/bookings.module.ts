@@ -11,3 +11,4 @@ import { BookingsService } from "./bookings.service.js";
   exports: [BookingsService],
 })
 export class BookingsModule {}
+

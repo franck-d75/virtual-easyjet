@@ -13,3 +13,4 @@ export class CreateFlightDto {
   )
   public bookingId!: string;
 }
+

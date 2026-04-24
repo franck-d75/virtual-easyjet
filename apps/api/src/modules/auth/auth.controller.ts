@@ -50,3 +50,4 @@ export class AuthController {
     return this.usersService.findById(user.id);
   }
 }
+

@@ -11,3 +11,4 @@ import { HubsService } from "./hubs.service.js";
   exports: [HubsService],
 })
 export class HubsModule {}
+

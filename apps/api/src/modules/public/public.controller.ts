@@ -16,3 +16,4 @@ export class PublicController {
     return this.publicService.getStats();
   }
 }
+

@@ -50,3 +50,4 @@ export class PilotProfilesController {
     return this.pilotProfilesService.findById(id, user);
   }
 }
+

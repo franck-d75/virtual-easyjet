@@ -20,3 +20,4 @@ export class LoginDto {
   @Length(8, 72)
   public password!: string;
 }
+

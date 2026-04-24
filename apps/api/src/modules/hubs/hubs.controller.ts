@@ -21,3 +21,4 @@ export class HubsController {
     return this.hubsService.findByCode(code);
   }
 }
+

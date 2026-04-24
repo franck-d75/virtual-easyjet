@@ -61,3 +61,4 @@ export class FlightsController {
     return this.flightsService.complete(id, user, payload);
   }
 }
+

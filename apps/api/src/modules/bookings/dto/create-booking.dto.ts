@@ -38,3 +38,4 @@ export class CreateBookingDto {
   )
   public notes?: string;
 }
+

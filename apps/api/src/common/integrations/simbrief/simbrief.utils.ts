@@ -19,3 +19,4 @@ export function buildSimbriefFlightPlanLookup(
     latestOfpXmlUrl: `${SIMBRIEF_XML_FETCHER_URL}?userid=${encodedPilotId}`,
   };
 }
+

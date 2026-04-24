@@ -18,3 +18,4 @@ export function getRequiredPilotProfileId(user: AuthenticatedUser): string {
 
   return user.pilotProfileId;
 }
+

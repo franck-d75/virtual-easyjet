@@ -9,3 +9,4 @@ export function decimalToNumber(
 
   return Number(value);
 }
+

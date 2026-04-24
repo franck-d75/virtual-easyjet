@@ -18,3 +18,4 @@ export function validateApiEnv(
 ): ApiEnvironment {
   return apiEnvSchema.parse(config);
 }
+

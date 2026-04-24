@@ -20,3 +20,4 @@ export class RanksController {
     return this.ranksService.findByCode(code);
   }
 }
+

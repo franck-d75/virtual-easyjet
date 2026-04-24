@@ -20,3 +20,4 @@ export class AirportsController {
     return this.airportsService.findByIcao(icao);
   }
 }
+

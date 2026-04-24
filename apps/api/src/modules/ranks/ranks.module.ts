@@ -11,3 +11,4 @@ import { RanksService } from "./ranks.service.js";
   exports: [RanksService],
 })
 export class RanksModule {}
+
