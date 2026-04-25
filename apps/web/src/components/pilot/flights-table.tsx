@@ -29,7 +29,9 @@ export function FlightsTable({
   simbriefMatches,
   renderActions,
 }: FlightsTableProps): JSX.Element {
-  if (flights.length === 0) {
+  const safeFlights = Array.isArray(flights) ? flights : [];
+
+  if (safeFlights.length === 0) {
     return (
       <EmptyState
         title="Aucun vol"
@@ -46,9 +48,10 @@ export function FlightsTable({
           header: "Vol",
           render: (flight) => (
             <div className="table-primary">
-              <strong>{flight.flightNumber}</strong>
+              <strong>{flight.flightNumber ?? "-"}</strong>
               <span>
-                {flight.departureAirport.icao} → {flight.arrivalAirport.icao}
+                {flight.departureAirport?.icao ?? "-"} →{" "}
+                {flight.arrivalAirport?.icao ?? "-"}
               </span>
             </div>
           ),
@@ -60,10 +63,10 @@ export function FlightsTable({
             <div className="table-secondary">
               <strong>
                 {formatDateTime(
-                  flight.actualOnBlockAt ?? flight.plannedOffBlockAt,
+                  flight.actualOnBlockAt ?? flight.plannedOffBlockAt ?? null,
                 )}
               </strong>
-              <span>{formatDurationMinutes(flight.durationMinutes)}</span>
+              <span>{formatDurationMinutes(flight.durationMinutes ?? null)}</span>
             </div>
           ),
         },
@@ -72,7 +75,7 @@ export function FlightsTable({
           header: "Distance",
           render: (flight) => (
             <span>
-              {flight.distanceFlownNm
+              {typeof flight.distanceFlownNm === "number"
                 ? `${formatNumber(flight.distanceFlownNm)} NM`
                 : "-"}
             </span>
@@ -150,7 +153,7 @@ export function FlightsTable({
           : []),
       ]}
       rowKey={(flight) => flight.id}
-      rows={flights}
+      rows={safeFlights}
     />
   );
 }

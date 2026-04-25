@@ -17,7 +17,8 @@ type PirepsTableProps = {
 };
 
 export function PirepsTable({ flights }: PirepsTableProps): JSX.Element {
-  const pirepFlights = flights.filter((flight) => flight.pirep);
+  const safeFlights = Array.isArray(flights) ? flights : [];
+  const pirepFlights = safeFlights.filter((flight) => flight.pirep);
 
   if (pirepFlights.length === 0) {
     return (
@@ -36,9 +37,10 @@ export function PirepsTable({ flights }: PirepsTableProps): JSX.Element {
           header: "Vol",
           render: (flight) => (
             <div className="table-primary">
-              <strong>{flight.flightNumber}</strong>
+              <strong>{flight.flightNumber ?? "-"}</strong>
               <span>
-                {flight.departureAirport.icao} → {flight.arrivalAirport.icao}
+                {flight.departureAirport?.icao ?? "-"} →{" "}
+                {flight.arrivalAirport?.icao ?? "-"}
               </span>
             </div>
           ),
@@ -68,7 +70,7 @@ export function PirepsTable({ flights }: PirepsTableProps): JSX.Element {
           id: "time",
           header: "Durée",
           render: (flight) => (
-            <span>{formatDurationMinutes(flight.durationMinutes)}</span>
+            <span>{formatDurationMinutes(flight.durationMinutes ?? null)}</span>
           ),
         },
         {
@@ -76,7 +78,9 @@ export function PirepsTable({ flights }: PirepsTableProps): JSX.Element {
           header: "Dernière activité",
           render: (flight) => (
             <span>
-              {formatDateTime(flight.actualOnBlockAt ?? flight.actualLandingAt)}
+              {formatDateTime(
+                flight.actualOnBlockAt ?? flight.actualLandingAt ?? null,
+              )}
             </span>
           ),
         },

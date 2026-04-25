@@ -24,7 +24,9 @@ export function BookingsTable({
   simbriefMatches,
   renderActions,
 }: BookingsTableProps): JSX.Element {
-  if (bookings.length === 0) {
+  const safeBookings = Array.isArray(bookings) ? bookings : [];
+
+  if (safeBookings.length === 0) {
     return (
       <EmptyState
         title="Aucune réservation"
@@ -41,7 +43,7 @@ export function BookingsTable({
           header: "Vol",
           render: (booking) => (
             <div className="table-primary">
-              <strong>{booking.reservedFlightNumber}</strong>
+              <strong>{booking.reservedFlightNumber ?? "-"}</strong>
               <span>{booking.route?.code ?? "Route libre"}</span>
             </div>
           ),
@@ -52,9 +54,10 @@ export function BookingsTable({
           render: (booking) => (
             <div className="table-secondary">
               <strong>
-                {booking.departureAirport.icao} → {booking.arrivalAirport.icao}
+                {booking.departureAirport?.icao ?? "-"} →{" "}
+                {booking.arrivalAirport?.icao ?? "-"}
               </strong>
-              <span>{booking.aircraft.aircraftType.name}</span>
+              <span>{booking.aircraft?.aircraftType?.name ?? "Type non renseigné"}</span>
             </div>
           ),
         },
@@ -63,7 +66,7 @@ export function BookingsTable({
           header: "Planning",
           render: (booking) => (
             <div className="table-secondary">
-              <strong>{formatDateTime(booking.bookedFor)}</strong>
+              <strong>{formatDateTime(booking.bookedFor ?? null)}</strong>
               <span>
                 {booking.schedule
                   ? `${formatDaysOfWeek(booking.schedule.daysOfWeek)} · ${booking.schedule.departureTimeUtc}Z`
@@ -128,7 +131,7 @@ export function BookingsTable({
           : []),
       ]}
       rowKey={(booking) => booking.id}
-      rows={bookings}
+      rows={safeBookings}
     />
   );
 }
