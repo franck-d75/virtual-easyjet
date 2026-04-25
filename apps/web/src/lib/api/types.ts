@@ -9,6 +9,18 @@ export interface PublicStatsResponse {
   validatedPireps: number;
 }
 
+export interface RankResponse {
+  id: string;
+  code: string;
+  name: string;
+  sortOrder: number;
+  minFlights: number;
+  minHoursMinutes: number;
+  minScore: number;
+  description: string | null;
+  isActive: boolean;
+}
+
 export interface PublicHomeResponse {
   stats: PublicStatsResponse;
   aircraft: AircraftResponse[];

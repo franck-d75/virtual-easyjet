@@ -2,7 +2,6 @@ import type { JSX } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { getPublicRoutes } from "@/lib/api/public";
@@ -21,88 +20,92 @@ export default async function RoutesPage(): Promise<JSX.Element> {
           <span className="section-eyebrow">Routes</span>
           <h1>Réseau et routes</h1>
           <p>
-            Explorez notre réseau de lignes virtuelles et choisissez vos
-            rotations selon votre appareil, votre niveau et vos préférences.
+            Explorez un réseau de lignes européennes pensé pour un rythme de VA
+            réaliste, avec des rotations lisibles, fréquentes et cohérentes avec
+            la flotte publiée.
           </p>
           <p>
-            Le système de réservation vous permet de sélectionner vos vols, de
-            suivre vos opérations et d’exploiter votre planning comme dans une
-            véritable compagnie virtuelle.
+            Chaque route met en avant son départ, son arrivée, sa distance et sa
+            durée estimée afin de faciliter la préparation d'une rotation.
           </p>
         </section>
 
         {routes.length === 0 ? (
           <EmptyState
             title="Aucune route publiée"
-            description="Les routes apparaîtront ici dès qu’elles seront disponibles."
+            description="Les routes apparaîtront ici dès qu'elles seront disponibles."
           />
         ) : (
-          <Card>
-            <DataTable
-              columns={[
-                {
-                  id: "route",
-                  header: "Route",
-                  render: (route) => (
-                    <div className="table-primary">
-                      <strong>{route.code}</strong>
-                      <span>{route.flightNumber}</span>
-                    </div>
-                  ),
-                },
-                {
-                  id: "rotation",
-                  header: "Rotation",
-                  render: (route) => (
-                    <div className="table-secondary">
-                      <strong>
-                        {route.departureAirport.icao} → {route.arrivalAirport.icao}
-                      </strong>
-                      <span>
-                        {route.departureAirport.city ?? route.departureAirport.name} ·{" "}
-                        {route.arrivalAirport.city ?? route.arrivalAirport.name}
-                      </span>
-                    </div>
-                  ),
-                },
-                {
-                  id: "aircraft",
-                  header: "Appareil",
-                  render: (route) => (
-                    <span>{route.aircraftType?.name ?? "Libre"}</span>
-                  ),
-                },
-                {
-                  id: "distance",
-                  header: "Distance",
-                  render: (route) => (
-                    <span>
-                      {route.distanceNm ? `${formatNumber(route.distanceNm)} NM` : "-"}
-                    </span>
-                  ),
-                },
-                {
-                  id: "block",
-                  header: "Temps bloc",
-                  render: (route) => (
-                    <span>{formatDurationMinutes(route.blockTimeMinutes)}</span>
-                  ),
-                },
-                {
-                  id: "status",
-                  header: "Statut",
-                  render: (route) => (
-                    <Badge
-                      label={route.isActive ? "Active" : "Inactive"}
-                      tone={route.isActive ? "success" : "neutral"}
-                    />
-                  ),
-                },
-              ]}
-              rowKey={(route) => route.id}
-              rows={routes}
-            />
-          </Card>
+          <section className="card-grid">
+            {routes.map((route) => (
+              <Card key={route.id} className="showcase-card showcase-card--route">
+                <div className="showcase-card__header">
+                  <div>
+                    <span className="section-eyebrow">{route.flightNumber}</span>
+                    <h2>{route.code}</h2>
+                    <p>
+                      {route.aircraftType?.name ?? "Appareil libre"} ·{" "}
+                      {route.departureHub?.name ?? route.departureAirport.name}
+                    </p>
+                  </div>
+                  <Badge
+                    label={route.isActive ? "Active" : "Inactive"}
+                    tone={route.isActive ? "success" : "neutral"}
+                  />
+                </div>
+
+                <div className="route-card__airports">
+                  <div className="route-card__airport">
+                    <span>Départ</span>
+                    <strong>{route.departureAirport.icao}</strong>
+                    <small>{route.departureAirport.city ?? route.departureAirport.name}</small>
+                  </div>
+                  <div className="route-card__connector" aria-hidden="true">
+                    <span />
+                  </div>
+                  <div className="route-card__airport">
+                    <span>Arrivée</span>
+                    <strong>{route.arrivalAirport.icao}</strong>
+                    <small>{route.arrivalAirport.city ?? route.arrivalAirport.name}</small>
+                  </div>
+                </div>
+
+                <div className="definition-grid">
+                  <div>
+                    <span>Distance</span>
+                    <strong>
+                      {route.distanceNm
+                        ? `${formatNumber(route.distanceNm)} NM`
+                        : "Non renseignée"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Durée estimée</span>
+                    <strong>{formatDurationMinutes(route.blockTimeMinutes)}</strong>
+                  </div>
+                  <div>
+                    <span>Appareil</span>
+                    <strong>{route.aircraftType?.icaoCode ?? "Libre"}</strong>
+                  </div>
+                  <div>
+                    <span>Hub départ</span>
+                    <strong>{route.departureHub?.code ?? "-"}</strong>
+                  </div>
+                  <div>
+                    <span>Hub arrivée</span>
+                    <strong>{route.arrivalHub?.code ?? "-"}</strong>
+                  </div>
+                  <div>
+                    <span>Rotation</span>
+                    <strong>
+                      {route.departureAirport.iata ?? route.departureAirport.icao} →{" "}
+                      {route.arrivalAirport.iata ?? route.arrivalAirport.icao}
+                    </strong>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </section>
         )}
       </>
     );
@@ -111,7 +114,7 @@ export default async function RoutesPage(): Promise<JSX.Element> {
     return (
       <ErrorState
         title="Routes indisponibles"
-        description="Le réseau n’a pas pu être chargé depuis l’API."
+        description="Le réseau n'a pas pu être chargé depuis l'API."
       />
     );
   }

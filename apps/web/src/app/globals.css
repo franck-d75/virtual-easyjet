@@ -812,6 +812,238 @@ small {
   line-height: 1.35;
 }
 
+.showcase-card {
+  display: grid;
+  gap: 1.15rem;
+}
+
+.showcase-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.showcase-card__header h2 {
+  margin: 0.72rem 0 0.35rem;
+  font-size: clamp(1.45rem, 2.4vw, 2rem);
+  letter-spacing: -0.04em;
+}
+
+.showcase-card__header p,
+.showcase-card__spotlight span {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.showcase-card__spotlight {
+  display: grid;
+  gap: 0.24rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid rgba(51, 65, 85, 0.84);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 32%),
+    rgba(11, 15, 20, 0.32);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.showcase-card__spotlight strong {
+  font-size: 1.04rem;
+  line-height: 1.32;
+}
+
+.route-card__airports {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: center;
+}
+
+.route-card__airport {
+  display: grid;
+  gap: 0.28rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid rgba(51, 65, 85, 0.84);
+  border-radius: 18px;
+  background: rgba(11, 15, 20, 0.28);
+}
+
+.route-card__airport span,
+.dashboard-progress__grid span {
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.route-card__airport strong {
+  font-size: 1.18rem;
+  letter-spacing: -0.03em;
+}
+
+.route-card__airport small {
+  color: var(--color-text-secondary);
+}
+
+.route-card__connector {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+}
+
+.route-card__connector span {
+  width: 100%;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 102, 0, 0.18),
+    rgba(255, 102, 0, 0.72),
+    rgba(255, 102, 0, 0.18)
+  );
+}
+
+.dashboard-progress {
+  display: grid;
+  gap: 1rem;
+}
+
+.dashboard-progress__summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.dashboard-progress__summary h2 {
+  margin-bottom: 0.5rem;
+}
+
+.dashboard-progress__summary p {
+  margin: 0;
+  max-width: 36rem;
+}
+
+.dashboard-progress__meter {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 8.5rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(51, 65, 85, 0.84);
+  border-radius: 18px;
+  background: rgba(11, 15, 20, 0.32);
+  text-align: right;
+}
+
+.dashboard-progress__meter strong {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.dashboard-progress__meter span {
+  color: var(--color-text-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.dashboard-progress__bar {
+  position: relative;
+  height: 0.9rem;
+  overflow: hidden;
+  border: 1px solid rgba(51, 65, 85, 0.84);
+  border-radius: 999px;
+  background: rgba(11, 15, 20, 0.44);
+}
+
+.dashboard-progress__bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 102, 0, 0.84),
+    rgba(255, 154, 82, 0.92)
+  );
+  box-shadow: 0 10px 22px rgba(255, 102, 0, 0.2);
+}
+
+.dashboard-progress__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.95rem;
+}
+
+.dashboard-progress__grid > div {
+  padding: 1rem 1.05rem;
+  border: 1px solid rgba(51, 65, 85, 0.84);
+  border-radius: 18px;
+  background: rgba(11, 15, 20, 0.28);
+}
+
+.dashboard-progress__grid strong {
+  display: block;
+  margin-top: 0.24rem;
+  font-size: 1.05rem;
+}
+
+.dashboard-progress__grid small {
+  display: block;
+  margin-top: 0.24rem;
+}
+
+.activity-timeline {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.activity-timeline__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.95rem;
+  align-items: start;
+  padding: 1rem 1.05rem;
+  border: 1px solid rgba(51, 65, 85, 0.84);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 32%),
+    rgba(11, 15, 20, 0.28);
+}
+
+.activity-timeline__dot {
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-top: 0.72rem;
+  border-radius: 999px;
+  background: var(--color-orange);
+  box-shadow: 0 0 0 8px rgba(255, 102, 0, 0.12);
+}
+
+.activity-timeline__content {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.activity-timeline__content .section-eyebrow {
+  padding: 0.3rem 0.62rem;
+  font-size: 0.66rem;
+}
+
+.activity-timeline__content h3 {
+  margin: 0;
+  font-size: 1.18rem;
+  letter-spacing: -0.03em;
+}
+
+.activity-timeline__content p,
+.activity-timeline__content small {
+  margin: 0;
+}
+
 .admin-page {
   display: grid;
   gap: 1.4rem;
@@ -2491,6 +2723,8 @@ small {
   .two-column,
   .dashboard-grid,
   .definition-grid,
+  .route-card__airports,
+  .dashboard-progress__grid,
   .live-map-layout,
   .live-map-summary-grid,
   .live-map-flight-item__meta,
@@ -2573,6 +2807,11 @@ small {
     flex-direction: column;
   }
 
+  .showcase-card__header,
+  .dashboard-progress__summary {
+    flex-direction: column;
+  }
+
   .live-map-canvas-wrap,
   .live-map-canvas {
     min-height: 26rem;
@@ -2602,6 +2841,14 @@ small {
 
   .ops-meta-grid {
     grid-template-columns: 1fr;
+  }
+
+  .activity-timeline__item {
+    grid-template-columns: 1fr;
+  }
+
+  .route-card__connector {
+    display: none;
   }
 }
 

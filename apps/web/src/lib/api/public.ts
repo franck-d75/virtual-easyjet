@@ -4,6 +4,7 @@ import type {
   HubResponse,
   LiveMapAircraft,
   PublicHomeResponse,
+  RankResponse,
   RouteDetailResponse,
   PublicStatsResponse,
   RouteResponse,
@@ -71,6 +72,12 @@ export async function getPublicHome(): Promise<PublicHomeResponse> {
 
 export async function getPublicStats(): Promise<PublicStatsResponse> {
   return apiRequest<PublicStatsResponse>("/public/stats", {
+    cache: "no-store",
+  });
+}
+
+export async function getPublicRanks(): Promise<RankResponse[]> {
+  return apiRequest<RankResponse[]>("/ranks", {
     cache: "no-store",
   });
 }
