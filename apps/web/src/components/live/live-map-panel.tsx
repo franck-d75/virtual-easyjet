@@ -69,6 +69,7 @@ export function LiveMapPanel({
 }: LiveMapPanelProps): JSX.Element {
   const [traffic, setTraffic] = useState(initialTraffic);
   const [error, setError] = useState(initialError);
+  const [simbriefRoute, setSimbriefRoute] = useState(initialSimbriefRoute);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState(initialFetchedAt);
@@ -103,11 +104,11 @@ export function LiveMapPanel({
     [traffic],
   );
 
-  const routeLabel = initialSimbriefRoute
-    ? `${initialSimbriefRoute.departureIcao} → ${initialSimbriefRoute.arrivalIcao}`
+  const routeLabel = simbriefRoute
+    ? `${simbriefRoute.departureIcao} → ${simbriefRoute.arrivalIcao}`
     : "Aucune route SimBrief";
-  const routeDetail = initialSimbriefRoute
-    ? initialSimbriefRoute.mode === "WAYPOINTS"
+  const routeDetail = simbriefRoute
+    ? simbriefRoute.mode === "WAYPOINTS"
       ? "Tracé complet du navlog SimBrief."
       : "Tracé direct de secours entre départ et arrivée."
     : "Aucun OFP exploitable n’est disponible pour superposer une route.";
@@ -173,6 +174,37 @@ export function LiveMapPanel({
       }
     }
   });
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadSimbriefRoute(): Promise<void> {
+      try {
+        const response = await fetch("/api/pilot/simbrief/route-overlay", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as SimbriefRouteOverlay | null;
+
+        if (isActive) {
+          setSimbriefRoute(payload);
+        }
+      } catch (routeError) {
+        logWebWarning("live map SimBrief route overlay fetch failed", routeError);
+      }
+    }
+
+    void loadSimbriefRoute();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -249,8 +281,8 @@ export function LiveMapPanel({
     routeLayer.clearLayers();
     markersLayer.clearLayers();
 
-    if (initialSimbriefRoute && initialSimbriefRoute.points.length >= 2) {
-      const routeLatLngs = initialSimbriefRoute.points.map((point) => {
+    if (simbriefRoute && simbriefRoute.points.length >= 2) {
+      const routeLatLngs = simbriefRoute.points.map((point) => {
         const latLng: [number, number] = [point.lat, point.lon];
         routePoints.push(latLng);
         return latLng;
@@ -258,7 +290,7 @@ export function LiveMapPanel({
 
       L.polyline(routeLatLngs, {
         color: SIMBRIEF_ROUTE_GLOW_COLOR,
-        weight: initialSimbriefRoute.mode === "WAYPOINTS" ? 9 : 7,
+        weight: simbriefRoute.mode === "WAYPOINTS" ? 9 : 7,
         opacity: 0.45,
         lineCap: "round",
         lineJoin: "round",
@@ -267,11 +299,11 @@ export function LiveMapPanel({
 
       L.polyline(routeLatLngs, {
         color: SIMBRIEF_ROUTE_COLOR,
-        weight: initialSimbriefRoute.mode === "WAYPOINTS" ? 3.5 : 3,
+        weight: simbriefRoute.mode === "WAYPOINTS" ? 3.5 : 3,
         opacity: 0.82,
         lineCap: "round",
         lineJoin: "round",
-        dashArray: initialSimbriefRoute.mode === "DIRECT" ? "10 12" : undefined,
+        dashArray: simbriefRoute.mode === "DIRECT" ? "10 12" : undefined,
         className: "live-map-route-line",
       }).addTo(routeLayer);
     }
@@ -304,7 +336,7 @@ export function LiveMapPanel({
       fitViewport(viewportPointsRef.current);
       hasAdjustedViewportRef.current = true;
     }
-  }, [fitViewport, initialSimbriefRoute, traffic]);
+  }, [fitViewport, simbriefRoute, traffic]);
 
   useEffect(() => {
     if (initialError !== null || initialTraffic.length === 0) {
@@ -496,7 +528,7 @@ export function LiveMapPanel({
               </div>
             ) : null}
 
-            {isMapReady && traffic.length === 0 && initialSimbriefRoute === null ? (
+            {isMapReady && traffic.length === 0 && simbriefRoute === null ? (
               <div className="live-map-overlay live-map-overlay--notice">
                 {error ? (
                   <ErrorState
