@@ -15,6 +15,7 @@ const pilotLinks = [
   { href: "/profil", label: "Profil" },
   { href: "/bookings", label: "Réservations" },
   { href: "/vols", label: "Vols" },
+  { href: "/acars", label: "ACARS" },
   { href: "/live-map", label: "Carte en direct" },
   { href: "/pireps", label: "PIREPs" },
 ];

@@ -1,10 +1,11 @@
 import type { JSX } from "react";
 
-import { ContentSection } from "@/components/marketing/content-section";
-import { HeroSection } from "@/components/marketing/hero-section";
 import { UnofficialDisclaimer } from "@/components/legal/unofficial-disclaimer";
+import { HeroSection } from "@/components/marketing/hero-section";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { getBackendAcarsLiveTraffic } from "@/lib/api/public";
 import {
   ACARS_DOWNLOAD_PROXY_PATH,
   ACARS_PRODUCT_NAME,
@@ -14,6 +15,8 @@ import {
 type AcarsPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+type AcarsAvailabilityState = "ONLINE" | "IDLE" | "UNAVAILABLE";
 
 function getFirstQueryValue(
   value: string | string[] | undefined,
@@ -42,67 +45,90 @@ export default async function AcarsPage({
   );
   const downloadState = getFirstQueryValue(query.download);
 
+  let availability: AcarsAvailabilityState = "IDLE";
+  let activeFlightsCount = 0;
+
+  try {
+    const liveTraffic = await getBackendAcarsLiveTraffic();
+    activeFlightsCount = liveTraffic.length;
+    availability = liveTraffic.length > 0 ? "ONLINE" : "IDLE";
+  } catch {
+    availability = "UNAVAILABLE";
+  }
+
   return (
     <>
       <HeroSection
         actions={
           <>
-            <Button href={ACARS_DOWNLOAD_PROXY_PATH}>Télécharger</Button>
-            <Button href="/connexion" variant="secondary">
-              Accéder à mon espace pilote
+            <Button href="/live-map">Ouvrir la carte en direct</Button>
+            <Button href={ACARS_DOWNLOAD_PROXY_PATH} variant="secondary">
+              Télécharger ACARS
             </Button>
-            <Button href="/routes" variant="ghost">
-              Voir le réseau VA
+            <Button href="/connexion" variant="ghost">
+              Accéder à l’espace pilote
             </Button>
           </>
         }
         aside={
           <div className="hero-aside-content">
-            <span className="section-eyebrow">Distribution Windows</span>
-            <h2>Un client desktop installé, pas un simple outil de test.</h2>
+            <span className="section-eyebrow">Module ACARS</span>
+            <h2>Le poste opérationnel relié au site web</h2>
             <div className="hero-summary-grid">
               <div className="hero-summary-card">
                 <span>Version</span>
                 <strong>{version}</strong>
-                <small>version actuelle</small>
+                <small>client desktop actuel</small>
               </div>
               <div className="hero-summary-card">
-                <span>Plateforme</span>
-                <strong>Windows</strong>
-                <small>build x64</small>
+                <span>État</span>
+                <strong>
+                  {availability === "ONLINE"
+                    ? "En ligne"
+                    : availability === "IDLE"
+                      ? "Disponible"
+                      : "Indisponible"}
+                </strong>
+                <small>
+                  {availability === "ONLINE"
+                    ? `${activeFlightsCount} vol(s) suivi(s)`
+                    : availability === "IDLE"
+                      ? "aucun trafic actif"
+                      : "vérification à relancer"}
+                </small>
               </div>
               <div className="hero-summary-card">
-                <span>Modes</span>
-                <strong>Réel + mock</strong>
-                <small>toujours disponibles</small>
+                <span>Carte live</span>
+                <strong>/live-map</strong>
+                <small>suivi web public</small>
               </div>
               <div className="hero-summary-card">
-                <span>Packaging</span>
-                <strong>NSIS</strong>
-                <small>installeur + portable</small>
+                <span>Distribution</span>
+                <strong>{downloadConfigured ? "Prête" : "À relier"}</strong>
+                <small>via proxy web</small>
               </div>
             </div>
             <p className="hero-aside-note">
-              {ACARS_PRODUCT_NAME} est l’extension opérationnelle du site
-              Virtual Easyjet : connexion pilote, session ACARS, télémétrie,
-              phases de vol et génération du PIREP final.
+              {ACARS_PRODUCT_NAME} permet de charger un vol canonique, d’ouvrir
+              une session ACARS, d’envoyer la télémétrie et de finaliser un
+              PIREP, sans exposer de route API protégée directement dans le
+              navigateur.
             </p>
           </div>
         }
-        eyebrow="Client ACARS"
-        subtitle="Le client Virtual Easyjet ACARS permet de reprendre un vol canonique depuis la plateforme web, d’ouvrir une session ACARS, d’envoyer la télémétrie et de finaliser le PIREP dans une interface Windows sombre, premium et cohérente avec le site."
-        title={ACARS_PRODUCT_NAME}
+        eyebrow="ACARS"
+        subtitle="Le module ACARS regroupe le client desktop, l’état du suivi live et le point d’entrée opérationnel entre l’espace pilote et la carte en direct."
+        title="Virtual Easyjet ACARS"
       />
 
       {downloadState === "unavailable" ? (
         <section className="section-band">
           <Card className="ops-card ops-card--highlight">
-            <span className="section-eyebrow">Lien de distribution</span>
-            <h2>Le binaire n’est pas encore relié à ce site</h2>
+            <span className="section-eyebrow">Téléchargement</span>
+            <h2>Le binaire public n’est pas encore configuré</h2>
             <p>
               Le bouton de téléchargement est prêt, mais l’URL publique du
-              binaire n’est pas encore configurée. Renseignez
-              `ACARS_DOWNLOAD_URL` pour activer la distribution web.
+              client ACARS n’est pas encore reliée à ce site.
             </p>
           </Card>
         </section>
@@ -111,125 +137,95 @@ export default async function AcarsPage({
       <section className="section-band">
         <div className="section-band__header">
           <div>
-            <span className="section-eyebrow">Usage</span>
-            <h2>À quoi sert le logiciel ?</h2>
+            <span className="section-eyebrow">État ACARS</span>
+            <h2>Disponibilité du module en temps réel</h2>
           </div>
           <p>
-            Le web gère la réservation et le suivi pilote. Le desktop gère
-            l’exploitation en temps réel d’un vol déjà créé dans la VA.
+            Cette page reste toujours accessible. Si aucun trafic n’est actif,
+            l’interface l’indique simplement sans générer d’erreur.
           </p>
         </div>
 
         <section className="panel-grid">
-          <Card>
-            <span className="section-eyebrow">Fonction principale</span>
-            <h2>Exploiter un vol dans un cadre VA</h2>
+          <Card className="ops-card">
+            <span className="section-eyebrow">Synthèse</span>
+            <h2>
+              {availability === "ONLINE"
+                ? "Trafic ACARS actif"
+                : availability === "IDLE"
+                  ? "Aucun trafic en direct"
+                  : "ACARS temporairement indisponible"}
+            </h2>
             <p>
-              Chargez vos vols disponibles, ouvrez une session ACARS, envoyez
-              la télémétrie mock ou live, suivez la phase détectée et finalisez
-              le rapport de vol.
-            </p>
-          </Card>
-          <Card>
-            <span className="section-eyebrow">Cohérence produit</span>
-            <h2>Le prolongement naturel du site web</h2>
-            <p>
-              Même thème dark premium, mêmes statuts, mêmes termes métier :
-              réservation, vol, session ACARS, PIREP. Le desktop prolonge le
-              parcours pilote sans changer de logique.
-            </p>
-          </Card>
-        </section>
-      </section>
-
-      <section className="section-band">
-        <div className="section-band__header">
-          <div>
-            <span className="section-eyebrow">Fonctionnalités</span>
-            <h2>Ce que cette version permet déjà</h2>
-          </div>
-          <p>
-            Le périmètre reste volontairement simple et limité au MVP
-            opérationnel déjà validé côté backend.
-          </p>
-        </div>
-
-        <div className="content-grid">
-          <ContentSection eyebrow="Desktop" title="Ce que vous pouvez faire">
-            <ul className="list-clean">
-              <li>connexion pilote en mode réel ou mock</li>
-              <li>chargement des réservations et vols exploitables</li>
-              <li>création et reprise d’une session ACARS</li>
-              <li>envoi de télémétrie manuelle ou mock</li>
-              <li>suivi de la phase de vol détectée</li>
-              <li>finalisation de session et affichage du PIREP</li>
-            </ul>
-          </ContentSection>
-
-          <ContentSection eyebrow="Windows" title="Configuration minimale">
-            <div className="definition-grid">
-              <div>
-                <span>Système</span>
-                <strong>Windows 10 ou 11 64 bits</strong>
-              </div>
-              <div>
-                <span>Réseau</span>
-                <strong>Accès à l’API VA et au service ACARS</strong>
-              </div>
-              <div>
-                <span>Espace disque</span>
-                <strong>Environ 500 Mo libres</strong>
-              </div>
-              <div>
-                <span>Mémoire</span>
-                <strong>4 Go de RAM recommandés</strong>
-              </div>
-            </div>
-          </ContentSection>
-        </div>
-      </section>
-
-      <section className="section-band">
-        <div className="section-band__header">
-          <div>
-            <span className="section-eyebrow">Installation</span>
-            <h2>Procédure rapide</h2>
-          </div>
-          <p>
-            Une fois le binaire publié, l’installation doit rester simple pour
-            un pilote : télécharger, installer, renseigner les URL backend, se
-            connecter et voler.
-          </p>
-        </div>
-
-        <section className="panel-grid">
-          <Card>
-            <span className="section-eyebrow">Étapes</span>
-            <ol className="list-clean">
-              <li>télécharger l’installeur ou la version portable</li>
-              <li>lancer Virtual Easyjet ACARS</li>
-              <li>renseigner l’API VA et le backend ACARS si nécessaire</li>
-              <li>se connecter avec son compte pilote</li>
-              <li>charger un vol exploitable puis ouvrir la session ACARS</li>
-            </ol>
-          </Card>
-          <Card>
-            <span className="section-eyebrow">Distribution</span>
-            <h2>État de la publication</h2>
-            <p>
-              {downloadConfigured
-                ? "Le site est prêt à rediriger vers le binaire public configuré."
-                : "Le site est prêt, mais l’URL publique du binaire reste à renseigner."}
+              {availability === "ONLINE"
+                ? `${activeFlightsCount} avion(s) sont actuellement visibles sur la carte live.`
+                : availability === "IDLE"
+                  ? "Aucune session ACARS active n’est détectée pour le moment."
+                  : "Le service live n’a pas répondu pendant le chargement initial. La page reste disponible et la carte en direct peut être réessayée séparément."}
             </p>
             <div className="inline-actions">
-              <Button href={ACARS_DOWNLOAD_PROXY_PATH}>Télécharger</Button>
-              <Button href="/compagnie" variant="secondary">
-                En savoir plus sur la VA
+              <Button href="/live-map">Voir la carte en direct</Button>
+              <Button href="/dashboard" variant="secondary">
+                Revenir à l’espace pilote
               </Button>
             </div>
           </Card>
+
+          <Card className="ops-card">
+            <span className="section-eyebrow">Fonction</span>
+            <h2>Web pour gérer, ACARS pour exploiter</h2>
+            <p>
+              Le site web reste l’interface de gestion de la VA. Le client
+              desktop prend ensuite le relais pour la session ACARS, la
+              télémétrie, la phase de vol et la finalisation du PIREP.
+            </p>
+          </Card>
         </section>
       </section>
+
+      <section className="section-band">
+        <div className="section-band__header">
+          <div>
+            <span className="section-eyebrow">Parcours pilote</span>
+            <h2>Le flux attendu pour le MVP</h2>
+          </div>
+          <p>
+            Le module ACARS s’intègre au flux déjà validé entre réservation,
+            vol, session et rapport final.
+          </p>
+        </div>
+
+        <section className="panel-grid">
+          <Card>
+            <span className="section-eyebrow">Depuis le web</span>
+            <h2>Préparer et suivre</h2>
+            <ul className="list-clean">
+              <li>réserver une rotation</li>
+              <li>créer un vol canonique</li>
+              <li>ouvrir la carte en direct si besoin</li>
+            </ul>
+          </Card>
+
+          <Card>
+            <span className="section-eyebrow">Depuis ACARS</span>
+            <h2>Exploiter et finaliser</h2>
+            <ul className="list-clean">
+              <li>ouvrir la session ACARS</li>
+              <li>envoyer la télémétrie mock ou live</li>
+              <li>finaliser le PIREP</li>
+            </ul>
+          </Card>
+        </section>
+      </section>
+
+      {availability === "IDLE" ? (
+        <section className="section-band">
+          <EmptyState
+            title="Aucun trafic en direct"
+            description="Le module ACARS est bien accessible, mais aucune session active n’est visible pour le moment."
+          />
+        </section>
+      ) : null}
 
       <section className="section-band">
         <UnofficialDisclaimer />

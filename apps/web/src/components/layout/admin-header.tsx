@@ -16,6 +16,7 @@ const adminLinks = [
   { href: "/admin/flotte", label: "Flotte" },
   { href: "/admin/hubs", label: "Hubs" },
   { href: "/admin/routes", label: "Routes" },
+  { href: "/acars", label: "ACARS" },
   { href: "/live-map", label: "Carte en direct" },
   { href: "/dashboard", label: "Espace pilote" },
 ];
