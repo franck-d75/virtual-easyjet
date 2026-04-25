@@ -5,6 +5,11 @@ import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 
 import { AppModule } from "./app.module.js";
+import {
+  applyHttpSecurityHeaders,
+  createCorsOriginHandler,
+  parseCorsOrigins,
+} from "./common/security/http-security.utils.js";
 import type { AcarsEnvironment } from "./config/env.js";
 
 type RequestLike = {
@@ -15,16 +20,10 @@ type RequestLike = {
 type ResponseLike = {
   statusCode: number;
   on: (event: "finish", listener: () => void) => void;
+  setHeader: (name: string, value: string) => void;
 };
 
 type NextLike = () => void;
-
-function parseCorsOrigins(value: string): string[] {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-}
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -34,6 +33,7 @@ async function bootstrap(): Promise<void> {
   );
   const nodeEnv = configService.get("NODE_ENV", { infer: true });
 
+  app.getHttpAdapter().getInstance().disable?.("x-powered-by");
   app.setGlobalPrefix("acars");
   app.useGlobalPipes(
     new ValidationPipe({
@@ -43,12 +43,17 @@ async function bootstrap(): Promise<void> {
     }),
   );
   app.enableCors({
-    origin: corsOrigins,
+    origin: createCorsOriginHandler(
+      configService.get("CORS_ORIGIN", { infer: true }),
+      nodeEnv,
+    ),
     credentials: true,
   });
   app.use(
     (request: RequestLike, response: ResponseLike, next: NextLike) => {
       const startedAt = Date.now();
+
+      applyHttpSecurityHeaders(request, response);
 
       response.on("finish", () => {
         console.info("[acars]", {

@@ -166,6 +166,20 @@ function normalizeOptionalInt(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function logAdminAction(
+  action: string,
+  actorId: string,
+  targetId: string,
+  metadata?: Record<string, unknown>,
+): void {
+  console.info("[admin-audit]", {
+    action,
+    actorId,
+    targetId,
+    ...metadata,
+  });
+}
+
 @Injectable()
 @Dependencies(PrismaService, AvatarStorageService)
 export class AdminService {
@@ -286,6 +300,10 @@ export class AdminService {
       throw new ForbiddenException("You cannot suspend your own administrator account.");
     }
 
+    if (currentUser.id === id && payload.role === UserPlatformRole.USER) {
+      throw new ForbiddenException("You cannot remove your own administrator role.");
+    }
+
     try {
       const user = await this.prisma.$transaction(async (transaction) => {
         const existingUser = await transaction.user.findUnique({
@@ -298,6 +316,15 @@ export class AdminService {
         if (!existingUser) {
           throw new NotFoundException("User not found.");
         }
+
+        await this.assertAdminChangeIsAllowed(
+          transaction,
+          existingUser.id,
+          existingUser.role,
+          existingUser.status,
+          payload.role,
+          payload.status,
+        );
 
         const pilotProfileUpdateData: Prisma.PilotProfileUpdateInput = {};
 
@@ -367,6 +394,10 @@ export class AdminService {
       });
 
       const counts = await this.getAdminUserDetailCounts(user.pilotProfile?.id ?? null);
+      logAdminAction("user.update", currentUser.id, id, {
+        role: payload.role ?? null,
+        status: payload.status ?? null,
+      });
 
       return this.serializeAdminUserDetail(user, counts);
     } catch (error) {
@@ -391,6 +422,15 @@ export class AdminService {
         if (!existingUser) {
           throw new NotFoundException("User not found.");
         }
+
+        await this.assertAdminChangeIsAllowed(
+          transaction,
+          existingUser.id,
+          existingUser.role,
+          existingUser.status,
+          undefined,
+          UserStatus.SUSPENDED,
+        );
 
         await transaction.user.update({
           where: { id },
@@ -417,6 +457,7 @@ export class AdminService {
       });
 
       const counts = await this.getAdminUserDetailCounts(user.pilotProfile?.id ?? null);
+      logAdminAction("user.suspend", currentUser.id, id);
 
       return this.serializeAdminUserDetail(user, counts);
     } catch (error) {
@@ -463,6 +504,7 @@ export class AdminService {
       });
 
       const counts = await this.getAdminUserDetailCounts(user.pilotProfile?.id ?? null);
+      logAdminAction("user.activate", _currentUser.id, id);
 
       return this.serializeAdminUserDetail(user, counts);
     } catch (error) {
@@ -470,7 +512,11 @@ export class AdminService {
     }
   }
 
-  public async updateUserAvatar(id: string, file: UploadedAvatarFile) {
+  public async updateUserAvatar(
+    id: string,
+    file: UploadedAvatarFile,
+    currentUser: AuthenticatedUser,
+  ) {
     const existingUser = await this.prisma.user.findUnique({
       where: { id },
       select: {
@@ -490,6 +536,8 @@ export class AdminService {
         avatarUrl,
       },
     });
+
+    logAdminAction("user.avatar.update", currentUser.id, id);
 
     return this.getUser(id);
   }
@@ -516,7 +564,10 @@ export class AdminService {
     return this.serializeAircraft(aircraft);
   }
 
-  public async createAircraft(payload: CreateAdminAircraftDto) {
+  public async createAircraft(
+    payload: CreateAdminAircraftDto,
+    currentUser: AuthenticatedUser,
+  ) {
     try {
       const aircraft = await this.prisma.aircraft.create({
         data: {
@@ -530,13 +581,18 @@ export class AdminService {
         include: adminAircraftInclude,
       });
 
+      logAdminAction("aircraft.create", currentUser.id, aircraft.id);
       return this.serializeAircraft(aircraft);
     } catch (error) {
       throw this.normalizePrismaError(error, "Aircraft");
     }
   }
 
-  public async updateAircraft(id: string, payload: UpdateAdminAircraftDto) {
+  public async updateAircraft(
+    id: string,
+    payload: UpdateAdminAircraftDto,
+    currentUser: AuthenticatedUser,
+  ) {
     try {
       const aircraft = await this.prisma.aircraft.update({
         where: { id },
@@ -561,17 +617,19 @@ export class AdminService {
         include: adminAircraftInclude,
       });
 
+      logAdminAction("aircraft.update", currentUser.id, id);
       return this.serializeAircraft(aircraft);
     } catch (error) {
       throw this.normalizePrismaError(error, "Aircraft");
     }
   }
 
-  public async deleteAircraft(id: string) {
+  public async deleteAircraft(id: string, currentUser: AuthenticatedUser) {
     try {
       await this.prisma.aircraft.delete({
         where: { id },
       });
+      logAdminAction("aircraft.delete", currentUser.id, id);
     } catch (error) {
       throw this.normalizePrismaError(error, "Aircraft");
     }
@@ -601,7 +659,10 @@ export class AdminService {
     return this.serializeHub(hub);
   }
 
-  public async createHub(payload: CreateAdminHubDto) {
+  public async createHub(
+    payload: CreateAdminHubDto,
+    currentUser: AuthenticatedUser,
+  ) {
     try {
       const hub = await this.prisma.hub.create({
         data: {
@@ -613,13 +674,18 @@ export class AdminService {
         include: adminHubInclude,
       });
 
+      logAdminAction("hub.create", currentUser.id, hub.id);
       return this.serializeHub(hub);
     } catch (error) {
       throw this.normalizePrismaError(error, "Hub");
     }
   }
 
-  public async updateHub(id: string, payload: UpdateAdminHubDto) {
+  public async updateHub(
+    id: string,
+    payload: UpdateAdminHubDto,
+    currentUser: AuthenticatedUser,
+  ) {
     try {
       const hub = await this.prisma.hub.update({
         where: { id },
@@ -634,17 +700,19 @@ export class AdminService {
         include: adminHubInclude,
       });
 
+      logAdminAction("hub.update", currentUser.id, id);
       return this.serializeHub(hub);
     } catch (error) {
       throw this.normalizePrismaError(error, "Hub");
     }
   }
 
-  public async deleteHub(id: string) {
+  public async deleteHub(id: string, currentUser: AuthenticatedUser) {
     try {
       await this.prisma.hub.delete({
         where: { id },
       });
+      logAdminAction("hub.delete", currentUser.id, id);
     } catch (error) {
       throw this.normalizePrismaError(error, "Hub");
     }
@@ -674,7 +742,10 @@ export class AdminService {
     return this.serializeRoute(route);
   }
 
-  public async createRoute(payload: CreateAdminRouteDto) {
+  public async createRoute(
+    payload: CreateAdminRouteDto,
+    currentUser: AuthenticatedUser,
+  ) {
     try {
       const route = await this.prisma.route.create({
         data: {
@@ -693,13 +764,18 @@ export class AdminService {
         include: adminRouteInclude,
       });
 
+      logAdminAction("route.create", currentUser.id, route.id);
       return this.serializeRoute(route);
     } catch (error) {
       throw this.normalizePrismaError(error, "Route");
     }
   }
 
-  public async updateRoute(id: string, payload: UpdateAdminRouteDto) {
+  public async updateRoute(
+    id: string,
+    payload: UpdateAdminRouteDto,
+    currentUser: AuthenticatedUser,
+  ) {
     try {
       const route = await this.prisma.route.update({
         where: { id },
@@ -739,17 +815,19 @@ export class AdminService {
         include: adminRouteInclude,
       });
 
+      logAdminAction("route.update", currentUser.id, id);
       return this.serializeRoute(route);
     } catch (error) {
       throw this.normalizePrismaError(error, "Route");
     }
   }
 
-  public async deleteRoute(id: string) {
+  public async deleteRoute(id: string, currentUser: AuthenticatedUser) {
     try {
       await this.prisma.route.delete({
         where: { id },
       });
+      logAdminAction("route.delete", currentUser.id, id);
     } catch (error) {
       throw this.normalizePrismaError(error, "Route");
     }
@@ -788,6 +866,58 @@ export class AdminService {
       activeBookingsCount,
       completedFlightsCount,
     };
+  }
+
+  private async assertAdminChangeIsAllowed(
+    transaction: Prisma.TransactionClient,
+    targetUserId: string,
+    currentRole: UserPlatformRole,
+    currentStatus: UserStatus,
+    nextRole: UserPlatformRole | undefined,
+    nextStatus: UserStatus | undefined,
+  ): Promise<void> {
+    if (currentRole !== UserPlatformRole.ADMIN) {
+      return;
+    }
+
+    const resultingRole = nextRole ?? currentRole;
+    const resultingStatus = nextStatus ?? currentStatus;
+
+    if (
+      resultingRole === UserPlatformRole.ADMIN &&
+      resultingStatus === UserStatus.ACTIVE
+    ) {
+      return;
+    }
+
+    const activeAdminCount = await transaction.user.count({
+      where: {
+        role: UserPlatformRole.ADMIN,
+        status: UserStatus.ACTIVE,
+      },
+    });
+
+    if (activeAdminCount <= 1) {
+      throw new ForbiddenException(
+        "The last active administrator cannot be suspended or demoted.",
+      );
+    }
+
+    const remainingActiveAdmins = await transaction.user.count({
+      where: {
+        role: UserPlatformRole.ADMIN,
+        status: UserStatus.ACTIVE,
+        NOT: {
+          id: targetUserId,
+        },
+      },
+    });
+
+    if (remainingActiveAdmins === 0) {
+      throw new ForbiddenException(
+        "The last active administrator cannot be suspended or demoted.",
+      );
+    }
   }
 
   private serializeAdminUserListItem(user: AdminUserListRecord) {

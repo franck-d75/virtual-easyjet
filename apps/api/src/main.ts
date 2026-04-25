@@ -7,6 +7,11 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 
 import { AppModule } from "./app.module.js";
 import type { ApiEnvironment } from "./config/env.js";
+import {
+  applyHttpSecurityHeaders,
+  createCorsOriginHandler,
+  parseCorsOrigins,
+} from "./common/security/http-security.utils.js";
 
 type RequestLike = {
   method: string;
@@ -16,16 +21,10 @@ type RequestLike = {
 type ResponseLike = {
   statusCode: number;
   on: (event: "finish", listener: () => void) => void;
+  setHeader: (name: string, value: string) => void;
 };
 
 type NextLike = () => void;
-
-function parseCorsOrigins(value: string): string[] {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-}
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -36,6 +35,7 @@ async function bootstrap(): Promise<void> {
   const nodeEnv = configService.get("NODE_ENV", { infer: true });
   const corsOrigins = parseCorsOrigins(corsOrigin);
 
+  app.getHttpAdapter().getInstance().disable?.("x-powered-by");
   app.setGlobalPrefix("api");
   app.useGlobalPipes(
     new ValidationPipe({
@@ -45,12 +45,14 @@ async function bootstrap(): Promise<void> {
     }),
   );
   app.enableCors({
-    origin: corsOrigins,
+    origin: createCorsOriginHandler(corsOrigin, nodeEnv),
     credentials: true,
   });
   app.use(
     (request: RequestLike, response: ResponseLike, next: NextLike) => {
       const startedAt = Date.now();
+
+      applyHttpSecurityHeaders(request, response);
 
       response.on("finish", () => {
         console.info("[api]", {
@@ -65,15 +67,17 @@ async function bootstrap(): Promise<void> {
     },
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle("Virtual Airline API")
-    .setDescription("MVP API for the virtual airline platform.")
-    .setVersion("0.1.0")
-    .addBearerAuth()
-    .build();
+  if (nodeEnv !== "production") {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle("Virtual Airline API")
+      .setDescription("MVP API for the virtual airline platform.")
+      .setVersion("0.1.0")
+      .addBearerAuth()
+      .build();
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup("docs", app, document);
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup("docs", app, document);
+  }
 
   await app.listen(apiPort);
   console.info("[api] ready", {

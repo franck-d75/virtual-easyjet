@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard.js";
 import { RolesGuard } from "./common/guards/roles.guard.js";
+import { RateLimitGuard } from "./common/security/rate-limit.guard.js";
+import { RateLimitService } from "./common/security/rate-limit.service.js";
 import { validateApiEnv } from "./config/env.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
 import { AdminModule } from "./modules/admin/admin.module.js";
@@ -76,8 +78,14 @@ const repositoryRoot = findWorkspaceRoot(appModuleDirectory);
     FlightsModule,
   ],
   providers: [
+    RateLimitService,
+    RateLimitGuard,
     JwtAuthGuard,
     RolesGuard,
+    {
+      provide: APP_GUARD,
+      useExisting: RateLimitGuard,
+    },
     {
       provide: APP_GUARD,
       useExisting: JwtAuthGuard,

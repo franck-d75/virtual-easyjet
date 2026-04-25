@@ -6,6 +6,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard.js";
+import { RateLimitGuard } from "./common/security/rate-limit.guard.js";
+import { RateLimitService } from "./common/security/rate-limit.service.js";
 import { validateAcarsEnv } from "./config/env.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
 import { AcarsSessionsModule } from "./modules/acars-sessions/acars-sessions.module.js";
@@ -51,7 +53,13 @@ const repositoryRoot = findWorkspaceRoot(appModuleDirectory);
     AcarsSessionsModule,
   ],
   providers: [
+    RateLimitService,
+    RateLimitGuard,
     JwtAuthGuard,
+    {
+      provide: APP_GUARD,
+      useExisting: RateLimitGuard,
+    },
     {
       provide: APP_GUARD,
       useExisting: JwtAuthGuard,

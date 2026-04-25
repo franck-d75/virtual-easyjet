@@ -17,6 +17,8 @@ import {
   Min,
 } from "class-validator";
 
+const PLAIN_TEXT_REGEX = /^[^<>]*$/;
+
 export class CreateAdminAircraftDto {
   @IsString()
   @Length(2, 16)
@@ -25,6 +27,9 @@ export class CreateAdminAircraftDto {
   @IsOptional()
   @IsString()
   @Length(1, 80)
+  @Matches(PLAIN_TEXT_REGEX, {
+    message: "Le libellé ne doit pas contenir de balises HTML.",
+  })
   public label?: string;
 
   @IsString()
@@ -40,6 +45,9 @@ export class CreateAdminAircraftDto {
   @IsOptional()
   @IsString()
   @Length(1, 500)
+  @Matches(PLAIN_TEXT_REGEX, {
+    message: "Les notes ne doivent pas contenir de balises HTML.",
+  })
   public notes?: string;
 }
 
@@ -52,6 +60,9 @@ export class UpdateAdminAircraftDto {
   @IsOptional()
   @IsString()
   @Length(1, 80)
+  @Matches(PLAIN_TEXT_REGEX, {
+    message: "Le libellé ne doit pas contenir de balises HTML.",
+  })
   public label?: string | null;
 
   @IsOptional()
@@ -69,6 +80,9 @@ export class UpdateAdminAircraftDto {
   @IsOptional()
   @IsString()
   @Length(1, 500)
+  @Matches(PLAIN_TEXT_REGEX, {
+    message: "Les notes ne doivent pas contenir de balises HTML.",
+  })
   public notes?: string | null;
 }
 
@@ -79,6 +93,9 @@ export class CreateAdminHubDto {
 
   @IsString()
   @Length(2, 80)
+  @Matches(PLAIN_TEXT_REGEX, {
+    message: "Le nom du hub ne doit pas contenir de balises HTML.",
+  })
   public name!: string;
 
   @IsString()
@@ -98,6 +115,9 @@ export class UpdateAdminHubDto {
   @IsOptional()
   @IsString()
   @Length(2, 80)
+  @Matches(PLAIN_TEXT_REGEX, {
+    message: "Le nom du hub ne doit pas contenir de balises HTML.",
+  })
   public name?: string;
 
   @IsOptional()
@@ -153,6 +173,9 @@ export class CreateAdminRouteDto {
   @IsOptional()
   @IsString()
   @Length(1, 500)
+  @Matches(PLAIN_TEXT_REGEX, {
+    message: "Les notes ne doivent pas contenir de balises HTML.",
+  })
   public notes?: string | null;
 }
 
@@ -234,6 +257,9 @@ export class UpdateAdminUserDto {
   @IsOptional()
   @IsString()
   @MaxLength(80)
+  @Matches(PLAIN_TEXT_REGEX, {
+    message: "Le prénom ne doit pas contenir de balises HTML.",
+  })
   @Transform(({ value }) =>
     typeof value === "string" ? value.trim() : value,
   )
@@ -242,6 +268,9 @@ export class UpdateAdminUserDto {
   @IsOptional()
   @IsString()
   @MaxLength(80)
+  @Matches(PLAIN_TEXT_REGEX, {
+    message: "Le nom ne doit pas contenir de balises HTML.",
+  })
   @Transform(({ value }) =>
     typeof value === "string" ? value.trim() : value,
   )

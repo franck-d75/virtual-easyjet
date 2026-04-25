@@ -43,6 +43,9 @@ export class RegisterDto {
   @IsNotEmpty()
   @IsString()
   @MaxLength(80)
+  @Matches(/^[^<>]*$/, {
+    message: "firstName must not contain HTML tags",
+  })
   @Transform(({ value }) =>
     typeof value === "string" ? value.trim() : value,
   )
@@ -52,6 +55,9 @@ export class RegisterDto {
   @IsNotEmpty()
   @IsString()
   @MaxLength(80)
+  @Matches(/^[^<>]*$/, {
+    message: "lastName must not contain HTML tags",
+  })
   @Transform(({ value }) =>
     typeof value === "string" ? value.trim() : value,
   )

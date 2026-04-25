@@ -89,10 +89,11 @@ export class AdminController {
   @UseInterceptors(FileInterceptor("file"))
   public uploadUserAvatar(
     @Param("id") id: string,
+    @CurrentUser() currentUser: AuthenticatedUser,
     @UploadedFile() file: UploadedAvatarFile | undefined,
   ) {
     assertValidAvatarFile(file);
-    return this.adminService.updateUserAvatar(id, file);
+    return this.adminService.updateUserAvatar(id, file, currentUser);
   }
 
   @Get("aircraft")
@@ -106,21 +107,28 @@ export class AdminController {
   }
 
   @Post("aircraft")
-  public createAircraft(@Body() payload: CreateAdminAircraftDto) {
-    return this.adminService.createAircraft(payload);
+  public createAircraft(
+    @Body() payload: CreateAdminAircraftDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.createAircraft(payload, currentUser);
   }
 
   @Patch("aircraft/:id")
   public updateAircraft(
     @Param("id") id: string,
     @Body() payload: UpdateAdminAircraftDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
   ) {
-    return this.adminService.updateAircraft(id, payload);
+    return this.adminService.updateAircraft(id, payload, currentUser);
   }
 
   @Delete("aircraft/:id")
-  public deleteAircraft(@Param("id") id: string) {
-    return this.adminService.deleteAircraft(id);
+  public deleteAircraft(
+    @Param("id") id: string,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.deleteAircraft(id, currentUser);
   }
 
   @Get("hubs")
@@ -134,18 +142,28 @@ export class AdminController {
   }
 
   @Post("hubs")
-  public createHub(@Body() payload: CreateAdminHubDto) {
-    return this.adminService.createHub(payload);
+  public createHub(
+    @Body() payload: CreateAdminHubDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.createHub(payload, currentUser);
   }
 
   @Patch("hubs/:id")
-  public updateHub(@Param("id") id: string, @Body() payload: UpdateAdminHubDto) {
-    return this.adminService.updateHub(id, payload);
+  public updateHub(
+    @Param("id") id: string,
+    @Body() payload: UpdateAdminHubDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.updateHub(id, payload, currentUser);
   }
 
   @Delete("hubs/:id")
-  public deleteHub(@Param("id") id: string) {
-    return this.adminService.deleteHub(id);
+  public deleteHub(
+    @Param("id") id: string,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.deleteHub(id, currentUser);
   }
 
   @Get("routes")
@@ -159,20 +177,27 @@ export class AdminController {
   }
 
   @Post("routes")
-  public createRoute(@Body() payload: CreateAdminRouteDto) {
-    return this.adminService.createRoute(payload);
+  public createRoute(
+    @Body() payload: CreateAdminRouteDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.createRoute(payload, currentUser);
   }
 
   @Patch("routes/:id")
   public updateRoute(
     @Param("id") id: string,
     @Body() payload: UpdateAdminRouteDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
   ) {
-    return this.adminService.updateRoute(id, payload);
+    return this.adminService.updateRoute(id, payload, currentUser);
   }
 
   @Delete("routes/:id")
-  public deleteRoute(@Param("id") id: string) {
-    return this.adminService.deleteRoute(id);
+  public deleteRoute(
+    @Param("id") id: string,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.deleteRoute(id, currentUser);
   }
 }

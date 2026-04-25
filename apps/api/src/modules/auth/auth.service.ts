@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Dependencies,
   ConflictException,
   Injectable,
@@ -75,6 +76,8 @@ export class AuthService {
   ) {}
 
   public async register(payload: RegisterDto): Promise<AuthSession> {
+    this.assertRegisterPayload(payload);
+
     const pilotRole = await this.prisma.role.findUnique({
       where: { code: ROLE_CODES.PILOT },
     });
@@ -146,6 +149,8 @@ export class AuthService {
   }
 
   public async login(payload: LoginDto): Promise<AuthSession> {
+    this.assertLoginPayload(payload);
+
     const user = await this.prisma.user.findFirst({
       where: {
         OR: [
@@ -214,7 +219,13 @@ export class AuthService {
   }
 
   public async logout(payload: RefreshTokenDto): Promise<{ success: true }> {
-    const tokenHash = this.hashToken(payload.refreshToken);
+    const refreshToken = payload?.refreshToken?.trim();
+
+    if (!refreshToken) {
+      throw new BadRequestException("A refresh token is required.");
+    }
+
+    const tokenHash = this.hashToken(refreshToken);
 
     await this.prisma.refreshToken.updateMany({
       where: {
@@ -341,6 +352,29 @@ export class AuthService {
 
   private buildPilotNumber(userId: string): string {
     return `VA${userId.slice(-6).toUpperCase()}`;
+  }
+
+  private assertRegisterPayload(payload: RegisterDto | undefined): void {
+    if (
+      !payload ||
+      typeof payload.email !== "string" ||
+      typeof payload.username !== "string" ||
+      typeof payload.password !== "string" ||
+      typeof payload.firstName !== "string" ||
+      typeof payload.lastName !== "string"
+    ) {
+      throw new BadRequestException("A complete registration payload is required.");
+    }
+  }
+
+  private assertLoginPayload(payload: LoginDto | undefined): void {
+    if (
+      !payload ||
+      typeof payload.identifier !== "string" ||
+      typeof payload.password !== "string"
+    ) {
+      throw new BadRequestException("A complete login payload is required.");
+    }
   }
 
   private hashToken(token: string): string {
