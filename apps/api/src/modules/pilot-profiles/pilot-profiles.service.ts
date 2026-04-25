@@ -102,26 +102,14 @@ export class PilotProfilesService {
   ) {
     const pilotProfileId = getRequiredPilotProfileId(user);
     const simbriefPilotId = payload.simbriefPilotId?.trim() ?? null;
-    const avatarUrl = payload.avatarUrl?.trim() ?? null;
 
     try {
-      const profile = await this.prisma.$transaction(async (transaction) => {
-        await transaction.user.update({
-          where: {
-            id: user.id,
-          },
-          data: {
-            avatarUrl,
-          },
-        });
-
-        return transaction.pilotProfile.update({
-          where: { id: pilotProfileId },
-          data: {
-            simbriefPilotId,
-          },
-          include: pilotProfileInclude,
-        });
+      const profile = await this.prisma.pilotProfile.update({
+        where: { id: pilotProfileId },
+        data: {
+          simbriefPilotId,
+        },
+        include: pilotProfileInclude,
       });
 
       return this.serializeProfile(profile);

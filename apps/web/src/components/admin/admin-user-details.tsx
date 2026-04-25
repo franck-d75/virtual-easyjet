@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { AvatarUploadControl } from "@/components/ui/avatar-upload-control";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import type {
   AdminUserDetailResponse,
@@ -45,7 +46,6 @@ type FormState = {
   pilotNumber: string;
   callsign: string;
   countryCode: string;
-  avatarUrl: string;
   role: "USER" | "ADMIN";
   status: "ACTIVE" | "PENDING" | "SUSPENDED";
 };
@@ -58,7 +58,6 @@ function createFormState(user: AdminUserDetailResponse): FormState {
     pilotNumber: user.pilotProfile?.pilotNumber ?? "",
     callsign: user.pilotProfile?.callsign ?? "",
     countryCode: user.pilotProfile?.countryCode ?? "",
-    avatarUrl: user.avatarUrl ?? "",
     role: user.role,
     status:
       user.status === "ACTIVE" || user.status === "SUSPENDED"
@@ -146,7 +145,6 @@ export function AdminUserDetails({
       countryCode: formState.countryCode.trim()
         ? formState.countryCode.trim().toUpperCase()
         : null,
-      avatarUrl: formState.avatarUrl.trim() ? formState.avatarUrl.trim() : null,
       role: formState.role,
       status: formState.status,
     };
@@ -348,10 +346,22 @@ export function AdminUserDetails({
               <h2>Mettre à jour l'utilisateur</h2>
             </div>
             <p>
-              Modifiez l'accès, l'identité pilote et l'URL de l'avatar sans
-              téléversement de fichier.
+              Modifiez l'accès et l'identité pilote, puis gérez l'avatar avec
+              un téléversement local sécurisé.
             </p>
           </div>
+
+          <AvatarUploadControl<AdminUserDetailResponse>
+            currentAvatarUrl={user.avatarUrl}
+            description="Choisissez une image locale depuis votre ordinateur. L'avatar sera mis à jour sur la fiche utilisateur et dans l'espace pilote."
+            displayName={displayName}
+            onUploaded={(payload) => {
+              applyUser(payload);
+            }}
+            saveLabel="Enregistrer l'avatar"
+            title="Téléverser un avatar"
+            uploadUrl={`/api/admin/users/${user.id}/avatar`}
+          />
 
           <form className="auth-form admin-form-grid" onSubmit={handleSubmit}>
             <div className="field">
@@ -362,17 +372,6 @@ export function AdminUserDetails({
                 required
                 type="text"
                 value={formState.username}
-              />
-            </div>
-
-            <div className="field">
-              <label htmlFor="admin-user-avatar-url">Avatar URL</label>
-              <input
-                id="admin-user-avatar-url"
-                onChange={(event) => updateField("avatarUrl", event.target.value)}
-                placeholder="https://..."
-                type="url"
-                value={formState.avatarUrl}
               />
             </div>
 

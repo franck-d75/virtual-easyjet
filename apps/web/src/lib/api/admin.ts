@@ -77,6 +77,22 @@ export async function suspendAdminUser(
   );
 }
 
+export async function uploadAdminUserAvatar(
+  accessToken: string,
+  id: string,
+  payload: FormData,
+): Promise<AdminUserDetailResponse> {
+  return apiRequest<AdminUserDetailResponse>(
+    `/admin/users/${encodeURIComponent(id)}/avatar`,
+    {
+      accessToken,
+      method: "POST",
+      body: payload,
+      cache: "no-store",
+    },
+  );
+}
+
 export async function activateAdminUser(
   accessToken: string,
   id: string,

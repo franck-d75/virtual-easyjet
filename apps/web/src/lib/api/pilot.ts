@@ -3,6 +3,7 @@ import type {
   FlightResponse,
   PilotProfileResponse,
   SimbriefLatestOfpResponse,
+  UserMeResponse,
 } from "./types";
 import { apiRequest } from "./client";
 
@@ -19,7 +20,6 @@ export async function updateMyPilotProfile(
   accessToken: string,
   payload: {
     simbriefPilotId?: string | null;
-    avatarUrl?: string | null;
   },
 ): Promise<PilotProfileResponse> {
   return apiRequest<PilotProfileResponse>("/pilot-profiles/me", {
@@ -40,6 +40,18 @@ export async function getMyLatestSimbriefOfp(
       cache: "no-store",
     },
   );
+}
+
+export async function uploadMyAvatar(
+  accessToken: string,
+  payload: FormData,
+): Promise<UserMeResponse> {
+  return apiRequest<UserMeResponse>("/users/me/avatar", {
+    method: "POST",
+    accessToken,
+    body: payload,
+    cache: "no-store",
+  });
 }
 
 export async function getMyBookings(

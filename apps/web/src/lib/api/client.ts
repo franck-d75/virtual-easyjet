@@ -60,7 +60,11 @@ export async function apiRequest<TResponse>(
   const headers = new Headers(inputHeaders);
   const url = buildUrl(path);
 
-  if (init.body !== undefined && !headers.has("Content-Type")) {
+  if (
+    init.body !== undefined &&
+    !(init.body instanceof FormData) &&
+    !headers.has("Content-Type")
+  ) {
     headers.set("Content-Type", "application/json");
   }
 

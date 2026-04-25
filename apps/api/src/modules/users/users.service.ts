@@ -1,5 +1,7 @@
 import { Dependencies, Injectable, NotFoundException } from "@nestjs/common";
 
+import { AvatarStorageService } from "../../common/storage/avatar-storage.service.js";
+import type { UploadedAvatarFile } from "../../common/storage/avatar-upload.constants.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 function getAvatarUrl(value: unknown): string | null {
@@ -16,9 +18,12 @@ function getAvatarUrl(value: unknown): string | null {
 }
 
 @Injectable()
-@Dependencies(PrismaService)
+@Dependencies(PrismaService, AvatarStorageService)
 export class UsersService {
-  public constructor(private readonly prisma: PrismaService) {}
+  public constructor(
+    private readonly prisma: PrismaService,
+    private readonly avatarStorageService: AvatarStorageService,
+  ) {}
 
   public async findById(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -116,6 +121,19 @@ export class UsersService {
           }
         : null,
     }));
+  }
+
+  public async updateMyAvatar(userId: string, file: UploadedAvatarFile) {
+    const avatarUrl = await this.avatarStorageService.uploadUserAvatar(userId, file);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        avatarUrl,
+      },
+    });
+
+    return this.findById(userId);
   }
 }
 

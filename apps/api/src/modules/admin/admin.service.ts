@@ -16,6 +16,8 @@ import {
 } from "@va/database";
 import type { AuthenticatedUser } from "@va/shared";
 
+import { AvatarStorageService } from "../../common/storage/avatar-storage.service.js";
+import type { UploadedAvatarFile } from "../../common/storage/avatar-upload.constants.js";
 import { decimalToNumber } from "../../common/utils/decimal.utils.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type {
@@ -165,9 +167,12 @@ function normalizeOptionalInt(value: number | null | undefined): number | null {
 }
 
 @Injectable()
-@Dependencies(PrismaService)
+@Dependencies(PrismaService, AvatarStorageService)
 export class AdminService {
-  public constructor(private readonly prisma: PrismaService) {}
+  public constructor(
+    private readonly prisma: PrismaService,
+    private readonly avatarStorageService: AvatarStorageService,
+  ) {}
 
   public async getStats() {
     const [
@@ -342,9 +347,6 @@ export class AdminService {
             ...(payload.username !== undefined
               ? { username: payload.username.trim().toLowerCase() }
               : {}),
-            ...(payload.avatarUrl !== undefined
-              ? { avatarUrl: normalizeOptionalString(payload.avatarUrl) }
-              : {}),
           },
         });
 
@@ -466,6 +468,30 @@ export class AdminService {
     } catch (error) {
       throw this.normalizePrismaError(error, "User");
     }
+  }
+
+  public async updateUserAvatar(id: string, file: UploadedAvatarFile) {
+    const existingUser = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!existingUser) {
+      throw new NotFoundException("User not found.");
+    }
+
+    const avatarUrl = await this.avatarStorageService.uploadUserAvatar(id, file);
+
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        avatarUrl,
+      },
+    });
+
+    return this.getUser(id);
   }
 
   public async listAircraft() {

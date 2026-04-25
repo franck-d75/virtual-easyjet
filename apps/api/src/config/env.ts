@@ -9,6 +9,7 @@ export const apiEnvSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(1),
   JWT_ACCESS_TTL: z.string().default("15m"),
   JWT_REFRESH_TTL: z.string().default("30d"),
+  BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
 });
 
 export type ApiEnvironment = z.infer<typeof apiEnvSchema>;

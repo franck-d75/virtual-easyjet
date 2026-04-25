@@ -626,5 +626,4 @@ export interface AdminUserPayload {
   pilotNumber?: string;
   callsign?: string | null;
   countryCode?: string | null;
-  avatarUrl?: string | null;
 }

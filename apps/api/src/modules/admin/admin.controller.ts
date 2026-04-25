@@ -7,13 +7,20 @@ import {
   Param,
   Patch,
   Post,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { AuthenticatedUser } from "@va/shared";
 
 import { CurrentUser } from "../../common/decorators/current-user.decorator.js";
 import { AdminGuard } from "../../common/guards/admin.guard.js";
+import {
+  assertValidAvatarFile,
+  type UploadedAvatarFile,
+} from "../../common/storage/avatar-upload.constants.js";
 import { AdminService } from "./admin.service.js";
 import {
   CreateAdminAircraftDto,
@@ -76,6 +83,16 @@ export class AdminController {
     @CurrentUser() currentUser: AuthenticatedUser,
   ) {
     return this.adminService.activateUser(id, currentUser);
+  }
+
+  @Post("users/:id/avatar")
+  @UseInterceptors(FileInterceptor("file"))
+  public uploadUserAvatar(
+    @Param("id") id: string,
+    @UploadedFile() file: UploadedAvatarFile | undefined,
+  ) {
+    assertValidAvatarFile(file);
+    return this.adminService.updateUserAvatar(id, file);
   }
 
   @Get("aircraft")

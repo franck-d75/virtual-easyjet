@@ -11,7 +11,6 @@ import {
   IsInt,
   IsOptional,
   IsString,
-  IsUrl,
   Length,
   Matches,
   MaxLength,
@@ -251,8 +250,7 @@ export class UpdateAdminUserDto {
   @IsOptional()
   @IsString()
   @Length(3, 16, {
-    message:
-      "Le numéro pilote doit contenir entre 3 et 16 caractères.",
+    message: "Le numéro pilote doit contenir entre 3 et 16 caractères.",
   })
   @Matches(/^[A-Z0-9-]+$/, {
     message:
@@ -285,22 +283,4 @@ export class UpdateAdminUserDto {
     typeof value === "string" ? value.trim().toUpperCase() : value,
   )
   public countryCode?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(2048)
-  @IsUrl(
-    {
-      protocols: ["https"],
-      require_protocol: true,
-      require_tld: true,
-    },
-    {
-      message: "L'URL de l'avatar doit être une URL HTTPS valide.",
-    },
-  )
-  @Transform(({ value }) =>
-    typeof value === "string" ? value.trim() : value,
-  )
-  public avatarUrl?: string | null;
 }

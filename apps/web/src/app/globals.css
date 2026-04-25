@@ -1819,6 +1819,32 @@ small {
   color: var(--color-text-muted);
 }
 
+.field input[type="file"] {
+  padding-block: 0.7rem;
+  cursor: pointer;
+}
+
+.field input[type="file"]::file-selector-button {
+  margin-right: 0.85rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid rgba(255, 102, 0, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 102, 0, 0.12);
+  color: var(--color-text);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.field input[type="file"]:hover::file-selector-button {
+  border-color: rgba(255, 102, 0, 0.38);
+  background: rgba(255, 102, 0, 0.18);
+  transform: translateY(-1px);
+}
+
 .field input:focus {
   outline: none;
   border-color: rgba(255, 102, 0, 0.44);
@@ -1886,6 +1912,36 @@ small {
 .profile-card__actions {
   display: flex;
   justify-content: flex-start;
+}
+
+.avatar-upload-panel {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid rgba(42, 54, 71, 0.92);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.4), rgba(11, 15, 20, 0.58)),
+    rgba(17, 24, 39, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 16px 36px rgba(3, 7, 18, 0.22);
+}
+
+.avatar-upload-panel__preview {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.avatar-upload-panel__preview h3 {
+  margin: 0.15rem 0 0.35rem;
+}
+
+.avatar-upload-panel__preview p,
+.avatar-upload-panel__filename {
+  margin: 0;
+  color: var(--color-text-secondary);
 }
 
 .simbrief-card__note {

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import type { FormEvent, JSX } from "react";
 import { useRouter } from "next/navigation";
@@ -6,7 +6,9 @@ import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { AvatarUploadControl } from "@/components/ui/avatar-upload-control";
 import { UserAvatar } from "@/components/ui/user-avatar";
+import type { UserMeResponse } from "@/lib/api/types";
 
 type SimbriefSettingsCardProps = {
   initialSimbriefPilotId: string | null;
@@ -56,7 +58,6 @@ export function SimbriefSettingsCard({
     event.preventDefault();
 
     const normalizedSimbriefPilotId = simbriefPilotId.trim();
-    const normalizedAvatarUrl = avatarUrl.trim();
 
     if (
       normalizedSimbriefPilotId.length > 0 &&
@@ -69,24 +70,6 @@ export function SimbriefSettingsCard({
       return;
     }
 
-    if (normalizedAvatarUrl.length > 0) {
-      let parsedUrl: URL | null = null;
-
-      try {
-        parsedUrl = new URL(normalizedAvatarUrl);
-      } catch {
-        parsedUrl = null;
-      }
-
-      if (!parsedUrl || parsedUrl.protocol !== "https:") {
-        setFeedback({
-          tone: "danger",
-          message: "L'URL de l'avatar doit être une URL HTTPS valide.",
-        });
-        return;
-      }
-    }
-
     setFeedback(null);
 
     const response = await fetch("/api/pilot/profile", {
@@ -97,7 +80,6 @@ export function SimbriefSettingsCard({
       body: JSON.stringify({
         simbriefPilotId:
           normalizedSimbriefPilotId.length > 0 ? normalizedSimbriefPilotId : null,
-        avatarUrl: normalizedAvatarUrl.length > 0 ? normalizedAvatarUrl : null,
       }),
     });
 
@@ -134,43 +116,41 @@ export function SimbriefSettingsCard({
             <span className="section-eyebrow">Identité et SimBrief</span>
             <h2>Paramètres du profil</h2>
             <p className="simbrief-card__note">
-              Ajoutez une URL d'avatar HTTPS et votre SimBrief Pilot ID pour
-              enrichir votre identité pilote sur le web.
+              Téléversez votre avatar puis renseignez votre SimBrief Pilot ID
+              pour enrichir votre identité pilote sur le web.
             </p>
           </div>
         </div>
         <div className="profile-card__identity">
-          <strong>{initialSimbriefPilotId ?? "Non configuré"}</strong>
-          <span>{initialAvatarUrl ? "Avatar actif" : "Avatar non renseigné"}</span>
+          <strong>{simbriefPilotId.trim() || "Non configuré"}</strong>
+          <span>{avatarUrl ? "Avatar actif" : "Avatar non renseigné"}</span>
         </div>
       </div>
 
       <div className="definition-grid">
         <div>
           <span>Avatar</span>
-          <strong>{initialAvatarUrl ? "URL HTTPS active" : "Fallback initiales"}</strong>
+          <strong>{avatarUrl ? "Téléversé" : "Fallback initiales"}</strong>
         </div>
         <div>
           <span>Préparation OFP</span>
-          <strong>{initialSimbriefPilotId ? "Prêt" : "Non configuré"}</strong>
+          <strong>{simbriefPilotId.trim() ? "Prêt" : "Non configuré"}</strong>
         </div>
       </div>
 
-      <form className="auth-form" onSubmit={handleSubmit}>
-        <div className="field">
-          <label htmlFor="profile-avatar-url">Avatar URL</label>
-          <input
-            autoComplete="off"
-            id="profile-avatar-url"
-            onChange={(event) => {
-              setAvatarUrl(event.target.value);
-            }}
-            placeholder="https://..."
-            type="url"
-            value={avatarUrl}
-          />
-        </div>
+      <AvatarUploadControl<UserMeResponse>
+        currentAvatarUrl={avatarUrl}
+        description="Choisissez une image locale depuis votre ordinateur. L'avatar sera mis à jour sur votre espace pilote et dans le header."
+        displayName={displayName}
+        onUploaded={(payload) => {
+          setAvatarUrl(payload.avatarUrl ?? "");
+        }}
+        saveLabel="Enregistrer l'avatar"
+        title="Téléverser un avatar"
+        uploadUrl="/api/pilot/avatar"
+      />
 
+      <form className="auth-form" onSubmit={handleSubmit}>
         <div className="field">
           <label htmlFor="simbrief-pilot-id">SimBrief Pilot ID</label>
           <input
@@ -188,7 +168,7 @@ export function SimbriefSettingsCard({
         </div>
 
         <p className="simbrief-card__note">
-          Laissez un champ vide puis enregistrez pour supprimer la valeur
+          Laissez ce champ vide puis enregistrez pour supprimer la valeur
           actuellement configurée.
         </p>
 
@@ -203,11 +183,10 @@ export function SimbriefSettingsCard({
 
         <div className="profile-card__actions">
           <Button disabled={isPending} type="submit">
-            {isPending ? "Enregistrement..." : "Enregistrer"}
+            {isPending ? "Enregistrement..." : "Enregistrer le profil"}
           </Button>
         </div>
       </form>
     </Card>
   );
 }
-

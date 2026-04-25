@@ -1,11 +1,12 @@
 import { Module } from "@nestjs/common";
 
+import { AvatarStorageModule } from "../../common/storage/avatar-storage.module.js";
 import { PrismaModule } from "../prisma/prisma.module.js";
 import { UsersController } from "./users.controller.js";
 import { UsersService } from "./users.service.js";
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, AvatarStorageModule],
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService],
