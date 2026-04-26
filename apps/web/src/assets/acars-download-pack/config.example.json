@@ -1,0 +1,11 @@
+{
+  "productName": "Virtual Easyjet ACARS",
+  "releaseChannel": "preview",
+  "webAppUrl": "https://www.virtual-easyjet.fr",
+  "apiBaseUrl": "https://api.virtual-easyjet.fr/api",
+  "liveMapUrl": "https://www.virtual-easyjet.fr/live-map",
+  "notes": [
+    "Pack temporaire de pré-distribution",
+    "Le client desktop officiel sera publié prochainement"
+  ]
+}

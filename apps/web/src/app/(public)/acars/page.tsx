@@ -18,32 +18,13 @@ type AcarsPageProps = {
 
 type AcarsAvailabilityState = "ONLINE" | "IDLE" | "UNAVAILABLE";
 
-function getFirstQueryValue(
-  value: string | string[] | undefined,
-): string | null {
-  if (typeof value === "string" && value.trim().length > 0) {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    return value.find((item) => item.trim().length > 0) ?? null;
-  }
-
-  return null;
-}
-
 export const dynamic = "force-dynamic";
 
 export default async function AcarsPage({
   searchParams,
 }: AcarsPageProps): Promise<JSX.Element> {
-  const query = await searchParams;
+  await searchParams;
   const version = getAcarsCurrentVersion();
-  const downloadConfigured = Boolean(
-    process.env.ACARS_DOWNLOAD_URL?.trim() ||
-      process.env.NEXT_PUBLIC_ACARS_DOWNLOAD_URL?.trim(),
-  );
-  const downloadState = getFirstQueryValue(query.download);
 
   let availability: AcarsAvailabilityState = "IDLE";
   let activeFlightsCount = 0;
@@ -104,8 +85,8 @@ export default async function AcarsPage({
               </div>
               <div className="hero-summary-card">
                 <span>Distribution</span>
-                <strong>{downloadConfigured ? "Prête" : "À relier"}</strong>
-                <small>via proxy web</small>
+                <strong>Prête</strong>
+                <small>via téléchargement web</small>
               </div>
             </div>
             <p className="hero-aside-note">
@@ -120,19 +101,6 @@ export default async function AcarsPage({
         subtitle="Le module ACARS regroupe le client desktop, l’état du suivi live et le point d’entrée opérationnel entre l’espace pilote et la carte en direct."
         title="Virtual Easyjet ACARS"
       />
-
-      {downloadState === "unavailable" ? (
-        <section className="section-band">
-          <Card className="ops-card ops-card--highlight">
-            <span className="section-eyebrow">Téléchargement</span>
-            <h2>Le binaire public n’est pas encore configuré</h2>
-            <p>
-              Le bouton de téléchargement est prêt, mais l’URL publique du
-              client ACARS n’est pas encore reliée à ce site.
-            </p>
-          </Card>
-        </section>
-      ) : null}
 
       <section className="section-band">
         <div className="section-band__header">

@@ -1,0 +1,22 @@
+Virtual Easyjet endpoints
+=========================
+
+Application web
+https://www.virtual-easyjet.fr
+
+Base API publique
+https://api.virtual-easyjet.fr/api
+
+Carte en direct
+https://www.virtual-easyjet.fr/live-map
+
+Routes publiques utiles
+- GET /public/home
+- GET /public/stats
+- GET /acars/live
+
+Routes d’authentification utiles
+- POST /auth/login
+- POST /auth/refresh
+- POST /auth/logout
+- GET /auth/me
