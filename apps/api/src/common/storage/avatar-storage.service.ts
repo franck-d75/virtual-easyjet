@@ -29,6 +29,14 @@ export class AvatarStorageService {
       process.env.BLOB_READ_WRITE_TOKEN;
 
     if (!token) {
+      const nodeEnv =
+        this.configService.get("NODE_ENV", { infer: true }) ?? process.env.NODE_ENV;
+
+      if (nodeEnv !== "production") {
+        const base64Payload = file.buffer.toString("base64");
+        return `data:${file.mimetype};base64,${base64Payload}`;
+      }
+
       throw new ServiceUnavailableException(
         "Le stockage des avatars n'est pas configuré.",
       );

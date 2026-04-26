@@ -297,9 +297,9 @@ function buildNextAction(
 
   if (activeFlight?.acarsSession) {
     return {
-      eyebrow: "A faire maintenant",
+      eyebrow: "À faire maintenant",
       title: `Poursuivre ${activeFlight.flightNumber}`,
-      description: `Votre vol est deja suivi par ACARS (${activeFlight.acarsSession.detectedPhase}). Continuez l'exploitation dans le client desktop, puis revenez ici pour suivre le PIREP.`,
+      description: `Votre vol est déjà suivi par ACARS (${activeFlight.acarsSession.detectedPhase}). Continuez l'exploitation dans le client desktop, puis revenez ici pour suivre le PIREP.`,
       primaryLabel: "Suivre mes vols",
       primaryHref: "/vols",
       secondaryLabel: "Voir mes PIREPs",
@@ -309,13 +309,13 @@ function buildNextAction(
 
   if (activeFlight) {
     return {
-      eyebrow: "A faire maintenant",
+      eyebrow: "À faire maintenant",
       title: `Lancer l'exploitation de ${activeFlight.flightNumber}`,
       description:
-        "Un vol canonique existe deja. Ouvrez le client ACARS pour creer la session, envoyer la telemetrie et finaliser le PIREP.",
+        "Un vol canonique existe déjà. Ouvrez le client ACARS pour créer la session, envoyer la télémétrie et finaliser le PIREP.",
       primaryLabel: "Voir le vol actif",
       primaryHref: "/vols",
-      secondaryLabel: "Voir mes reservations",
+      secondaryLabel: "Voir mes réservations",
       secondaryHref: "/bookings",
     };
   }
@@ -324,11 +324,11 @@ function buildNextAction(
 
   if (nextRotation) {
     return {
-      eyebrow: "A faire maintenant",
-      title: `Preparer ${nextRotation.reservedFlightNumber}`,
+      eyebrow: "À faire maintenant",
+      title: `Préparer ${nextRotation.reservedFlightNumber}`,
       description:
-        "Votre prochaine rotation est deja reservee. Elle peut etre transformee en vol canonique, puis exploitee dans ACARS.",
-      primaryLabel: "Ouvrir mes reservations",
+        "Votre prochaine rotation est déjà réservée. Elle peut être transformée en vol canonique, puis exploitée dans ACARS.",
+      primaryLabel: "Ouvrir mes réservations",
       primaryHref: "/bookings",
       secondaryLabel: "Voir mes vols",
       secondaryHref: "/vols",
@@ -336,13 +336,13 @@ function buildNextAction(
   }
 
   return {
-    eyebrow: "A faire maintenant",
-    title: "Reserver une nouvelle rotation",
+    eyebrow: "À faire maintenant",
+    title: "Réserver une nouvelle rotation",
     description:
-      "Aucun vol actif n'est en attente. Choisissez une rotation disponible depuis la page Reservations pour repartir sur un cycle complet reservation -> vol -> PIREP.",
+      "Aucun vol actif n'est en attente. Choisissez une rotation disponible depuis la page Réservations pour repartir sur un cycle complet réservation → vol → PIREP.",
     primaryLabel: "Choisir une rotation",
     primaryHref: "/bookings",
-    secondaryLabel: "Explorer le reseau",
+    secondaryLabel: "Explorer le réseau",
     secondaryHref: "/routes",
   };
 }

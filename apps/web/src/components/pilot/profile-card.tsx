@@ -49,7 +49,7 @@ export function ProfileCard({ profile }: ProfileCardProps): JSX.Element {
         </div>
         <div>
           <span>Hub</span>
-          <strong>{profile.hub?.name ?? "Non attribué"}</strong>
+          <strong>{profile.hub?.name ?? "Hub non attribué"}</strong>
         </div>
         <div>
           <span>Heures de vol</span>

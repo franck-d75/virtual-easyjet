@@ -29,19 +29,19 @@ export default async function AdminUsersPage(): Promise<JSX.Element> {
           <span className="section-eyebrow">Administration utilisateurs</span>
           <h1>Gestion des utilisateurs</h1>
           <p>
-            Supervisez les comptes, les profils pilotes, les roles et les statuts
-            depuis un espace prive centralise.
+            Supervisez les comptes, les profils pilotes, les rôles et les statuts
+            depuis un espace privé centralisé.
           </p>
         </div>
       </section>
 
       {isDegraded ? (
         <Card className="ops-card">
-          <span className="section-eyebrow">Mode degrade</span>
+          <span className="section-eyebrow">Mode dégradé</span>
           <h2>La gestion utilisateurs reste accessible</h2>
           <p>
-            L&apos;annuaire n&apos;a pas pu etre recharge completement. La page
-            reste disponible avec les donnees actuellement exploitables.
+            L&apos;annuaire n&apos;a pas pu être rechargé complètement. La page
+            reste disponible avec les données actuellement exploitables.
           </p>
         </Card>
       ) : null}

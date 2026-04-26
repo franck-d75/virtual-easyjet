@@ -5,14 +5,15 @@ import { SimbriefLatestOfpCard } from "@/components/pilot/simbrief-latest-ofp-ca
 import { SimbriefSettingsCard } from "@/components/pilot/simbrief-settings-card";
 import { Card } from "@/components/ui/card";
 import { getMyLatestSimbriefOfp, getMyPilotProfile } from "@/lib/api/pilot";
+import { getPublicHubs } from "@/lib/api/public";
 import type {
+  HubResponse,
   PilotProfileResponse,
   SimbriefLatestOfpResponse,
   UserMeResponse,
 } from "@/lib/api/types";
 import { requirePilotSession } from "@/lib/auth/guards";
 import { logWebWarning } from "@/lib/observability/log";
-import { buildUserDisplayName } from "@/lib/utils/user-display";
 
 function buildFallbackProfile(
   user: UserMeResponse & {
@@ -25,7 +26,7 @@ function buildFallbackProfile(
     callsign: null,
     firstName: user.pilotProfile.firstName,
     lastName: user.pilotProfile.lastName,
-    countryCode: null,
+    countryCode: user.pilotProfile.countryCode,
     simbriefPilotId: user.pilotProfile.simbriefPilotId,
     status: user.pilotProfile.status,
     experiencePoints: 0,
@@ -62,7 +63,7 @@ function buildFallbackProfile(
 function buildFallbackLatestOfp(
   pilotId: string | null,
   status: SimbriefLatestOfpResponse["status"] = "ERROR",
-  detail = "Le service SimBrief est momentanement indisponible.",
+  detail = "Le service SimBrief est momentanément indisponible.",
 ): SimbriefLatestOfpResponse {
   return {
     status,
@@ -78,10 +79,12 @@ function buildFallbackLatestOfp(
 export default async function ProfilePage(): Promise<JSX.Element> {
   const session = await requirePilotSession();
   const fallbackProfile = buildFallbackProfile(session.user);
-  const [profileResult, latestSimbriefOfpResult] = await Promise.allSettled([
-    getMyPilotProfile(session.accessToken),
-    getMyLatestSimbriefOfp(session.accessToken),
-  ]);
+  const [profileResult, latestSimbriefOfpResult, hubsResult] =
+    await Promise.allSettled([
+      getMyPilotProfile(session.accessToken),
+      getMyLatestSimbriefOfp(session.accessToken),
+      getPublicHubs(),
+    ]);
 
   const profile =
     profileResult.status === "fulfilled"
@@ -94,6 +97,10 @@ export default async function ProfilePage(): Promise<JSX.Element> {
           profile.simbriefPilotId,
           profile.simbriefPilotId ? "ERROR" : "NOT_CONFIGURED",
         );
+  const availableHubs =
+    hubsResult.status === "fulfilled" && Array.isArray(hubsResult.value)
+      ? hubsResult.value
+      : ([] as HubResponse[]);
   const isDegraded =
     profileResult.status !== "fulfilled" ||
     latestSimbriefOfpResult.status !== "fulfilled";
@@ -109,12 +116,6 @@ export default async function ProfilePage(): Promise<JSX.Element> {
     );
   }
 
-  const displayName = buildUserDisplayName({
-    firstName: profile.firstName,
-    lastName: profile.lastName,
-    username: profile.user.username,
-  });
-
   return (
     <>
       <section className="page-hero">
@@ -122,19 +123,19 @@ export default async function ProfilePage(): Promise<JSX.Element> {
         <h1>Mon profil pilote</h1>
         <p>
           Consultez vos informations pilote, votre rang, votre hub et votre
-          progression au sein de la compagnie, puis configurez ici votre liaison
-          SimBrief pour les futures recuperations de plan de vol.
+          progression au sein de la compagnie, puis mettez à jour ici votre
+          identité pilote, votre hub préféré et votre liaison SimBrief.
         </p>
       </section>
       {isDegraded ? (
         <section className="section-band">
           <Card className="ops-card">
-            <span className="section-eyebrow">Mode degrade</span>
+            <span className="section-eyebrow">Mode dégradé</span>
             <h2>Le profil reste accessible</h2>
             <p>
-              Certaines donnees n&apos;ont pas pu etre rechargees depuis l&apos;API.
+              Certaines données n&apos;ont pas pu être rechargées depuis l&apos;API.
               Les informations essentielles restent visibles et vous pourrez
-              reessayer dans quelques instants.
+              réessayer dans quelques instants.
             </p>
           </Card>
         </section>
@@ -142,8 +143,18 @@ export default async function ProfilePage(): Promise<JSX.Element> {
       <section className="panel-grid">
         <ProfileCard profile={profile} />
         <SimbriefSettingsCard
-          displayName={displayName}
+          availableHubs={availableHubs.map((hub) => ({
+            id: hub.id,
+            code: hub.code,
+            name: hub.name,
+          }))}
+          initialCallsign={profile.callsign}
+          initialCountryCode={profile.countryCode}
+          initialFirstName={profile.firstName}
           initialPilotNumber={profile.pilotNumber}
+          initialPreferredHubId={profile.hub?.id ?? null}
+          initialLastName={profile.lastName}
+          initialUsername={profile.user.username}
           initialAvatarUrl={profile.user.avatarUrl}
           initialSimbriefPilotId={profile.simbriefPilotId}
         />
@@ -152,12 +163,12 @@ export default async function ProfilePage(): Promise<JSX.Element> {
         <div className="section-band__header">
           <div>
             <span className="section-eyebrow">Dernier OFP</span>
-            <h2>Lecture SimBrief isolee</h2>
+            <h2>Lecture SimBrief isolée</h2>
           </div>
           <p>
-            Le web recupere ici le dernier plan de vol SimBrief en temps reel a
-            partir du SimBrief Pilot ID stocke dans votre profil, sans encore
-            injecter automatiquement ces donnees dans ACARS.
+            Le web récupère ici le dernier plan de vol SimBrief en temps réel à
+            partir du SimBrief Pilot ID stocké dans votre profil, sans encore
+            injecter automatiquement ces données dans ACARS.
           </p>
         </div>
 

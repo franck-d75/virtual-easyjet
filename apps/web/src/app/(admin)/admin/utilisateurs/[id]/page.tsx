@@ -35,8 +35,8 @@ export default async function AdminUserDetailsPage({
           <span className="section-eyebrow">Administration utilisateurs</span>
           <h1>Fiche utilisateur</h1>
           <p>
-            Consultez l&apos;historique recent, ajustez l&apos;acces et gerez
-            l&apos;identite pilote depuis une fiche privee unique.
+            Consultez l&apos;historique récent, ajustez l&apos;accès et gérez
+            l&apos;identité pilote depuis une fiche privée unique.
           </p>
         </div>
       </section>
@@ -46,9 +46,9 @@ export default async function AdminUserDetailsPage({
       ) : (
         <Card className="ops-card">
           <span className="section-eyebrow">Indisponible</span>
-          <h2>La fiche utilisateur n&apos;a pas pu etre chargee</h2>
+          <h2>La fiche utilisateur n&apos;a pas pu être chargée</h2>
           <p>
-            Reessayez dans quelques instants. L&apos;authentification et les
+            Réessayez dans quelques instants. L&apos;authentification et les
             autres modules d&apos;administration restent disponibles.
           </p>
         </Card>

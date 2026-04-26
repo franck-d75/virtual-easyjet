@@ -1,11 +1,23 @@
 import type {
   BookingResponse,
   FlightResponse,
+  HubResponse,
   PilotProfileResponse,
   SimbriefLatestOfpResponse,
   UserMeResponse,
 } from "./types";
 import { apiRequest } from "./client";
+
+export interface UpdateMyPilotProfilePayload {
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  pilotNumber?: string | null;
+  countryCode?: string | null;
+  callsign?: string | null;
+  simbriefPilotId?: string | null;
+  preferredHubId?: HubResponse["id"] | null;
+}
 
 export async function getMyPilotProfile(
   accessToken: string,
@@ -18,10 +30,7 @@ export async function getMyPilotProfile(
 
 export async function updateMyPilotProfile(
   accessToken: string,
-  payload: {
-    pilotNumber?: string | null;
-    simbriefPilotId?: string | null;
-  },
+  payload: UpdateMyPilotProfilePayload,
 ): Promise<PilotProfileResponse> {
   return apiRequest<PilotProfileResponse>("/pilot-profiles/me", {
     method: "PATCH",
