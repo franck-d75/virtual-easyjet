@@ -11,14 +11,28 @@ export class ApiError extends Error {
   }
 }
 
-type ApiRequestOptions = RequestInit & {
-  accessToken?: string;
+type ApiRequestNextOptions = {
+  revalidate?: number;
+  tags?: string[];
 };
 
+type ApiRequestOptions = RequestInit & {
+  accessToken?: string;
+  next?: ApiRequestNextOptions;
+  retryCount?: number;
+  retryDelayMs?: number;
+  timeoutMs?: number;
+};
+
+const DEFAULT_FETCH_TIMEOUT_MS = 8_000;
+const DEFAULT_RETRY_COUNT = 1;
+const DEFAULT_RETRY_DELAY_MS = 350;
+const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+
 function buildUrl(path: string): string {
-  const baseUrl = getApiBaseUrl().replace(/\/+$/, "");
+  const baseUrl = `${getApiBaseUrl().replace(/\/+$/, "")}/`;
   const normalizedPath = path.replace(/^\/+/, "");
-  return `${baseUrl}/${normalizedPath}`;
+  return new URL(normalizedPath, baseUrl).toString();
 }
 
 function serializeError(error: unknown): { type: string; message: string } {
@@ -52,13 +66,64 @@ function extractMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+function isIdempotentMethod(method: string | undefined): boolean {
+  if (!method) {
+    return true;
+  }
+
+  return ["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
+}
+
+function mergeAbortSignal(
+  signal: AbortSignal | null | undefined,
+  timeoutSignal: AbortSignal,
+): AbortSignal {
+  if (!signal) {
+    return timeoutSignal;
+  }
+
+  if (typeof AbortSignal.any === "function") {
+    return AbortSignal.any([signal, timeoutSignal]);
+  }
+
+  return signal.aborted ? signal : timeoutSignal;
+}
+
+function shouldRetryStatus(
+  status: number,
+  isIdempotentRequest: boolean,
+): boolean {
+  return isIdempotentRequest && RETRYABLE_STATUS_CODES.has(status);
+}
+
+async function waitBeforeRetry(delayMs: number): Promise<void> {
+  if (delayMs <= 0) {
+    return;
+  }
+
+  await new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
 export async function apiRequest<TResponse>(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<TResponse> {
-  const { accessToken, headers: inputHeaders, ...init } = options;
+  const {
+    accessToken,
+    headers: inputHeaders,
+    next: nextOptions,
+    retryCount = DEFAULT_RETRY_COUNT,
+    retryDelayMs = DEFAULT_RETRY_DELAY_MS,
+    timeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
+    ...init
+  } = options;
   const headers = new Headers(inputHeaders);
   const url = buildUrl(path);
+  const requestMethod = init.method ?? "GET";
+  const idempotentRequest = isIdempotentMethod(requestMethod);
+  const attempts = idempotentRequest ? Math.max(1, retryCount + 1) : 1;
 
   if (
     init.body !== undefined &&
@@ -73,24 +138,80 @@ export async function apiRequest<TResponse>(
   }
 
   console.info("[web] api request", {
-    method: init.method ?? "GET",
+    method: requestMethod,
     url,
   });
 
-  let response: Response;
+  let response: Response | null = null;
+  let lastError: unknown = null;
 
-  try {
-    response = await fetch(url, {
-      ...init,
-      headers,
-    });
-  } catch (error) {
-    console.error("[web] api request failed", {
-      method: init.method ?? "GET",
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => {
+      timeoutController.abort();
+    }, timeoutMs);
+
+    try {
+      response = await fetch(url, {
+        ...init,
+        cache: init.cache ?? "no-store",
+        headers,
+        next: {
+          revalidate: 0,
+          ...nextOptions,
+        },
+        signal: mergeAbortSignal(init.signal, timeoutController.signal),
+      });
+    } catch (error) {
+      lastError = error;
+      clearTimeout(timeoutId);
+
+      console.warn("[web] api request attempt failed", {
+        attempt,
+        attempts,
+        method: requestMethod,
+        url,
+        error: serializeError(error),
+      });
+
+      if (attempt >= attempts) {
+        console.error("[web] api request failed", {
+          attempts,
+          method: requestMethod,
+          url,
+          error: serializeError(error),
+        });
+        throw error;
+      }
+
+      await waitBeforeRetry(retryDelayMs * attempt);
+      continue;
+    }
+
+    clearTimeout(timeoutId);
+
+    if (
+      response.ok ||
+      !shouldRetryStatus(response.status, idempotentRequest) ||
+      attempt >= attempts
+    ) {
+      break;
+    }
+
+    console.warn("[web] api request retry scheduled", {
+      attempt,
+      attempts,
+      method: requestMethod,
       url,
-      error: serializeError(error),
+      status: response.status,
     });
-    throw error;
+
+    await waitBeforeRetry(retryDelayMs * attempt);
+    response = null;
+  }
+
+  if (!response) {
+    throw (lastError ?? new Error("API request failed without response.")) as Error;
   }
 
   const responseText = await response.text();

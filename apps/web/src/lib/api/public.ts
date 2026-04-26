@@ -9,6 +9,21 @@ import type {
   PublicStatsResponse,
   RouteResponse,
 } from "./types";
+import { logWebWarning } from "../observability/log";
+
+const EMPTY_PUBLIC_STATS: PublicStatsResponse = {
+  activePilots: 0,
+  completedFlights: 0,
+  totalFlightHours: 0,
+  validatedPireps: 0,
+};
+
+const EMPTY_PUBLIC_HOME: PublicHomeResponse = {
+  stats: EMPTY_PUBLIC_STATS,
+  aircraft: [],
+  hubs: [],
+  routes: [],
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -47,6 +62,51 @@ function normalizePublicStats(payload: unknown): PublicStatsResponse {
   };
 }
 
+function createEmptyRouteDetail(code: string): RouteDetailResponse {
+  return {
+    id: `missing-${code}`,
+    code,
+    flightNumber: code,
+    distanceNm: null,
+    blockTimeMinutes: null,
+    isActive: false,
+    notes: null,
+    departureAirport: {
+      id: "missing-departure",
+      icao: "-",
+      iata: null,
+      name: "Aéroport indisponible",
+      city: null,
+      countryCode: "",
+    },
+    arrivalAirport: {
+      id: "missing-arrival",
+      icao: "-",
+      iata: null,
+      name: "Aéroport indisponible",
+      city: null,
+      countryCode: "",
+    },
+    departureHub: null,
+    arrivalHub: null,
+    aircraftType: null,
+    schedules: [],
+  };
+}
+
+async function safePublicRequest<TResponse>(
+  label: string,
+  request: () => Promise<TResponse>,
+  fallback: TResponse,
+): Promise<TResponse> {
+  try {
+    return await request();
+  } catch (error) {
+    logWebWarning(`${label} failed`, error);
+    return fallback;
+  }
+}
+
 function normalizePublicHomeResponse(payload: unknown): PublicHomeResponse {
   const root = isRecord(payload) ? payload : {};
   const source =
@@ -63,64 +123,123 @@ function normalizePublicHomeResponse(payload: unknown): PublicHomeResponse {
 }
 
 export async function getPublicHome(): Promise<PublicHomeResponse> {
-  const payload = await apiRequest<unknown>("/public/home", {
-    cache: "no-store",
-  });
+  const payload = await safePublicRequest("public home", () =>
+    apiRequest<unknown>("/public/home", {
+      cache: "no-store",
+      next: { revalidate: 0 },
+      retryCount: 1,
+      timeoutMs: 8_000,
+    }),
+  undefined);
+
+  if (payload === undefined) {
+    return EMPTY_PUBLIC_HOME;
+  }
 
   return normalizePublicHomeResponse(payload);
 }
 
 export async function getPublicStats(): Promise<PublicStatsResponse> {
-  return apiRequest<PublicStatsResponse>("/public/stats", {
-    cache: "no-store",
-  });
+  return safePublicRequest("public stats", () =>
+    apiRequest<PublicStatsResponse>("/public/stats", {
+      cache: "no-store",
+      next: { revalidate: 0 },
+      retryCount: 1,
+      timeoutMs: 8_000,
+    }),
+  EMPTY_PUBLIC_STATS);
 }
 
 export async function getPublicRanks(): Promise<RankResponse[]> {
-  return apiRequest<RankResponse[]>("/ranks", {
-    cache: "no-store",
-  });
+  return safePublicRequest("public ranks", () =>
+    apiRequest<RankResponse[]>("/ranks", {
+      cache: "no-store",
+      next: { revalidate: 0 },
+      retryCount: 1,
+      timeoutMs: 8_000,
+    }),
+  []);
 }
 
 export async function getPublicAircraft(): Promise<AircraftResponse[]> {
-  return apiRequest<AircraftResponse[]>("/aircraft", {
-    cache: "no-store",
-  });
+  return safePublicRequest("public aircraft", () =>
+    apiRequest<AircraftResponse[]>("/aircraft", {
+      cache: "no-store",
+      next: { revalidate: 0 },
+      retryCount: 1,
+      timeoutMs: 8_000,
+    }),
+  []);
 }
 
 export async function getPublicHubs(): Promise<HubResponse[]> {
-  return apiRequest<HubResponse[]>("/hubs", {
-    cache: "no-store",
-  });
+  return safePublicRequest("public hubs", () =>
+    apiRequest<HubResponse[]>("/hubs", {
+      cache: "no-store",
+      next: { revalidate: 0 },
+      retryCount: 1,
+      timeoutMs: 8_000,
+    }),
+  []);
 }
 
 export async function getPublicRoutes(): Promise<RouteResponse[]> {
-  return apiRequest<RouteResponse[]>("/routes", {
-    cache: "no-store",
-  });
+  return safePublicRequest("public routes", () =>
+    apiRequest<RouteResponse[]>("/routes", {
+      cache: "no-store",
+      next: { revalidate: 0 },
+      retryCount: 1,
+      timeoutMs: 8_000,
+    }),
+  []);
 }
 
 export async function getPublicRouteDetails(
   code: string,
 ): Promise<RouteDetailResponse> {
-  return apiRequest<RouteDetailResponse>(`/routes/${encodeURIComponent(code)}`, {
-    cache: "no-store",
-  });
+  return safePublicRequest(
+    `public route details (${code})`,
+    () =>
+      apiRequest<RouteDetailResponse>(`/routes/${encodeURIComponent(code)}`, {
+        cache: "no-store",
+        next: { revalidate: 0 },
+        retryCount: 1,
+        timeoutMs: 8_000,
+      }),
+    createEmptyRouteDetail(code),
+  );
 }
 
 export async function getPublicRouteCatalog(): Promise<RouteDetailResponse[]> {
   const routes = await getPublicRoutes();
   const activeRoutes = routes.filter((route) => route.isActive);
 
-  return Promise.all(
+  if (activeRoutes.length === 0) {
+    return [];
+  }
+
+  const routeResults = await Promise.allSettled(
     activeRoutes.map((route) => getPublicRouteDetails(route.code)),
+  );
+
+  return routeResults.flatMap((result) =>
+    result.status === "fulfilled" ? [result.value] : [],
   );
 }
 
 export async function getBackendAcarsLiveTraffic(): Promise<LiveMapAircraft[]> {
-  const payload = await apiRequest<unknown>("/acars/live", {
-    cache: "no-store",
-  });
+  const payload = await safePublicRequest("backend acars live", () =>
+    apiRequest<unknown>("/acars/live", {
+      cache: "no-store",
+      next: { revalidate: 0 },
+      retryCount: 1,
+      timeoutMs: 8_000,
+    }),
+  undefined);
+
+  if (payload === undefined) {
+    return [];
+  }
 
   return normalizeLiveMapTraffic(payload);
 }
@@ -133,6 +252,7 @@ export async function getAcarsLiveTraffic(): Promise<LiveMapAircraft[]> {
   const response = await fetch("/api/public/acars/live", {
     method: "GET",
     cache: "no-store",
+    next: { revalidate: 0 },
   });
 
   const responseText = await response.text();
