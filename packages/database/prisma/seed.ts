@@ -1134,25 +1134,178 @@ function readOptionalPilotConfig(): AccountSeedConfig | null {
   };
 }
 
-async function resetOperationalData(): Promise<void> {
-  await prisma.violation.deleteMany();
-  await prisma.flightEvent.deleteMany();
-  await prisma.telemetryPoint.deleteMany();
-  await prisma.pirep.deleteMany();
-  await prisma.acarsSession.deleteMany();
-  await prisma.flight.deleteMany();
-  await prisma.booking.deleteMany();
-  await prisma.schedule.deleteMany();
-  await prisma.route.deleteMany();
-  await prisma.aircraft.deleteMany();
-  await prisma.hub.deleteMany();
-  await prisma.staffNote.deleteMany();
-  await prisma.pilotQualification.deleteMany();
-  await prisma.checkride.deleteMany();
-  await prisma.refreshToken.deleteMany();
-  await prisma.newsPost.deleteMany();
-  await prisma.contentPage.deleteMany();
-  await prisma.pilotProfile.deleteMany();
+function buildPilotNumber(userId: string): string {
+  return `VA${userId.slice(-6).toUpperCase()}`;
+}
+
+function titleCaseSegment(value: string): string {
+  if (!value) {
+    return "";
+  }
+
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
+function deriveProfileIdentity(user: {
+  username: string;
+  email: string;
+}): {
+  firstName: string;
+  lastName: string;
+} {
+  const source = user.username.trim() || user.email.split("@")[0] || "pilote";
+  const normalized = source.replace(/[^a-zA-Z0-9]+/g, " ").trim();
+  const [firstSegment, ...restSegments] = normalized.split(/\s+/).filter(Boolean);
+
+  const firstName = titleCaseSegment(firstSegment || "Pilote");
+  const lastNameSource =
+    restSegments.join(" ") ||
+    (firstSegment && firstSegment.toLowerCase() !== "pilote" ? firstSegment : "Virtual");
+  const lastName = titleCaseSegment(lastNameSource);
+
+  return {
+    firstName,
+    lastName,
+  };
+}
+
+async function ensurePilotProfileForUser(
+  userId: string,
+  overrides: Partial<{
+    pilotNumber: string | null;
+    callsign: string | null;
+    firstName: string;
+    lastName: string;
+    countryCode: string | null;
+    simbriefPilotId: string | null;
+    pilotStatus: PilotStatus;
+  }> = {},
+): Promise<void> {
+  const existingProfile = await prisma.pilotProfile.findUnique({
+    where: {
+      userId,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (existingProfile) {
+    return;
+  }
+
+  const user = await prisma.user.findUniqueOrThrow({
+    where: {
+      id: userId,
+    },
+    select: {
+      email: true,
+      username: true,
+    },
+  });
+
+  const cadetRank = await prisma.rank.findUnique({
+    where: {
+      code: "CADET",
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  const derivedIdentity = deriveProfileIdentity(user);
+
+  await ensureRoleAssignments(userId, ["pilot"]);
+
+  await prisma.pilotProfile.create({
+    data: {
+      userId,
+      pilotNumber: overrides.pilotNumber ?? buildPilotNumber(userId),
+      callsign: overrides.callsign ?? null,
+      firstName: overrides.firstName ?? derivedIdentity.firstName,
+      lastName: overrides.lastName ?? derivedIdentity.lastName,
+      countryCode: overrides.countryCode ?? null,
+      simbriefPilotId: overrides.simbriefPilotId ?? null,
+      rankId: cadetRank?.id ?? null,
+      hubId: null,
+      status: overrides.pilotStatus ?? PilotStatus.ACTIVE,
+      experiencePoints: 0,
+      hoursFlownMinutes: 0,
+    },
+  });
+}
+
+async function ensureExistingPilotProfiles(optionalPilotEmail: string | null): Promise<void> {
+  const existingPilotProfileCount = await prisma.pilotProfile.count();
+
+  const pilotUsersWithoutProfile = await prisma.user.findMany({
+    where: {
+      status: UserStatus.ACTIVE,
+      pilotProfile: null,
+      OR: [
+        {
+          role: UserPlatformRole.USER,
+        },
+        {
+          roles: {
+            some: {
+              role: {
+                code: "pilot",
+              },
+            },
+          },
+        },
+      ],
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+    select: {
+      id: true,
+      email: true,
+    },
+  });
+
+  for (const user of pilotUsersWithoutProfile) {
+    await ensurePilotProfileForUser(user.id);
+  }
+
+  if (existingPilotProfileCount > 0 || pilotUsersWithoutProfile.length > 0) {
+    return;
+  }
+
+  const bootstrapAdmin = await prisma.user.findFirst({
+    where: {
+      status: UserStatus.ACTIVE,
+      pilotProfile: null,
+      ...(optionalPilotEmail
+        ? {
+            OR: [
+              {
+                email: optionalPilotEmail,
+              },
+              {
+                role: UserPlatformRole.ADMIN,
+              },
+            ],
+          }
+        : {
+            role: UserPlatformRole.ADMIN,
+          }),
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!bootstrapAdmin) {
+    return;
+  }
+
+  await ensurePilotProfileForUser(bootstrapAdmin.id);
 }
 
 async function seedRoles(): Promise<void> {
@@ -1289,27 +1442,43 @@ async function ensureRoleAssignments(
 }
 
 async function seedUserAccount(config: AccountSeedConfig): Promise<string> {
-  const passwordHash = await hash(config.password, 12);
-
-  const user = await prisma.user.upsert({
+  const existingUser = await prisma.user.findUnique({
     where: {
       email: config.email,
     },
-    update: {
-      username: config.username,
-      passwordHash,
-      role: config.platformRole,
-      status: UserStatus.ACTIVE,
-    },
-    create: {
-      email: config.email,
-      username: config.username,
-      passwordHash,
-      role: config.platformRole,
-      status: UserStatus.ACTIVE,
-      avatarUrl: null,
+    select: {
+      id: true,
+      role: true,
+      status: true,
     },
   });
+
+  const user = existingUser
+    ? await prisma.user.update({
+        where: {
+          id: existingUser.id,
+        },
+        data: {
+          role:
+            existingUser.role === UserPlatformRole.ADMIN
+              ? UserPlatformRole.ADMIN
+              : config.platformRole,
+          status:
+            existingUser.status === UserStatus.SUSPENDED
+              ? UserStatus.SUSPENDED
+              : UserStatus.ACTIVE,
+        },
+      })
+    : await prisma.user.create({
+        data: {
+          email: config.email,
+          username: config.username,
+          passwordHash: await hash(config.password, 12),
+          role: config.platformRole,
+          status: UserStatus.ACTIVE,
+          avatarUrl: null,
+        },
+      });
 
   await ensureRoleAssignments(user.id, config.roleCodes);
 
@@ -1459,8 +1628,6 @@ async function seedSettings(adminUserId: string): Promise<void> {
 async function main(): Promise<void> {
   const adminConfig = readAdminConfig();
   const optionalPilotConfig = readOptionalPilotConfig();
-
-  await resetOperationalData();
   await seedRoles();
   await seedRanks();
   await seedAirports();
@@ -1471,6 +1638,8 @@ async function main(): Promise<void> {
   if (optionalPilotConfig) {
     await seedUserAccount(optionalPilotConfig);
   }
+
+  await ensureExistingPilotProfiles(optionalPilotConfig?.email ?? null);
 
   await seedSettings(adminUserId);
 }
