@@ -24,6 +24,7 @@ import {
   formatDurationMinutes,
   formatNumber,
 } from "@/lib/utils/format";
+import { buildUserDisplayName } from "@/lib/utils/user-display";
 import {
   getBookingStatusPresentation,
   getFlightStatusPresentation,
@@ -517,6 +518,11 @@ export default async function DashboardPage(): Promise<JSX.Element> {
   );
   const hasOperationalData =
     safeBookings.length > 0 || safeFlights.length > 0 || submittedPireps > 0;
+  const displayName = buildUserDisplayName({
+    firstName: profile.firstName,
+    lastName: profile.lastName,
+    username: profile.user.username,
+  });
 
   return (
     <>
@@ -561,7 +567,7 @@ export default async function DashboardPage(): Promise<JSX.Element> {
             {
               label: "Numero pilote",
               value: profile.pilotNumber || "-",
-              helper: `${profile.firstName || "Pilote"} ${profile.lastName || ""}`.trim(),
+              helper: displayName,
             },
             {
               label: "Rang actuel",
@@ -599,13 +605,11 @@ export default async function DashboardPage(): Promise<JSX.Element> {
             <div className="profile-spotlight">
               <UserAvatar
                 avatarUrl={profile.user.avatarUrl}
-                name={`${profile.firstName} ${profile.lastName}`.trim()}
+                name={displayName}
                 size="xl"
               />
               <div>
-                <h2>
-                  {profile.firstName} {profile.lastName}
-                </h2>
+                <h2>{displayName}</h2>
                 <p>
                   {profile.user.username} · {profile.callsign ?? profile.pilotNumber}
                 </p>

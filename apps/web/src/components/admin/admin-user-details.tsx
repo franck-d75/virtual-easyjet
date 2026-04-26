@@ -22,6 +22,7 @@ import {
   formatNumber,
   formatNullableText,
 } from "@/lib/utils/format";
+import { buildUserDisplayName } from "@/lib/utils/user-display";
 import {
   getBookingStatusPresentation,
   getPirepStatusPresentation,
@@ -77,9 +78,11 @@ export function AdminUserDetails({
   const [feedback, setFeedback] = useState<AdminFeedback | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const displayName = user.pilotProfile
-    ? `${user.pilotProfile.firstName} ${user.pilotProfile.lastName}`
-    : user.username;
+  const displayName = buildUserDisplayName({
+    firstName: user.pilotProfile?.firstName,
+    lastName: user.pilotProfile?.lastName,
+    username: user.username,
+  });
   const roleBadge = getUserRolePresentation(user.role);
   const statusBadge = getUserStatusPresentation(user.status);
 

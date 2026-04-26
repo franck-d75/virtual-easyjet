@@ -37,6 +37,13 @@ export function PilotHeader({
   const navigationLinks = isAdmin
     ? [...pilotLinks, { href: "/admin", label: "Administration" }]
     : pilotLinks;
+  const normalizedPilotName = pilotName.trim().toLowerCase();
+  const normalizedPilotNumber = pilotNumber.trim().toLowerCase();
+  const identityCaption =
+    normalizedPilotName.length > 0 &&
+    normalizedPilotName === normalizedPilotNumber
+      ? "Compte pilote"
+      : pilotNumber;
 
   return (
     <header className="site-header">
@@ -69,7 +76,7 @@ export function PilotHeader({
             <UserAvatar avatarUrl={avatarUrl} name={pilotName} size="sm" />
             <div>
               <strong>{pilotName}</strong>
-              <small>{pilotNumber}</small>
+              <small>{identityCaption}</small>
             </div>
           </div>
           <LogoutButton />

@@ -101,12 +101,14 @@ export class PilotProfilesService {
     payload: UpdateMyPilotProfileDto,
   ) {
     const pilotProfileId = getRequiredPilotProfileId(user);
+    const pilotNumber = payload.pilotNumber?.trim().toUpperCase() ?? undefined;
     const simbriefPilotId = payload.simbriefPilotId?.trim() ?? null;
 
     try {
       const profile = await this.prisma.pilotProfile.update({
         where: { id: pilotProfileId },
         data: {
+          ...(pilotNumber ? { pilotNumber } : {}),
           simbriefPilotId,
         },
         include: pilotProfileInclude,
@@ -118,6 +120,16 @@ export class PilotProfilesService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === "P2002"
       ) {
+        const target = Array.isArray(error.meta?.target)
+          ? error.meta.target.join(",")
+          : "";
+
+        if (target.includes("pilotNumber")) {
+          throw new ConflictException(
+            "This pilot number is already assigned to another pilot.",
+          );
+        }
+
         throw new ConflictException(
           "This SimBrief Pilot ID is already linked to another pilot.",
         );

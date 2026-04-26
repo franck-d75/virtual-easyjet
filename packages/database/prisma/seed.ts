@@ -1454,21 +1454,25 @@ async function seedUserAccount(config: AccountSeedConfig): Promise<string> {
   });
 
   const user = existingUser
-    ? await prisma.user.update({
-        where: {
-          id: existingUser.id,
-        },
-        data: {
-          role:
-            existingUser.role === UserPlatformRole.ADMIN
-              ? UserPlatformRole.ADMIN
-              : config.platformRole,
-          status:
-            existingUser.status === UserStatus.SUSPENDED
-              ? UserStatus.SUSPENDED
-              : UserStatus.ACTIVE,
-        },
-      })
+    ? existingUser.role === UserPlatformRole.ADMIN &&
+      config.platformRole !== UserPlatformRole.ADMIN
+      ? await prisma.user.findUniqueOrThrow({
+          where: {
+            id: existingUser.id,
+          },
+        })
+      : await prisma.user.update({
+          where: {
+            id: existingUser.id,
+          },
+          data:
+            config.platformRole === UserPlatformRole.ADMIN &&
+            existingUser.role !== UserPlatformRole.ADMIN
+              ? {
+                  role: UserPlatformRole.ADMIN,
+                }
+              : {},
+        })
     : await prisma.user.create({
         data: {
           email: config.email,
@@ -1486,6 +1490,19 @@ async function seedUserAccount(config: AccountSeedConfig): Promise<string> {
     return user.id;
   }
 
+  const existingProfile = await prisma.pilotProfile.findUnique({
+    where: {
+      userId: user.id,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (existingProfile) {
+    return user.id;
+  }
+
   const cadetRank = await prisma.rank.findUniqueOrThrow({
     where: {
       code: "CADET",
@@ -1495,24 +1512,8 @@ async function seedUserAccount(config: AccountSeedConfig): Promise<string> {
     },
   });
 
-  await prisma.pilotProfile.upsert({
-    where: {
-      userId: user.id,
-    },
-    update: {
-      pilotNumber: config.pilotNumber ?? "VA00001",
-      callsign: config.callsign ?? null,
-      firstName: config.firstName,
-      lastName: config.lastName,
-      countryCode: config.countryCode ?? null,
-      simbriefPilotId: config.simbriefPilotId ?? null,
-      rankId: cadetRank.id,
-      hubId: null,
-      status: config.pilotStatus ?? PilotStatus.ACTIVE,
-      experiencePoints: 0,
-      hoursFlownMinutes: 0,
-    },
-    create: {
+  await prisma.pilotProfile.create({
+    data: {
       userId: user.id,
       pilotNumber: config.pilotNumber ?? "VA00001",
       callsign: config.callsign ?? null,

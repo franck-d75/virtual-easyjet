@@ -9,13 +9,18 @@ import {
   formatNullableText,
   formatNumber,
 } from "@/lib/utils/format";
+import { buildUserDisplayName } from "@/lib/utils/user-display";
 
 type ProfileCardProps = {
   profile: PilotProfileResponse;
 };
 
 export function ProfileCard({ profile }: ProfileCardProps): JSX.Element {
-  const displayName = `${profile.firstName} ${profile.lastName}`;
+  const displayName = buildUserDisplayName({
+    firstName: profile.firstName,
+    lastName: profile.lastName,
+    username: profile.user.username,
+  });
 
   return (
     <Card className="profile-card">

@@ -11,6 +11,7 @@ import { UserAvatar } from "@/components/ui/user-avatar";
 import type { UserMeResponse } from "@/lib/api/types";
 
 type SimbriefSettingsCardProps = {
+  initialPilotNumber: string;
   initialSimbriefPilotId: string | null;
   initialAvatarUrl: string | null;
   displayName: string;
@@ -42,11 +43,13 @@ function parsePayload(value: string): unknown {
 }
 
 export function SimbriefSettingsCard({
+  initialPilotNumber,
   initialSimbriefPilotId,
   initialAvatarUrl,
   displayName,
 }: SimbriefSettingsCardProps): JSX.Element {
   const router = useRouter();
+  const [pilotNumber, setPilotNumber] = useState(initialPilotNumber);
   const [simbriefPilotId, setSimbriefPilotId] = useState(
     initialSimbriefPilotId ?? "",
   );
@@ -57,7 +60,17 @@ export function SimbriefSettingsCard({
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
 
+    const normalizedPilotNumber = pilotNumber.trim().toUpperCase();
     const normalizedSimbriefPilotId = simbriefPilotId.trim();
+
+    if (!/^[A-Z0-9-]{3,16}$/.test(normalizedPilotNumber)) {
+      setFeedback({
+        tone: "danger",
+        message:
+          "Le numero pilote doit contenir entre 3 et 16 caracteres, avec lettres, chiffres ou tirets.",
+      });
+      return;
+    }
 
     if (
       normalizedSimbriefPilotId.length > 0 &&
@@ -78,6 +91,7 @@ export function SimbriefSettingsCard({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        pilotNumber: normalizedPilotNumber,
         simbriefPilotId:
           normalizedSimbriefPilotId.length > 0 ? normalizedSimbriefPilotId : null,
       }),
@@ -91,15 +105,16 @@ export function SimbriefSettingsCard({
         tone: "danger",
         message: extractMessage(
           payload,
-          "Impossible de mettre à jour votre profil pilote.",
+          "Impossible de mettre a jour votre profil pilote.",
         ),
       });
       return;
     }
 
+    setPilotNumber(normalizedPilotNumber);
     setFeedback({
       tone: "success",
-      message: "Profil pilote mis à jour.",
+      message: "Profil pilote mis a jour.",
     });
 
     startTransition(() => {
@@ -113,44 +128,64 @@ export function SimbriefSettingsCard({
         <div className="profile-card__hero">
           <UserAvatar avatarUrl={avatarUrl} name={displayName} size="lg" />
           <div>
-            <span className="section-eyebrow">Identité et SimBrief</span>
-            <h2>Paramètres du profil</h2>
+            <span className="section-eyebrow">Identite et SimBrief</span>
+            <h2>Parametres du profil</h2>
             <p className="simbrief-card__note">
-              Téléversez votre avatar puis renseignez votre SimBrief Pilot ID
-              pour enrichir votre identité pilote sur le web.
+              Televersez votre avatar, mettez a jour votre numero pilote et
+              renseignez votre SimBrief Pilot ID pour garder un profil coherent
+              sur le web et dans l&apos;ecosysteme ACARS.
             </p>
           </div>
         </div>
         <div className="profile-card__identity">
-          <strong>{simbriefPilotId.trim() || "Non configuré"}</strong>
-          <span>{avatarUrl ? "Avatar actif" : "Avatar non renseigné"}</span>
+          <strong>{pilotNumber.trim() || "Non configure"}</strong>
+          <span>{avatarUrl ? "Avatar actif" : "Avatar non renseigne"}</span>
         </div>
       </div>
 
       <div className="definition-grid">
         <div>
           <span>Avatar</span>
-          <strong>{avatarUrl ? "Téléversé" : "Fallback initiales"}</strong>
+          <strong>{avatarUrl ? "Televerse" : "Initiales automatiques"}</strong>
         </div>
         <div>
-          <span>Préparation OFP</span>
-          <strong>{simbriefPilotId.trim() ? "Prêt" : "Non configuré"}</strong>
+          <span>Numero pilote</span>
+          <strong>{pilotNumber.trim() || "Non configure"}</strong>
+        </div>
+        <div>
+          <span>Preparation OFP</span>
+          <strong>{simbriefPilotId.trim() ? "Pret" : "Non configure"}</strong>
         </div>
       </div>
 
       <AvatarUploadControl<UserMeResponse>
         currentAvatarUrl={avatarUrl}
-        description="Choisissez une image locale depuis votre ordinateur. L'avatar sera mis à jour sur votre espace pilote et dans le header."
+        description="Choisissez une image locale depuis votre ordinateur. L'avatar sera mis a jour sur votre espace pilote et dans le header."
         displayName={displayName}
         onUploaded={(payload) => {
           setAvatarUrl(payload.avatarUrl ?? "");
         }}
         saveLabel="Enregistrer l'avatar"
-        title="Téléverser un avatar"
+        title="Televerser un avatar"
         uploadUrl="/api/pilot/avatar"
       />
 
       <form className="auth-form" onSubmit={handleSubmit}>
+        <div className="field">
+          <label htmlFor="pilot-number">Numero pilote</label>
+          <input
+            autoComplete="off"
+            id="pilot-number"
+            maxLength={16}
+            onChange={(event) => {
+              setPilotNumber(event.target.value.toUpperCase());
+            }}
+            placeholder="VA00001"
+            type="text"
+            value={pilotNumber}
+          />
+        </div>
+
         <div className="field">
           <label htmlFor="simbrief-pilot-id">SimBrief Pilot ID</label>
           <input
@@ -168,8 +203,8 @@ export function SimbriefSettingsCard({
         </div>
 
         <p className="simbrief-card__note">
-          Laissez ce champ vide puis enregistrez pour supprimer la valeur
-          actuellement configurée.
+          Laissez le champ SimBrief vide puis enregistrez pour supprimer la
+          valeur actuellement configuree.
         </p>
 
         {feedback ? (

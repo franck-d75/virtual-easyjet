@@ -16,6 +16,7 @@ import {
   formatNumber,
   formatNullableText,
 } from "@/lib/utils/format";
+import { buildUserDisplayName } from "@/lib/utils/user-display";
 import {
   getUserRolePresentation,
   getUserStatusPresentation,
@@ -147,9 +148,11 @@ export function AdminUsersManager({
                 id: "identity",
                 header: "Utilisateur",
                 render: (user) => {
-                  const displayName = user.pilotProfile
-                    ? `${user.pilotProfile.firstName} ${user.pilotProfile.lastName}`
-                    : user.username;
+                  const displayName = buildUserDisplayName({
+                    firstName: user.pilotProfile?.firstName,
+                    lastName: user.pilotProfile?.lastName,
+                    username: user.username,
+                  });
 
                   return (
                     <div className="admin-user-cell">

@@ -11,13 +11,33 @@ import { logWebError } from "@/lib/observability/log";
 export async function PATCH(request: Request) {
   try {
     const payload = (await request.json()) as {
+      pilotNumber?: string | null;
       simbriefPilotId?: string | null;
     };
 
+    const pilotNumber =
+      typeof payload.pilotNumber === "string"
+        ? payload.pilotNumber.trim().toUpperCase() || null
+        : payload.pilotNumber ?? null;
     const simbriefPilotId =
       typeof payload.simbriefPilotId === "string"
         ? payload.simbriefPilotId.trim() || null
         : payload.simbriefPilotId ?? null;
+
+    if (
+      pilotNumber !== null &&
+      (typeof pilotNumber !== "string" || !/^[A-Z0-9-]{3,16}$/.test(pilotNumber))
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            "Le numéro pilote doit contenir entre 3 et 16 caractères, avec lettres, chiffres ou tirets.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
 
     if (
       simbriefPilotId !== null &&
@@ -36,6 +56,7 @@ export async function PATCH(request: Request) {
 
     const result = await executeWithBackendAccess((accessToken) =>
       updateMyPilotProfile(accessToken, {
+        pilotNumber,
         simbriefPilotId,
       }),
     );

@@ -19,6 +19,7 @@ export async function getMyPilotProfile(
 export async function updateMyPilotProfile(
   accessToken: string,
   payload: {
+    pilotNumber?: string | null;
     simbriefPilotId?: string | null;
   },
 ): Promise<PilotProfileResponse> {

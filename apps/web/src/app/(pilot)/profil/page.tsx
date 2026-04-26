@@ -12,6 +12,7 @@ import type {
 } from "@/lib/api/types";
 import { requirePilotSession } from "@/lib/auth/guards";
 import { logWebWarning } from "@/lib/observability/log";
+import { buildUserDisplayName } from "@/lib/utils/user-display";
 
 function buildFallbackProfile(
   user: UserMeResponse & {
@@ -108,6 +109,12 @@ export default async function ProfilePage(): Promise<JSX.Element> {
     );
   }
 
+  const displayName = buildUserDisplayName({
+    firstName: profile.firstName,
+    lastName: profile.lastName,
+    username: profile.user.username,
+  });
+
   return (
     <>
       <section className="page-hero">
@@ -135,7 +142,8 @@ export default async function ProfilePage(): Promise<JSX.Element> {
       <section className="panel-grid">
         <ProfileCard profile={profile} />
         <SimbriefSettingsCard
-          displayName={`${profile.firstName} ${profile.lastName}`}
+          displayName={displayName}
+          initialPilotNumber={profile.pilotNumber}
           initialAvatarUrl={profile.user.avatarUrl}
           initialSimbriefPilotId={profile.simbriefPilotId}
         />
