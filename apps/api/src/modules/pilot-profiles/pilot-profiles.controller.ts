@@ -1,4 +1,12 @@
-import { Body, Controller, Dependencies, Get, Param, Patch } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Dependencies,
+  Get,
+  Param,
+  Patch,
+  Post,
+} from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 
 import type { AuthenticatedUser } from "@va/shared";
@@ -26,6 +34,16 @@ export class PilotProfilesController {
   @Get("me/simbrief/latest-ofp")
   public latestSimbriefOfp(@CurrentUser() user: AuthenticatedUser) {
     return this.pilotProfilesService.getMyLatestSimbriefOfp(user);
+  }
+
+  @Get("me/simbrief/airframes")
+  public simbriefAirframes(@CurrentUser() user: AuthenticatedUser) {
+    return this.pilotProfilesService.getMySimbriefAirframes(user);
+  }
+
+  @Post("me/simbrief/airframes/sync")
+  public syncSimbriefAirframes(@CurrentUser() user: AuthenticatedUser) {
+    return this.pilotProfilesService.syncMySimbriefAirframes(user);
   }
 
   @Patch("me")

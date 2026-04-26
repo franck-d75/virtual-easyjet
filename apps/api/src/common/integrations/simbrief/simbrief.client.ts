@@ -20,6 +20,7 @@ export interface SimbriefLatestOfpAircraftSummary {
   icaoCode: string | null;
   name: string | null;
   registration: string | null;
+  simbriefAirframeId: string | null;
 }
 
 export type SimbriefLatestOfpRoutePointSource =
@@ -57,6 +58,42 @@ export interface SimbriefLatestOfpResult {
   plan: SimbriefLatestOfpPlanSummary | null;
 }
 
+export interface SimbriefAirframeSummary {
+  simbriefAirframeId: string;
+  name: string;
+  aircraftIcao: string;
+  registration: string | null;
+  selcal: string | null;
+  equipment: string | null;
+  engineType: string | null;
+  wakeCategory: string | null;
+  rawJson: unknown;
+}
+
+export interface SimbriefAirframesResult {
+  status: SimbriefLatestOfpStatus;
+  pilotId: string | null;
+  detail: string | null;
+  fetchStatus: string | null;
+  fetchedAt: string;
+  source: SimbriefFlightPlanLookup | null;
+  airframes: SimbriefAirframeSummary[];
+}
+
+type SimbriefHttpResult = {
+  ok: boolean;
+  statusCode: number;
+  fetchStatus: string | null;
+  payload: unknown;
+  detail: string | null;
+};
+
+type SimbriefPayloadResult = SimbriefHttpResult & {
+  source: SimbriefFlightPlanLookup;
+  fetchedAt: string;
+  pilotId: string;
+};
+
 @Injectable()
 export class SimbriefClient {
   public async getLatestOfp(
@@ -80,34 +117,21 @@ export class SimbriefClient {
     const source = buildSimbriefFlightPlanLookup(normalizedPilotId);
 
     try {
-      const response = await fetch(source.latestOfpJsonUrl, {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": SIMBRIEF_USER_AGENT,
-        },
-        signal: AbortSignal.timeout(SIMBRIEF_FETCH_TIMEOUT_MS),
-      });
+      const response = await this.fetchSimbriefJson(source.latestOfpJsonUrl);
 
-      const httpResponse = response as any;
-      const rawPayload = await httpResponse.text();
-      const payload = tryParseJson(rawPayload);
-      const fetchStatus = readString(payload, ["fetch", "status"]);
-
-      if (!httpResponse.ok) {
+      if (!response.ok) {
         return {
-          status: httpResponse.status === 400 ? "NOT_FOUND" : "ERROR",
+          status: response.statusCode === 400 ? "NOT_FOUND" : "ERROR",
           pilotId: normalizedPilotId,
-          detail:
-            fetchStatus ??
-            `SimBrief returned HTTP ${String(httpResponse.status)}.`,
-          fetchStatus,
+          detail: response.detail,
+          fetchStatus: response.fetchStatus,
           fetchedAt,
           source,
           plan: null,
         };
       }
 
-      const plan = this.normalizeLatestOfp(payload);
+      const plan = this.normalizeLatestOfp(response.payload);
 
       if (!plan) {
         console.warn("[api][simbrief] latest OFP payload could not be mapped", {
@@ -119,7 +143,7 @@ export class SimbriefClient {
           status: "ERROR",
           pilotId: normalizedPilotId,
           detail: "SimBrief returned an unsupported OFP payload.",
-          fetchStatus: fetchStatus ?? "Success",
+          fetchStatus: response.fetchStatus ?? "Success",
           fetchedAt,
           source,
           plan: null,
@@ -130,7 +154,7 @@ export class SimbriefClient {
         status: "AVAILABLE",
         pilotId: normalizedPilotId,
         detail: null,
-        fetchStatus: fetchStatus ?? "Success",
+        fetchStatus: response.fetchStatus ?? "Success",
         fetchedAt,
         source,
         plan,
@@ -153,6 +177,170 @@ export class SimbriefClient {
         plan: null,
       };
     }
+  }
+
+  public async getAirframes(
+    pilotId: string | null | undefined,
+  ): Promise<SimbriefAirframesResult> {
+    const normalizedPilotId = pilotId?.trim() ?? "";
+    const fetchedAt = new Date().toISOString();
+
+    if (normalizedPilotId.length === 0) {
+      return {
+        status: "NOT_CONFIGURED",
+        pilotId: null,
+        detail: "Configurez d'abord un SimBrief Pilot ID dans votre profil.",
+        fetchStatus: null,
+        fetchedAt,
+        source: null,
+        airframes: [],
+      };
+    }
+
+    const source = buildSimbriefFlightPlanLookup(normalizedPilotId);
+
+    try {
+      const liveListResult = await this.fetchSimbriefJson(source.airframesJsonUrl);
+      const listAirframes = liveListResult.ok
+        ? normalizeAirframes(liveListResult.payload)
+        : [];
+
+      if (listAirframes.length > 0) {
+        return {
+          status: "AVAILABLE",
+          pilotId: normalizedPilotId,
+          detail: null,
+          fetchStatus: liveListResult.fetchStatus ?? "Success",
+          fetchedAt,
+          source,
+          airframes: listAirframes,
+        };
+      }
+
+      const latestOfpPayloadResult = await this.fetchLatestOfpPayload(
+        normalizedPilotId,
+      );
+
+      const inferredAirframeId = latestOfpPayloadResult.ok
+        ? inferLatestOfpAirframeId(latestOfpPayloadResult.payload)
+        : null;
+
+      if (inferredAirframeId) {
+        const detailedAirframeResult = await this.fetchSimbriefJson(
+          source.airframeJsonUrl(inferredAirframeId),
+        );
+
+        const detailedAirframes = detailedAirframeResult.ok
+          ? normalizeAirframes(detailedAirframeResult.payload, inferredAirframeId)
+          : [];
+
+        if (detailedAirframes.length > 0) {
+          return {
+            status: "AVAILABLE",
+            pilotId: normalizedPilotId,
+            detail:
+              "Airframe SimBrief identifiée à partir du dernier OFP disponible.",
+            fetchStatus:
+              detailedAirframeResult.fetchStatus ??
+              latestOfpPayloadResult.fetchStatus ??
+              "Success",
+            fetchedAt,
+            source,
+            airframes: detailedAirframes,
+          };
+        }
+
+        const fallbackAirframes = buildFallbackAirframesFromLatestOfp(
+          latestOfpPayloadResult.payload,
+          inferredAirframeId,
+        );
+
+        if (fallbackAirframes.length > 0) {
+          return {
+            status: "AVAILABLE",
+            pilotId: normalizedPilotId,
+            detail:
+              "Airframe SimBrief préparée à partir du dernier OFP disponible.",
+            fetchStatus:
+              latestOfpPayloadResult.fetchStatus ??
+              detailedAirframeResult.fetchStatus ??
+              "Success",
+            fetchedAt,
+            source,
+            airframes: fallbackAirframes,
+          };
+        }
+      }
+
+      const detail =
+        latestOfpPayloadResult.detail ??
+        liveListResult.detail ??
+        "Aucune airframe SimBrief exploitable n'a été trouvée pour ce pilote.";
+
+      return {
+        status:
+          latestOfpPayloadResult.ok || liveListResult.ok ? "NOT_FOUND" : "ERROR",
+        pilotId: normalizedPilotId,
+        detail,
+        fetchStatus:
+          liveListResult.fetchStatus ?? latestOfpPayloadResult.fetchStatus ?? null,
+        fetchedAt,
+        source,
+        airframes: [],
+      };
+    } catch (error) {
+      const detail = formatFetchError(error);
+
+      console.warn("[api][simbrief] airframes fetch failed", {
+        pilotId: normalizedPilotId,
+        detail,
+      });
+
+      return {
+        status: "ERROR",
+        pilotId: normalizedPilotId,
+        detail,
+        fetchStatus: null,
+        fetchedAt,
+        source,
+        airframes: [],
+      };
+    }
+  }
+
+  public inferAircraftTypeCode(
+    value: string | null | undefined,
+  ): string | null {
+    const normalizedValue = normalizeAircraftIcao(value);
+
+    if (!normalizedValue) {
+      return null;
+    }
+
+    switch (normalizedValue) {
+      case "A319":
+      case "A320":
+      case "A20N":
+      case "A21N":
+        return normalizedValue;
+      default:
+        return null;
+    }
+  }
+
+  private async fetchLatestOfpPayload(
+    pilotId: string,
+  ): Promise<SimbriefPayloadResult> {
+    const source = buildSimbriefFlightPlanLookup(pilotId);
+    const fetchedAt = new Date().toISOString();
+    const result = await this.fetchSimbriefJson(source.latestOfpJsonUrl);
+
+    return {
+      ...result,
+      source,
+      fetchedAt,
+      pilotId,
+    };
   }
 
   private normalizeLatestOfp(
@@ -207,26 +395,256 @@ export class SimbriefClient {
 
     return plan;
   }
+
+  private async fetchSimbriefJson(url: string): Promise<SimbriefHttpResult> {
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": SIMBRIEF_USER_AGENT,
+      },
+      signal: AbortSignal.timeout(SIMBRIEF_FETCH_TIMEOUT_MS),
+    });
+
+    const httpResponse = response as Response;
+    const rawPayload = await httpResponse.text();
+    const payload = tryParseJson(rawPayload);
+    const fetchStatus = readString(payload, ["fetch", "status"]);
+
+    if (!httpResponse.ok) {
+      return {
+        ok: false,
+        statusCode: httpResponse.status,
+        fetchStatus,
+        payload,
+        detail:
+          fetchStatus ?? `SimBrief returned HTTP ${String(httpResponse.status)}.`,
+      };
+    }
+
+    return {
+      ok: true,
+      statusCode: httpResponse.status,
+      fetchStatus,
+      payload,
+      detail: null,
+    };
+  }
 }
 
 function buildAircraftSummary(
   payload: unknown,
 ): SimbriefLatestOfpAircraftSummary | null {
-  const aircraft: SimbriefLatestOfpAircraftSummary = {
-    icaoCode: readFirstString(payload, [
+  const icaoCode = normalizeAircraftIcao(
+    readFirstString(payload, [
       ["aircraft", "icao_code"],
       ["aircraft", "icaocode"],
+      ["api_params", "type"],
     ]),
+  );
+  const rawAirframeId = readFirstString(payload, [
+    ["aircraft", "airframe_id"],
+    ["aircraft", "internal_id"],
+    ["api_params", "airframe"],
+    ["api_params", "type"],
+  ]);
+
+  const aircraft: SimbriefLatestOfpAircraftSummary = {
+    icaoCode,
     name: readString(payload, ["aircraft", "name"]),
     registration: readFirstString(payload, [
       ["aircraft", "reg"],
       ["api_params", "reg"],
     ]),
+    simbriefAirframeId: inferSimbriefAirframeId(rawAirframeId, icaoCode),
   };
 
   return Object.values(aircraft).some((value) => value !== null)
     ? aircraft
     : null;
+}
+
+function normalizeAirframes(
+  payload: unknown,
+  fallbackAirframeId?: string | null,
+): SimbriefAirframeSummary[] {
+  const seenIds = new Set<string>();
+  const airframes: SimbriefAirframeSummary[] = [];
+
+  for (const candidate of collectAirframeCandidates(payload)) {
+    const normalizedAirframe = normalizeAirframeCandidate(
+      candidate,
+      fallbackAirframeId ?? null,
+    );
+
+    if (!normalizedAirframe || seenIds.has(normalizedAirframe.simbriefAirframeId)) {
+      continue;
+    }
+
+    seenIds.add(normalizedAirframe.simbriefAirframeId);
+    airframes.push(normalizedAirframe);
+  }
+
+  return airframes;
+}
+
+function buildFallbackAirframesFromLatestOfp(
+  payload: unknown,
+  fallbackAirframeId: string,
+): SimbriefAirframeSummary[] {
+  const aircraft = buildAircraftSummary(payload);
+
+  if (!aircraft?.icaoCode) {
+    return [];
+  }
+
+  const name =
+    aircraft.name ??
+    [aircraft.icaoCode, aircraft.registration].filter(Boolean).join(" ");
+
+  return [
+    {
+      simbriefAirframeId: fallbackAirframeId,
+      name: name || aircraft.icaoCode,
+      aircraftIcao: aircraft.icaoCode,
+      registration: aircraft.registration,
+      selcal: readFirstString(payload, [["aircraft", "selcal"]]),
+      equipment: readFirstString(payload, [
+        ["aircraft", "equipment"],
+        ["aircraft", "equip"],
+      ]),
+      engineType: readFirstString(payload, [
+        ["aircraft", "engine_type"],
+        ["aircraft", "engines"],
+      ]),
+      wakeCategory: readFirstString(payload, [
+        ["aircraft", "wake_category"],
+        ["aircraft", "wtc"],
+      ]),
+      rawJson: payload,
+    },
+  ];
+}
+
+function inferLatestOfpAirframeId(payload: unknown): string | null {
+  const aircraft = buildAircraftSummary(payload);
+  return aircraft?.simbriefAirframeId ?? null;
+}
+
+function collectAirframeCandidates(
+  value: unknown,
+  depth = 0,
+  candidates: JsonRecord[] = [],
+): JsonRecord[] {
+  if (depth > 5) {
+    return candidates;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectAirframeCandidates(item, depth + 1, candidates);
+    }
+
+    return candidates;
+  }
+
+  if (!isJsonRecord(value)) {
+    return candidates;
+  }
+
+  if (looksLikeAirframeCandidate(value)) {
+    candidates.push(value);
+  }
+
+  for (const nestedValue of Object.values(value)) {
+    collectAirframeCandidates(nestedValue, depth + 1, candidates);
+  }
+
+  return candidates;
+}
+
+function looksLikeAirframeCandidate(value: JsonRecord): boolean {
+  const keys = new Set(Object.keys(value));
+
+  if (
+    keys.has("airframe_id") ||
+    keys.has("internal_id") ||
+    keys.has("registration") ||
+    keys.has("reg")
+  ) {
+    return true;
+  }
+
+  return (
+    (keys.has("aircraft_icao") || keys.has("icao") || keys.has("icao_code")) &&
+    (keys.has("name") || keys.has("aircraft_name") || keys.has("label"))
+  );
+}
+
+function normalizeAirframeCandidate(
+  candidate: JsonRecord,
+  fallbackAirframeId: string | null,
+): SimbriefAirframeSummary | null {
+  const aircraftIcao = normalizeAircraftIcao(
+    readFirstString(candidate, [
+      ["aircraft_icao"],
+      ["icao"],
+      ["icao_code"],
+      ["aircraft"],
+      ["type"],
+    ]),
+  );
+
+  const simbriefAirframeId =
+    readFirstString(candidate, [
+      ["airframe_id"],
+      ["internal_id"],
+      ["id"],
+      ["airframe"],
+    ]) ?? fallbackAirframeId;
+
+  if (!simbriefAirframeId || !aircraftIcao) {
+    return null;
+  }
+
+  const registration = readFirstString(candidate, [
+    ["registration"],
+    ["reg"],
+    ["tail"],
+    ["tail_number"],
+  ]);
+  const name =
+    readFirstString(candidate, [
+      ["name"],
+      ["airframe_name"],
+      ["label"],
+      ["aircraft_name"],
+      ["profile"],
+    ]) ??
+    [aircraftIcao, registration].filter(Boolean).join(" ");
+
+  return {
+    simbriefAirframeId,
+    name: name || aircraftIcao,
+    aircraftIcao,
+    registration,
+    selcal: readFirstString(candidate, [["selcal"]]),
+    equipment: readFirstString(candidate, [
+      ["equipment"],
+      ["equip"],
+      ["equipment_code"],
+    ]),
+    engineType: readFirstString(candidate, [
+      ["engine_type"],
+      ["engine"],
+      ["engines"],
+    ]),
+    wakeCategory: readFirstString(candidate, [
+      ["wake_category"],
+      ["wake"],
+      ["wtc"],
+    ]),
+    rawJson: candidate,
+  };
 }
 
 function buildRoutePoints(
@@ -379,6 +797,41 @@ function hasMinimumPlanContent(plan: SimbriefLatestOfpPlanSummary): boolean {
   );
 }
 
+function inferSimbriefAirframeId(
+  value: string | null,
+  aircraftIcao: string | null,
+): string | null {
+  const normalizedValue = value?.trim() ?? "";
+
+  if (normalizedValue.length === 0) {
+    return null;
+  }
+
+  const normalizedAircraftIcao = normalizeAircraftIcao(aircraftIcao);
+
+  if (
+    normalizedAircraftIcao &&
+    normalizedValue.toUpperCase() === normalizedAircraftIcao
+  ) {
+    return null;
+  }
+
+  if (/^[A-Z0-9]{3,5}$/i.test(normalizedValue)) {
+    return null;
+  }
+
+  return normalizedValue;
+}
+
+function normalizeAircraftIcao(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalizedValue = value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return normalizedValue.length > 0 ? normalizedValue : null;
+}
+
 function formatFetchError(error: unknown): string {
   if (error instanceof DOMException && error.name === "TimeoutError") {
     return "SimBrief request timed out.";
@@ -430,11 +883,11 @@ function readFirstString(root: unknown, paths: string[][]): string | null {
 function readString(root: unknown, path: string[]): string | null {
   const value = readPath(root, path);
 
-  if (typeof value !== "string") {
+  if (!isScalar(value)) {
     return null;
   }
 
-  const normalizedValue = value.trim();
+  const normalizedValue = String(value).trim();
   return normalizedValue.length > 0 ? normalizedValue : null;
 }
 
@@ -454,6 +907,13 @@ function readPath(root: unknown, path: string[]): unknown {
 
 function isJsonRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isScalar(value: unknown): value is string | number | boolean {
+  const valueType = typeof value;
+  return (
+    valueType === "string" || valueType === "number" || valueType === "boolean"
+  );
 }
 
 function tryParseJson(value: string): unknown {
@@ -495,8 +955,14 @@ function parseCoordinateValue(value: unknown): number | null {
     return null;
   }
 
-  const [, leadingDirection, degreesLiteral, minutesLiteral, secondsLiteral, trailingDirection] =
-    dmsMatch;
+  const [
+    ,
+    leadingDirection,
+    degreesLiteral,
+    minutesLiteral,
+    secondsLiteral,
+    trailingDirection,
+  ] = dmsMatch;
   const direction = trailingDirection ?? leadingDirection ?? null;
   const degrees = Number.parseFloat(degreesLiteral ?? "");
   const minutes = Number.parseFloat(minutesLiteral ?? "");
@@ -518,5 +984,3 @@ function parseCoordinateValue(value: unknown): number | null {
 
   return absoluteValue;
 }
-
-

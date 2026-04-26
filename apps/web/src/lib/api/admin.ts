@@ -1,6 +1,8 @@
 import { apiRequest } from "./client";
 import type {
   AdminAircraftPayload,
+  AdminAircraftImportFromSimbriefAirframePayload,
+  AdminAircraftLinkSimbriefAirframePayload,
   AdminUserDetailResponse,
   AdminUserPayload,
   AdminUserSummaryResponse,
@@ -11,6 +13,7 @@ import type {
   AircraftResponse,
   HubResponse,
   RouteResponse,
+  SimbriefAirframeResponse,
 } from "./types";
 
 export async function getAdminStats(
@@ -129,6 +132,15 @@ export async function listAdminAircraft(
   });
 }
 
+export async function listAdminSimbriefAirframes(
+  accessToken: string,
+): Promise<SimbriefAirframeResponse[]> {
+  return apiRequest<SimbriefAirframeResponse[]>("/admin/simbrief-airframes", {
+    accessToken,
+    cache: "no-store",
+  });
+}
+
 export async function createAdminAircraft(
   accessToken: string,
   payload: AdminAircraftPayload,
@@ -139,6 +151,21 @@ export async function createAdminAircraft(
     body: JSON.stringify(payload),
     cache: "no-store",
   });
+}
+
+export async function importAdminAircraftFromSimbriefAirframe(
+  accessToken: string,
+  payload: AdminAircraftImportFromSimbriefAirframePayload,
+): Promise<AircraftResponse> {
+  return apiRequest<AircraftResponse>(
+    "/admin/aircraft/import-from-simbrief-airframe",
+    {
+      accessToken,
+      method: "POST",
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    },
+  );
 }
 
 export async function updateAdminAircraft(
@@ -152,6 +179,36 @@ export async function updateAdminAircraft(
     body: JSON.stringify(payload),
     cache: "no-store",
   });
+}
+
+export async function linkAdminAircraftToSimbriefAirframe(
+  accessToken: string,
+  id: string,
+  payload: AdminAircraftLinkSimbriefAirframePayload,
+): Promise<AircraftResponse> {
+  return apiRequest<AircraftResponse>(
+    `/admin/aircraft/${encodeURIComponent(id)}/link-simbrief-airframe`,
+    {
+      accessToken,
+      method: "PATCH",
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    },
+  );
+}
+
+export async function unlinkAdminAircraftFromSimbriefAirframe(
+  accessToken: string,
+  id: string,
+): Promise<AircraftResponse> {
+  return apiRequest<AircraftResponse>(
+    `/admin/aircraft/${encodeURIComponent(id)}/link-simbrief-airframe`,
+    {
+      accessToken,
+      method: "DELETE",
+      cache: "no-store",
+    },
+  );
 }
 
 export async function deleteAdminAircraft(

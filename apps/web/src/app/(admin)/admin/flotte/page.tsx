@@ -13,6 +13,7 @@ const EMPTY_REFERENCE_DATA: AdminReferenceDataResponse = {
   airports: [],
   hubs: [],
   aircraftTypes: [],
+  simbriefAirframes: [],
 };
 
 export default async function AdminFleetPage(): Promise<JSX.Element> {
@@ -49,17 +50,20 @@ export default async function AdminFleetPage(): Promise<JSX.Element> {
         <div>
           <span className="section-eyebrow">Administration flotte</span>
           <h1>Gestion de la flotte</h1>
-          <p>Ajoutez et maintenez les appareils de la compagnie virtuelle.</p>
+          <p>
+            Ajoutez, liez et maintenez les appareils réels de la compagnie
+            virtuelle, y compris vos airframes SimBrief synchronisées.
+          </p>
         </div>
       </section>
 
       {isDegraded ? (
         <Card className="ops-card">
-          <span className="section-eyebrow">Mode degrade</span>
+          <span className="section-eyebrow">Mode dégradé</span>
           <h2>La flotte reste consultable</h2>
           <p>
-            Certaines donnees de reference sont temporairement indisponibles.
-            Les appareils deja recuperes restent affiches.
+            Certaines données de référence sont temporairement indisponibles.
+            Les appareils déjà récupérés restent affichés.
           </p>
         </Card>
       ) : null}

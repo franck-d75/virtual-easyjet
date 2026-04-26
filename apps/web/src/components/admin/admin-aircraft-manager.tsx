@@ -9,9 +9,11 @@ import { Card } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import type {
+  AdminAircraftImportFromSimbriefAirframePayload,
   AdminAircraftPayload,
   AdminReferenceDataResponse,
   AircraftResponse,
+  SimbriefAirframeResponse,
 } from "@/lib/api/types";
 import type { BadgeTone } from "@/lib/utils/status";
 
@@ -39,6 +41,14 @@ type AircraftFormState = {
   hubId: string;
   status: (typeof AIRCRAFT_STATUSES)[number];
   notes: string;
+  simbriefAirframeId: string;
+};
+
+type ImportState = {
+  simbriefAirframeId: string;
+  hubId: string;
+  status: (typeof AIRCRAFT_STATUSES)[number];
+  notes: string;
 };
 
 function createInitialAircraftForm(
@@ -51,6 +61,16 @@ function createInitialAircraftForm(
     hubId: "",
     status: "ACTIVE",
     notes: "",
+    simbriefAirframeId: "",
+  };
+}
+
+function createInitialImportState(): ImportState {
+  return {
+    simbriefAirframeId: "",
+    hubId: "",
+    status: "ACTIVE",
+    notes: "",
   };
 }
 
@@ -58,6 +78,14 @@ function sortAircraft(items: AircraftResponse[]): AircraftResponse[] {
   return [...items].sort((left, right) =>
     left.registration.localeCompare(right.registration),
   );
+}
+
+function sortAirframes(items: SimbriefAirframeResponse[]): SimbriefAirframeResponse[] {
+  return [...items].sort((left, right) => {
+    const leftKey = left.registration ?? left.name;
+    const rightKey = right.registration ?? right.name;
+    return leftKey.localeCompare(rightKey);
+  });
 }
 
 function getAircraftStatusTone(status: string): BadgeTone {
@@ -73,29 +101,88 @@ function getAircraftStatusTone(status: string): BadgeTone {
   }
 }
 
+function buildAirframeOptionLabel(airframe: SimbriefAirframeResponse): string {
+  return [
+    airframe.registration,
+    airframe.name,
+    airframe.aircraftIcao,
+    airframe.linkedAircraftType?.icaoCode ?? null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" · ");
+}
+
+function updateAirframesAfterAircraftChange(
+  airframes: SimbriefAirframeResponse[],
+  aircraft: AircraftResponse,
+): SimbriefAirframeResponse[] {
+  return airframes.map((airframe) => {
+    if (airframe.id === aircraft.simbriefAirframe?.id) {
+      return {
+        ...airframe,
+        linkedAircraft: {
+          id: aircraft.id,
+          registration: aircraft.registration,
+          label: aircraft.label,
+          status: aircraft.status,
+          aircraftType: {
+            id: aircraft.aircraftType.id,
+            icaoCode: aircraft.aircraftType.icaoCode,
+            name: aircraft.aircraftType.name,
+          },
+          hub: aircraft.hub,
+        },
+      };
+    }
+
+    if (airframe.linkedAircraft?.id === aircraft.id) {
+      return {
+        ...airframe,
+        linkedAircraft: null,
+      };
+    }
+
+    return airframe;
+  });
+}
+
 export function AdminAircraftManager({
   initialAircraft,
   referenceData,
 }: AdminAircraftManagerProps): JSX.Element {
   const [items, setItems] = useState(() => sortAircraft(initialAircraft));
-  const [referenceDataState, setReferenceDataState] = useState(referenceData);
+  const [referenceDataState, setReferenceDataState] = useState({
+    ...referenceData,
+    simbriefAirframes: sortAirframes(referenceData.simbriefAirframes),
+  });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<AdminFeedback | null>(null);
   const [formState, setFormState] = useState<AircraftFormState>(() =>
     createInitialAircraftForm(referenceData),
   );
+  const [importState, setImportState] = useState<ImportState>(() =>
+    createInitialImportState(),
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [isInitializingTypes, setIsInitializingTypes] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const aircraftTypeLabelById = useMemo(
     () =>
       new Map(
-        referenceDataState.aircraftTypes.map((item) => [item.id, item.name]),
+        referenceDataState.aircraftTypes.map((item) => [
+          item.id,
+          `${item.icaoCode} · ${item.name}`,
+        ]),
       ),
     [referenceDataState.aircraftTypes],
   );
 
   const hasAircraftTypeReference = referenceDataState.aircraftTypes.length > 0;
+  const availableAirframes = useMemo(
+    () => referenceDataState.simbriefAirframes,
+    [referenceDataState.simbriefAirframes],
+  );
 
   function resetForm(nextReferenceData = referenceDataState): void {
     setEditingId(null);
@@ -107,6 +194,16 @@ export function AdminAircraftManager({
     value: AircraftFormState[Field],
   ): void {
     setFormState((currentValue) => ({
+      ...currentValue,
+      [field]: value,
+    }));
+  }
+
+  function updateImportState<Field extends keyof ImportState>(
+    field: Field,
+    value: ImportState[Field],
+  ): void {
+    setImportState((currentValue) => ({
       ...currentValue,
       [field]: value,
     }));
@@ -136,7 +233,10 @@ export function AdminAircraftManager({
       }
 
       const nextReferenceData = responsePayload as AdminReferenceDataResponse;
-      setReferenceDataState(nextReferenceData);
+      setReferenceDataState({
+        ...nextReferenceData,
+        simbriefAirframes: sortAirframes(nextReferenceData.simbriefAirframes),
+      });
       resetForm(nextReferenceData);
       setFeedback({
         tone: "success",
@@ -145,6 +245,70 @@ export function AdminAircraftManager({
       });
     } finally {
       setIsInitializingTypes(false);
+    }
+  }
+
+  async function handleImportFromAirframe(): Promise<void> {
+    if (!importState.simbriefAirframeId) {
+      setFeedback({
+        tone: "danger",
+        message: "Sélectionnez d'abord une airframe SimBrief à importer.",
+      });
+      return;
+    }
+
+    setFeedback(null);
+    setIsImporting(true);
+
+    try {
+      const payload: AdminAircraftImportFromSimbriefAirframePayload = {
+        simbriefAirframeId: importState.simbriefAirframeId,
+        hubId: importState.hubId || null,
+        status: importState.status,
+        notes: importState.notes.trim() || null,
+      };
+
+      const response = await fetch(
+        "/api/admin/aircraft/import-from-simbrief-airframe",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      const rawPayload = await response.text();
+      const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
+
+      if (!response.ok) {
+        setFeedback({
+          tone: "danger",
+          message: extractApiMessage(
+            responsePayload,
+            "Impossible d'importer cet appareil depuis SimBrief.",
+          ),
+        });
+        return;
+      }
+
+      const savedAircraft = responsePayload as AircraftResponse;
+      setItems((currentValue) => sortAircraft([...currentValue, savedAircraft]));
+      setReferenceDataState((currentValue) => ({
+        ...currentValue,
+        simbriefAirframes: updateAirframesAfterAircraftChange(
+          currentValue.simbriefAirframes,
+          savedAircraft,
+        ),
+      }));
+      setImportState(createInitialImportState());
+      setFeedback({
+        tone: "success",
+        message: "Appareil importé depuis l'airframe SimBrief.",
+      });
+    } finally {
+      setIsImporting(false);
     }
   }
 
@@ -172,6 +336,12 @@ export function AdminAircraftManager({
         status: formState.status,
         notes: formState.notes.trim() || null,
       };
+
+      if (formState.simbriefAirframeId.trim().length > 0) {
+        payload.simbriefAirframeId = formState.simbriefAirframeId;
+      } else if (editingId) {
+        payload.simbriefAirframeId = null;
+      }
 
       const endpoint = editingId
         ? `/api/admin/aircraft/${editingId}`
@@ -210,6 +380,13 @@ export function AdminAircraftManager({
 
         return sortAircraft(nextItems);
       });
+      setReferenceDataState((currentValue) => ({
+        ...currentValue,
+        simbriefAirframes: updateAirframesAfterAircraftChange(
+          currentValue.simbriefAirframes,
+          savedAircraft,
+        ),
+      }));
       setFeedback({
         tone: "success",
         message: editingId
@@ -246,7 +423,21 @@ export function AdminAircraftManager({
       return;
     }
 
+    const deletedAircraft = items.find((item) => item.id === id) ?? null;
     setItems((currentValue) => currentValue.filter((item) => item.id !== id));
+    if (deletedAircraft?.simbriefAirframe?.id) {
+      setReferenceDataState((currentValue) => ({
+        ...currentValue,
+        simbriefAirframes: currentValue.simbriefAirframes.map((airframe) =>
+          airframe.id === deletedAircraft.simbriefAirframe?.id
+            ? {
+                ...airframe,
+                linkedAircraft: null,
+              }
+            : airframe,
+        ),
+      }));
+    }
     if (editingId === id) {
       resetForm();
     }
@@ -266,6 +457,7 @@ export function AdminAircraftManager({
       hubId: item.hub?.id ?? "",
       status: item.status as (typeof AIRCRAFT_STATUSES)[number],
       notes: item.notes ?? "",
+      simbriefAirframeId: item.simbriefAirframe?.id ?? "",
     });
   }
 
@@ -274,12 +466,106 @@ export function AdminAircraftManager({
       <Card className="admin-form-card">
         <div className="admin-card-head">
           <div>
+            <span className="section-eyebrow">Import SimBrief</span>
+            <h2>Importer depuis une airframe SimBrief</h2>
+          </div>
+          <p>
+            Créez un appareil réel de la flotte à partir d’une airframe SimBrief
+            déjà synchronisée sur le profil pilote.
+          </p>
+        </div>
+
+        {availableAirframes.length === 0 ? (
+          <EmptyState
+            description="Aucune airframe SimBrief n’est encore synchronisée. Rendez-vous dans le profil pilote pour lancer une synchronisation réelle depuis SimBrief."
+            title="Aucune airframe SimBrief"
+          />
+        ) : (
+          <div className="auth-form admin-form-grid">
+            <div className="field field--full">
+              <label htmlFor="aircraft-import-airframe">Airframe SimBrief</label>
+              <select
+                id="aircraft-import-airframe"
+                onChange={(event) =>
+                  updateImportState("simbriefAirframeId", event.target.value)
+                }
+                value={importState.simbriefAirframeId}
+              >
+                <option value="">Sélectionner une airframe</option>
+                {availableAirframes.map((airframe) => (
+                  <option key={airframe.id ?? airframe.simbriefAirframeId} value={airframe.id ?? ""}>
+                    {buildAirframeOptionLabel(airframe)}
+                    {airframe.linkedAircraft ? " · déjà liée" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label htmlFor="aircraft-import-hub">Hub</label>
+              <select
+                id="aircraft-import-hub"
+                onChange={(event) => updateImportState("hubId", event.target.value)}
+                value={importState.hubId}
+              >
+                <option value="">Aucun hub</option>
+                {referenceDataState.hubs.map((hub) => (
+                  <option key={hub.id} value={hub.id}>
+                    {hub.code} · {hub.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label htmlFor="aircraft-import-status">Statut</label>
+              <select
+                id="aircraft-import-status"
+                onChange={(event) =>
+                  updateImportState(
+                    "status",
+                    event.target.value as (typeof AIRCRAFT_STATUSES)[number],
+                  )
+                }
+                value={importState.status}
+              >
+                {AIRCRAFT_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field field--full">
+              <label htmlFor="aircraft-import-notes">Notes</label>
+              <textarea
+                id="aircraft-import-notes"
+                onChange={(event) => updateImportState("notes", event.target.value)}
+                placeholder="Importé depuis SimBrief Airframe"
+                rows={2}
+                value={importState.notes}
+              />
+            </div>
+
+            <div className="admin-form-actions">
+              <Button disabled={isImporting} onClick={() => void handleImportFromAirframe()} type="button">
+                {isImporting ? "Import en cours..." : "Importer dans la flotte"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      <Card className="admin-form-card">
+        <div className="admin-card-head">
+          <div>
             <span className="section-eyebrow">Gestion flotte</span>
             <h2>{editingId ? "Modifier un appareil" : "Ajouter un appareil"}</h2>
           </div>
           <p>
-            Gérez les immatriculations réelles, leur type, leur hub optionnel et
-            leur statut d'exploitation.
+            Gérez les immatriculations réelles, leur type, leur hub optionnel,
+            leur statut d’exploitation et leur liaison SimBrief Airframe.
           </p>
         </div>
 
@@ -383,11 +669,33 @@ export function AdminAircraftManager({
             </div>
 
             <div className="field field--full">
+              <label htmlFor="aircraft-simbrief-airframe">Airframe SimBrief liée</label>
+              <select
+                id="aircraft-simbrief-airframe"
+                onChange={(event) =>
+                  updateFormState("simbriefAirframeId", event.target.value)
+                }
+                value={formState.simbriefAirframeId}
+              >
+                <option value="">Aucune airframe liée</option>
+                {availableAirframes.map((airframe) => (
+                  <option key={airframe.id ?? airframe.simbriefAirframeId} value={airframe.id ?? ""}>
+                    {buildAirframeOptionLabel(airframe)}
+                    {airframe.linkedAircraft &&
+                    airframe.linkedAircraft.id !== editingId
+                      ? " · déjà liée"
+                      : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field field--full">
               <label htmlFor="aircraft-notes">Notes</label>
               <textarea
                 id="aircraft-notes"
                 onChange={(event) => updateFormState("notes", event.target.value)}
-                placeholder="Commentaires internes sur la livrée, l'affectation ou le simulateur."
+                placeholder="Commentaires internes sur la livrée, l’affectation ou le simulateur."
                 rows={3}
                 value={formState.notes}
               />
@@ -472,6 +780,17 @@ export function AdminAircraftManager({
                 render: (item) => (
                   <span className="table-muted">
                     {item.hub ? `${item.hub.code} · ${item.hub.name}` : "Non affecté"}
+                  </span>
+                ),
+              },
+              {
+                id: "airframe",
+                header: "Airframe SimBrief",
+                render: (item) => (
+                  <span className="table-muted">
+                    {item.simbriefAirframe
+                      ? `${item.simbriefAirframe.name}${item.simbriefAirframe.registration ? ` · ${item.simbriefAirframe.registration}` : ""}`
+                      : "Aucune liaison"}
                   </span>
                 ),
               },

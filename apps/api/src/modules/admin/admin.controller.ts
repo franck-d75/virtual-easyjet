@@ -26,6 +26,8 @@ import {
   CreateAdminAircraftDto,
   CreateAdminHubDto,
   CreateAdminRouteDto,
+  ImportAdminAircraftFromSimbriefAirframeDto,
+  LinkAdminAircraftSimbriefAirframeDto,
   UpdateAdminUserDto,
   UpdateAdminAircraftDto,
   UpdateAdminHubDto,
@@ -53,6 +55,11 @@ export class AdminController {
   @Get("airports")
   public listAirports() {
     return this.adminService.listAirports();
+  }
+
+  @Get("simbrief-airframes")
+  public listSimbriefAirframes() {
+    return this.adminService.listSimbriefAirframes();
   }
 
   @Post("reference-data/aircraft-types/init")
@@ -126,6 +133,17 @@ export class AdminController {
     return this.adminService.createAircraft(payload, currentUser);
   }
 
+  @Post("aircraft/import-from-simbrief-airframe")
+  public createAircraftFromSimbriefAirframe(
+    @Body() payload: ImportAdminAircraftFromSimbriefAirframeDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.createAircraftFromSimbriefAirframe(
+      payload,
+      currentUser,
+    );
+  }
+
   @Patch("aircraft/:id")
   public updateAircraft(
     @Param("id") id: string,
@@ -133,6 +151,27 @@ export class AdminController {
     @CurrentUser() currentUser: AuthenticatedUser,
   ) {
     return this.adminService.updateAircraft(id, payload, currentUser);
+  }
+
+  @Patch("aircraft/:id/link-simbrief-airframe")
+  public linkAircraftToSimbriefAirframe(
+    @Param("id") id: string,
+    @Body() payload: LinkAdminAircraftSimbriefAirframeDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.linkAircraftToSimbriefAirframe(
+      id,
+      payload,
+      currentUser,
+    );
+  }
+
+  @Delete("aircraft/:id/link-simbrief-airframe")
+  public unlinkAircraftFromSimbriefAirframe(
+    @Param("id") id: string,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.unlinkAircraftFromSimbriefAirframe(id, currentUser);
   }
 
   @Delete("aircraft/:id")

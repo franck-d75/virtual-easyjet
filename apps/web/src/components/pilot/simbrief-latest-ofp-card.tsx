@@ -34,6 +34,20 @@ function formatAircraft(latestOfp: SimbriefLatestOfpResponse): string {
   return aircraftParts.join(" ") || "-";
 }
 
+function formatMatchedAirframe(latestOfp: SimbriefLatestOfpResponse): string {
+  const matchedAirframe = latestOfp.plan?.aircraft?.matchedAirframe;
+
+  if (!matchedAirframe) {
+    return "Aucune airframe liée";
+  }
+
+  if (matchedAirframe.linkedAircraft) {
+    return `${matchedAirframe.name} · ${matchedAirframe.linkedAircraft.registration}`;
+  }
+
+  return matchedAirframe.name;
+}
+
 function formatCruiseAltitude(latestOfp: SimbriefLatestOfpResponse): string {
   const altitude = latestOfp.plan?.cruiseAltitudeFt;
 
@@ -91,9 +105,9 @@ function renderBody(latestOfp: SimbriefLatestOfpResponse): JSX.Element {
       return (
         <>
           <p>
-            La récupération du dernier OFP SimBrief a échoué pour le moment.
-            Le profil pilote reste intact et vous pourrez réessayer sans impact
-            sur l’authentification ni sur vos données VA.
+            La récupération du dernier OFP SimBrief a échoué pour le moment. Le
+            profil pilote reste intact et vous pourrez réessayer sans impact sur
+            l’authentification ni sur vos données VA.
           </p>
           <div className="definition-grid">
             <div>
@@ -136,6 +150,10 @@ function renderBody(latestOfp: SimbriefLatestOfpResponse): JSX.Element {
             <div>
               <span>Appareil</span>
               <strong>{formatAircraft(latestOfp)}</strong>
+            </div>
+            <div>
+              <span>Airframe liée</span>
+              <strong>{formatMatchedAirframe(latestOfp)}</strong>
             </div>
             <div>
               <span>Croisière</span>

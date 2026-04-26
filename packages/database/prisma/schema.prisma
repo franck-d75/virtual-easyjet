@@ -167,6 +167,7 @@ model User {
   updatedSettings       Setting[]            @relation("SettingsUpdatedBy")
   newsPostsAuthored     NewsPost[]           @relation("NewsPostsAuthored")
   contentPagesAuthored  ContentPage[]        @relation("ContentPagesAuthored")
+  simbriefAirframes     SimbriefAirframe[]
 }
 
 model Role {
@@ -229,6 +230,7 @@ model PilotProfile {
   checkrides        Checkride[]
   staffNotes        StaffNote[]
   violations        Violation[]
+  simbriefAirframes SimbriefAirframe[]
 
   @@index([hubId])
   @@index([rankId])
@@ -304,6 +306,7 @@ model AircraftType {
   routes          Route[]
   qualifications  Qualification[] @relation("QualificationAircraftType")
   checkrides      Checkride[]
+  simbriefAirframes SimbriefAirframe[]
 }
 
 model Aircraft {
@@ -322,9 +325,37 @@ model Aircraft {
   bookings       Booking[]
   flights        Flight[]
   pireps         Pirep[]
+  simbriefAirframe SimbriefAirframe?
 
   @@index([aircraftTypeId])
   @@index([hubId])
+}
+
+model SimbriefAirframe {
+  id                  String        @id @default(cuid())
+  simbriefAirframeId  String        @unique @db.VarChar(64)
+  name                String
+  aircraftIcao        String        @db.VarChar(8)
+  registration        String?
+  selcal              String?
+  equipment           String?
+  engineType          String?
+  wakeCategory        String?
+  rawJson             Json
+  linkedAircraftTypeId String?
+  linkedAircraftId    String?       @unique
+  ownerUserId         String
+  pilotProfileId      String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  linkedAircraftType  AircraftType? @relation(fields: [linkedAircraftTypeId], references: [id], onDelete: SetNull)
+  linkedAircraft      Aircraft?     @relation(fields: [linkedAircraftId], references: [id], onDelete: SetNull)
+  ownerUser           User          @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  pilotProfile        PilotProfile? @relation(fields: [pilotProfileId], references: [id], onDelete: SetNull)
+
+  @@index([linkedAircraftTypeId])
+  @@index([ownerUserId])
+  @@index([pilotProfileId])
 }
 
 model Route {

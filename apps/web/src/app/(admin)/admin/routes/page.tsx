@@ -13,6 +13,7 @@ const EMPTY_REFERENCE_DATA: AdminReferenceDataResponse = {
   airports: [],
   hubs: [],
   aircraftTypes: [],
+  simbriefAirframes: [],
 };
 
 export default async function AdminRoutesPage(): Promise<JSX.Element> {

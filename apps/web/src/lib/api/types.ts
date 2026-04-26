@@ -80,6 +80,8 @@ export interface SimbriefLatestOfpAircraftResponse {
   icaoCode: string | null;
   name: string | null;
   registration: string | null;
+  simbriefAirframeId: string | null;
+  matchedAirframe?: SimbriefAirframeResponse | null;
 }
 
 export type SimbriefLatestOfpRoutePointSource =
@@ -115,6 +117,65 @@ export interface SimbriefLatestOfpResponse {
   fetchedAt: string;
   source: SimbriefLookupResponse | null;
   plan: SimbriefLatestOfpPlanResponse | null;
+}
+
+export interface SimbriefAirframeResponse {
+  id: string | null;
+  simbriefAirframeId: string;
+  name: string;
+  aircraftIcao: string;
+  registration: string | null;
+  selcal: string | null;
+  equipment: string | null;
+  engineType: string | null;
+  wakeCategory: string | null;
+  rawJson: unknown;
+  linkedAircraftType: {
+    id: string;
+    icaoCode: string;
+    name: string;
+    manufacturer: string | null;
+  } | null;
+  linkedAircraft: {
+    id: string;
+    registration: string;
+    label: string | null;
+    status: string;
+    aircraftType: {
+      id: string;
+      icaoCode: string;
+      name: string;
+    };
+    hub: {
+      id: string;
+      code: string;
+      name: string;
+    } | null;
+  } | null;
+  ownerUser?: {
+    id: string;
+    username: string;
+    email: string;
+  } | null;
+  pilotProfile?: {
+    id: string;
+    pilotNumber: string;
+    firstName: string;
+    lastName: string;
+  } | null;
+  syncedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SimbriefAirframesResponse {
+  status: SimbriefLatestOfpStatus;
+  pilotId: string | null;
+  detail: string | null;
+  fetchStatus: string | null;
+  fetchedAt: string;
+  source: SimbriefLookupResponse | null;
+  airframes: SimbriefAirframeResponse[];
 }
 
 export interface PilotProfileResponse {
@@ -176,6 +237,18 @@ export interface AircraftResponse {
     id: string;
     code: string;
     name: string;
+  } | null;
+  simbriefAirframe?: {
+    id: string;
+    simbriefAirframeId: string;
+    name: string;
+    aircraftIcao: string;
+    registration: string | null;
+    linkedAircraftType: {
+      id: string;
+      icaoCode: string;
+      name: string;
+    } | null;
   } | null;
 }
 
@@ -597,6 +670,7 @@ export interface AdminReferenceDataResponse {
   airports: AdminAirportOptionResponse[];
   hubs: AdminHubOptionResponse[];
   aircraftTypes: AdminAircraftTypeOptionResponse[];
+  simbriefAirframes: SimbriefAirframeResponse[];
 }
 
 export interface AdminAircraftPayload {
@@ -606,6 +680,18 @@ export interface AdminAircraftPayload {
   hubId?: string | null;
   status: string;
   notes?: string | null;
+  simbriefAirframeId?: string | null;
+}
+
+export interface AdminAircraftImportFromSimbriefAirframePayload {
+  simbriefAirframeId: string;
+  hubId?: string | null;
+  status?: string;
+  notes?: string | null;
+}
+
+export interface AdminAircraftLinkSimbriefAirframePayload {
+  simbriefAirframeId: string;
 }
 
 export interface AdminHubPayload {

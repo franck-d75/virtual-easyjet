@@ -24,6 +24,8 @@ import type {
   CreateAdminAircraftDto,
   CreateAdminHubDto,
   CreateAdminRouteDto,
+  ImportAdminAircraftFromSimbriefAirframeDto,
+  LinkAdminAircraftSimbriefAirframeDto,
   UpdateAdminUserDto,
   UpdateAdminAircraftDto,
   UpdateAdminHubDto,
@@ -37,7 +39,37 @@ const adminAircraftInclude = {
     },
   },
   hub: true,
+  simbriefAirframe: {
+    include: {
+      linkedAircraftType: true,
+    },
+  },
 } satisfies Prisma.AircraftInclude;
+
+const simbriefAirframeInclude = {
+  linkedAircraftType: true,
+  linkedAircraft: {
+    include: {
+      aircraftType: true,
+      hub: true,
+    },
+  },
+  pilotProfile: {
+    select: {
+      id: true,
+      pilotNumber: true,
+      firstName: true,
+      lastName: true,
+    },
+  },
+  ownerUser: {
+    select: {
+      id: true,
+      username: true,
+      email: true,
+    },
+  },
+} satisfies Prisma.SimbriefAirframeInclude;
 
 const adminHubInclude = {
   airport: true,
@@ -57,6 +89,10 @@ const adminRouteInclude = {
 
 type AdminAircraftRecord = Prisma.AircraftGetPayload<{
   include: typeof adminAircraftInclude;
+}>;
+
+type AdminSimbriefAirframeRecord = Prisma.SimbriefAirframeGetPayload<{
+  include: typeof simbriefAirframeInclude;
 }>;
 
 type AdminHubRecord = Prisma.HubGetPayload<{
@@ -260,7 +296,7 @@ export class AdminService {
   }
 
   public async getReferenceData() {
-    const [airports, hubs, aircraftTypes] = await Promise.all([
+    const [airports, hubs, aircraftTypes, simbriefAirframes] = await Promise.all([
       this.prisma.airport.findMany({
         orderBy: { icao: "asc" },
         select: {
@@ -289,12 +325,19 @@ export class AdminService {
           manufacturer: true,
         },
       }),
+      this.prisma.simbriefAirframe.findMany({
+        orderBy: [{ registration: "asc" }, { name: "asc" }],
+        include: simbriefAirframeInclude,
+      }),
     ]);
 
     return {
       airports,
       hubs,
       aircraftTypes,
+      simbriefAirframes: simbriefAirframes.map((airframe) =>
+        this.serializeSimbriefAirframe(airframe),
+      ),
     };
   }
 
@@ -330,6 +373,15 @@ export class AdminService {
       elevationFt: airport.elevationFt,
       isActive: airport.isActive,
     }));
+  }
+
+  public async listSimbriefAirframes() {
+    const airframes = await this.prisma.simbriefAirframe.findMany({
+      orderBy: [{ registration: "asc" }, { name: "asc" }],
+      include: simbriefAirframeInclude,
+    });
+
+    return airframes.map((airframe) => this.serializeSimbriefAirframe(airframe));
   }
 
   public async initializeAircraftTypeReferenceData(
@@ -642,21 +694,222 @@ export class AdminService {
     return this.serializeAircraft(aircraft);
   }
 
+  public async createAircraftFromSimbriefAirframe(
+    payload: ImportAdminAircraftFromSimbriefAirframeDto,
+    currentUser: AuthenticatedUser,
+  ) {
+    const importedAircraft = await this.prisma.$transaction(async (transaction) => {
+      const airframe = await transaction.simbriefAirframe.findUnique({
+        where: {
+          id: payload.simbriefAirframeId,
+        },
+        include: simbriefAirframeInclude,
+      });
+
+      if (!airframe) {
+        throw new NotFoundException("SimBrief airframe not found.");
+      }
+
+      if (airframe.linkedAircraftId) {
+        throw new ConflictException(
+          "Cette airframe SimBrief est déjà liée à un appareil de la flotte.",
+        );
+      }
+
+      if (!airframe.linkedAircraftTypeId) {
+        throw new ConflictException(
+          "Cette airframe SimBrief n'est pas encore mappée vers un type appareil de référence.",
+        );
+      }
+
+      if (!airframe.registration) {
+        throw new ConflictException(
+          "Cette airframe SimBrief ne fournit pas d'immatriculation exploitable.",
+        );
+      }
+
+      const aircraft = await transaction.aircraft.create({
+        data: {
+          registration: airframe.registration.trim().toUpperCase(),
+          label: normalizeOptionalString(airframe.name),
+          aircraftTypeId: airframe.linkedAircraftTypeId,
+          hubId: normalizeOptionalString(payload.hubId),
+          status: payload.status ?? "ACTIVE",
+          notes:
+            normalizeOptionalString(payload.notes) ??
+            "Importé depuis SimBrief Airframe.",
+        },
+        include: adminAircraftInclude,
+      });
+
+      await transaction.simbriefAirframe.update({
+        where: {
+          id: airframe.id,
+        },
+        data: {
+          linkedAircraftId: aircraft.id,
+        },
+      });
+
+      return transaction.aircraft.findUniqueOrThrow({
+        where: {
+          id: aircraft.id,
+        },
+        include: adminAircraftInclude,
+      });
+    });
+
+    logAdminAction("aircraft.import-from-simbrief-airframe", currentUser.id, importedAircraft.id, {
+      simbriefAirframeId: payload.simbriefAirframeId,
+    });
+
+    return this.serializeAircraft(importedAircraft);
+  }
+
+  public async linkAircraftToSimbriefAirframe(
+    aircraftId: string,
+    payload: LinkAdminAircraftSimbriefAirframeDto,
+    currentUser: AuthenticatedUser,
+  ) {
+    const aircraft = await this.prisma.$transaction(async (transaction) => {
+      const existingAircraft = await transaction.aircraft.findUnique({
+        where: {
+          id: aircraftId,
+        },
+        include: adminAircraftInclude,
+      });
+
+      if (!existingAircraft) {
+        throw new NotFoundException("Aircraft not found.");
+      }
+
+      const airframe = await transaction.simbriefAirframe.findUnique({
+        where: {
+          id: payload.simbriefAirframeId,
+        },
+        include: simbriefAirframeInclude,
+      });
+
+      if (!airframe) {
+        throw new NotFoundException("SimBrief airframe not found.");
+      }
+
+      if (
+        airframe.linkedAircraftId &&
+        airframe.linkedAircraftId !== existingAircraft.id
+      ) {
+        throw new ConflictException(
+          "Cette airframe SimBrief est déjà liée à un autre appareil.",
+        );
+      }
+
+      if (
+        airframe.linkedAircraftTypeId &&
+        airframe.linkedAircraftTypeId !== existingAircraft.aircraftTypeId
+      ) {
+        throw new ConflictException(
+          "Le type appareil de la flotte ne correspond pas à celui de l'airframe SimBrief.",
+        );
+      }
+
+      await transaction.simbriefAirframe.update({
+        where: {
+          id: airframe.id,
+        },
+        data: {
+          linkedAircraftId: existingAircraft.id,
+        },
+      });
+
+      return transaction.aircraft.findUniqueOrThrow({
+        where: {
+          id: existingAircraft.id,
+        },
+        include: adminAircraftInclude,
+      });
+    });
+
+    logAdminAction("aircraft.link-simbrief-airframe", currentUser.id, aircraft.id, {
+      simbriefAirframeId: payload.simbriefAirframeId,
+    });
+
+    return this.serializeAircraft(aircraft);
+  }
+
+  public async unlinkAircraftFromSimbriefAirframe(
+    aircraftId: string,
+    currentUser: AuthenticatedUser,
+  ) {
+    const aircraft = await this.prisma.$transaction(async (transaction) => {
+      const existingAircraft = await transaction.aircraft.findUnique({
+        where: {
+          id: aircraftId,
+        },
+        include: {
+          simbriefAirframe: true,
+        },
+      });
+
+      if (!existingAircraft) {
+        throw new NotFoundException("Aircraft not found.");
+      }
+
+      if (existingAircraft.simbriefAirframe) {
+        await transaction.simbriefAirframe.update({
+          where: {
+            id: existingAircraft.simbriefAirframe.id,
+          },
+          data: {
+            linkedAircraftId: null,
+          },
+        });
+      }
+
+      return transaction.aircraft.findUniqueOrThrow({
+        where: {
+          id: aircraftId,
+        },
+        include: adminAircraftInclude,
+      });
+    });
+
+    logAdminAction("aircraft.unlink-simbrief-airframe", currentUser.id, aircraftId);
+    return this.serializeAircraft(aircraft);
+  }
+
   public async createAircraft(
     payload: CreateAdminAircraftDto,
     currentUser: AuthenticatedUser,
   ) {
     try {
-      const aircraft = await this.prisma.aircraft.create({
-        data: {
-          registration: payload.registration.trim().toUpperCase(),
-          label: normalizeOptionalString(payload.label),
-          aircraftTypeId: payload.aircraftTypeId,
-          hubId: normalizeOptionalString(payload.hubId),
-          status: payload.status as AircraftStatus,
-          notes: normalizeOptionalString(payload.notes),
-        },
-        include: adminAircraftInclude,
+      const aircraft = await this.prisma.$transaction(async (transaction) => {
+        const createdAircraft = await transaction.aircraft.create({
+          data: {
+            registration: payload.registration.trim().toUpperCase(),
+            label: normalizeOptionalString(payload.label),
+            aircraftTypeId: payload.aircraftTypeId,
+            hubId: normalizeOptionalString(payload.hubId),
+            status: payload.status as AircraftStatus,
+            notes: normalizeOptionalString(payload.notes),
+          },
+          include: adminAircraftInclude,
+        });
+
+        if (payload.simbriefAirframeId) {
+          await this.assertAndLinkSimbriefAirframe(
+            transaction,
+            createdAircraft.id,
+            payload.simbriefAirframeId,
+            createdAircraft.aircraftTypeId,
+          );
+        }
+
+        return transaction.aircraft.findUniqueOrThrow({
+          where: {
+            id: createdAircraft.id,
+          },
+          include: adminAircraftInclude,
+        });
       });
 
       logAdminAction("aircraft.create", currentUser.id, aircraft.id);
@@ -672,27 +925,54 @@ export class AdminService {
     currentUser: AuthenticatedUser,
   ) {
     try {
-      const aircraft = await this.prisma.aircraft.update({
-        where: { id },
-        data: {
-          ...(payload.registration !== undefined
-            ? { registration: payload.registration.trim().toUpperCase() }
-            : {}),
-          ...(payload.label !== undefined
-            ? { label: normalizeOptionalString(payload.label) }
-            : {}),
-          ...(payload.aircraftTypeId !== undefined
-            ? { aircraftTypeId: payload.aircraftTypeId }
-            : {}),
-          ...(payload.hubId !== undefined
-            ? { hubId: normalizeOptionalString(payload.hubId) }
-            : {}),
-          ...(payload.status !== undefined ? { status: payload.status } : {}),
-          ...(payload.notes !== undefined
-            ? { notes: normalizeOptionalString(payload.notes) }
-            : {}),
-        },
-        include: adminAircraftInclude,
+      const aircraft = await this.prisma.$transaction(async (transaction) => {
+        const updatedAircraft = await transaction.aircraft.update({
+          where: { id },
+          data: {
+            ...(payload.registration !== undefined
+              ? { registration: payload.registration.trim().toUpperCase() }
+              : {}),
+            ...(payload.label !== undefined
+              ? { label: normalizeOptionalString(payload.label) }
+              : {}),
+            ...(payload.aircraftTypeId !== undefined
+              ? { aircraftTypeId: payload.aircraftTypeId }
+              : {}),
+            ...(payload.hubId !== undefined
+              ? { hubId: normalizeOptionalString(payload.hubId) }
+              : {}),
+            ...(payload.status !== undefined ? { status: payload.status } : {}),
+            ...(payload.notes !== undefined
+              ? { notes: normalizeOptionalString(payload.notes) }
+              : {}),
+          },
+          include: adminAircraftInclude,
+        });
+
+        if (payload.simbriefAirframeId !== undefined) {
+          if (payload.simbriefAirframeId === null) {
+            await transaction.simbriefAirframe.updateMany({
+              where: {
+                linkedAircraftId: updatedAircraft.id,
+              },
+              data: {
+                linkedAircraftId: null,
+              },
+            });
+          } else {
+            await this.assertAndLinkSimbriefAirframe(
+              transaction,
+              updatedAircraft.id,
+              payload.simbriefAirframeId,
+              updatedAircraft.aircraftTypeId,
+            );
+          }
+        }
+
+        return transaction.aircraft.findUniqueOrThrow({
+          where: { id: updatedAircraft.id },
+          include: adminAircraftInclude,
+        });
       });
 
       logAdminAction("aircraft.update", currentUser.id, id);
@@ -1200,6 +1480,106 @@ export class AdminService {
     };
   }
 
+  private async assertAndLinkSimbriefAirframe(
+    transaction: Prisma.TransactionClient,
+    aircraftId: string,
+    simbriefAirframeId: string,
+    aircraftTypeId: string,
+  ) {
+    const airframe = await transaction.simbriefAirframe.findUnique({
+      where: {
+        id: simbriefAirframeId,
+      },
+      include: simbriefAirframeInclude,
+    });
+
+    if (!airframe) {
+      throw new NotFoundException("SimBrief airframe not found.");
+    }
+
+    if (airframe.linkedAircraftId && airframe.linkedAircraftId !== aircraftId) {
+      throw new ConflictException(
+        "Cette airframe SimBrief est déjà liée à un autre appareil.",
+      );
+    }
+
+    if (
+      airframe.linkedAircraftTypeId &&
+      airframe.linkedAircraftTypeId !== aircraftTypeId
+    ) {
+      throw new ConflictException(
+        "Le type appareil de la flotte ne correspond pas à celui de l'airframe SimBrief.",
+      );
+    }
+
+    await transaction.simbriefAirframe.update({
+      where: {
+        id: simbriefAirframeId,
+      },
+      data: {
+        linkedAircraftId: aircraftId,
+      },
+    });
+  }
+
+  private serializeSimbriefAirframe(airframe: AdminSimbriefAirframeRecord) {
+    return {
+      id: airframe.id,
+      simbriefAirframeId: airframe.simbriefAirframeId,
+      name: airframe.name,
+      aircraftIcao: airframe.aircraftIcao,
+      registration: airframe.registration,
+      selcal: airframe.selcal,
+      equipment: airframe.equipment,
+      engineType: airframe.engineType,
+      wakeCategory: airframe.wakeCategory,
+      rawJson: airframe.rawJson,
+      linkedAircraftType: airframe.linkedAircraftType
+        ? {
+            id: airframe.linkedAircraftType.id,
+            icaoCode: airframe.linkedAircraftType.icaoCode,
+            name: airframe.linkedAircraftType.name,
+            manufacturer: airframe.linkedAircraftType.manufacturer,
+          }
+        : null,
+      linkedAircraft: airframe.linkedAircraft
+        ? {
+            id: airframe.linkedAircraft.id,
+            registration: airframe.linkedAircraft.registration,
+            label: airframe.linkedAircraft.label,
+            status: airframe.linkedAircraft.status,
+            aircraftType: {
+              id: airframe.linkedAircraft.aircraftType.id,
+              icaoCode: airframe.linkedAircraft.aircraftType.icaoCode,
+              name: airframe.linkedAircraft.aircraftType.name,
+            },
+            hub: airframe.linkedAircraft.hub
+              ? {
+                  id: airframe.linkedAircraft.hub.id,
+                  code: airframe.linkedAircraft.hub.code,
+                  name: airframe.linkedAircraft.hub.name,
+                }
+              : null,
+          }
+        : null,
+      ownerUser: {
+        id: airframe.ownerUser.id,
+        username: airframe.ownerUser.username,
+        email: airframe.ownerUser.email,
+      },
+      pilotProfile: airframe.pilotProfile
+        ? {
+            id: airframe.pilotProfile.id,
+            pilotNumber: airframe.pilotProfile.pilotNumber,
+            firstName: airframe.pilotProfile.firstName,
+            lastName: airframe.pilotProfile.lastName,
+          }
+        : null,
+      createdAt: airframe.createdAt,
+      updatedAt: airframe.updatedAt,
+    };
+  }
+
   private serializeAircraft(aircraft: AdminAircraftRecord) {
     return {
       id: aircraft.id,
@@ -1228,6 +1608,22 @@ export class AdminService {
             id: aircraft.hub.id,
             code: aircraft.hub.code,
             name: aircraft.hub.name,
+          }
+        : null,
+      simbriefAirframe: aircraft.simbriefAirframe
+        ? {
+            id: aircraft.simbriefAirframe.id,
+            simbriefAirframeId: aircraft.simbriefAirframe.simbriefAirframeId,
+            name: aircraft.simbriefAirframe.name,
+            aircraftIcao: aircraft.simbriefAirframe.aircraftIcao,
+            registration: aircraft.simbriefAirframe.registration,
+            linkedAircraftType: aircraft.simbriefAirframe.linkedAircraftType
+              ? {
+                  id: aircraft.simbriefAirframe.linkedAircraftType.id,
+                  icaoCode: aircraft.simbriefAirframe.linkedAircraftType.icaoCode,
+                  name: aircraft.simbriefAirframe.linkedAircraftType.name,
+                }
+              : null,
           }
         : null,
     };

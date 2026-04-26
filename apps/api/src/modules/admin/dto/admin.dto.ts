@@ -49,6 +49,10 @@ export class CreateAdminAircraftDto {
     message: "Les notes ne doivent pas contenir de balises HTML.",
   })
   public notes?: string;
+
+  @IsOptional()
+  @IsString()
+  public simbriefAirframeId?: string | null;
 }
 
 export class UpdateAdminAircraftDto {
@@ -84,6 +88,36 @@ export class UpdateAdminAircraftDto {
     message: "Les notes ne doivent pas contenir de balises HTML.",
   })
   public notes?: string | null;
+
+  @IsOptional()
+  @IsString()
+  public simbriefAirframeId?: string | null;
+}
+
+export class ImportAdminAircraftFromSimbriefAirframeDto {
+  @IsString()
+  public simbriefAirframeId!: string;
+
+  @IsOptional()
+  @IsString()
+  public hubId?: string | null;
+
+  @IsOptional()
+  @IsEnum(AircraftStatus)
+  public status?: AircraftStatus;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 500)
+  @Matches(PLAIN_TEXT_REGEX, {
+    message: "Les notes ne doivent pas contenir de balises HTML.",
+  })
+  public notes?: string | null;
+}
+
+export class LinkAdminAircraftSimbriefAirframeDto {
+  @IsString()
+  public simbriefAirframeId!: string;
 }
 
 export class CreateAdminHubDto {

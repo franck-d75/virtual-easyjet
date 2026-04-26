@@ -3,6 +3,7 @@ import type {
   FlightResponse,
   HubResponse,
   PilotProfileResponse,
+  SimbriefAirframesResponse,
   SimbriefLatestOfpResponse,
   UserMeResponse,
 } from "./types";
@@ -50,6 +51,25 @@ export async function getMyLatestSimbriefOfp(
       cache: "no-store",
     },
   );
+}
+
+export async function getMySimbriefAirframes(
+  accessToken: string,
+): Promise<SimbriefAirframesResponse> {
+  return apiRequest<SimbriefAirframesResponse>("/pilot/simbrief/airframes", {
+    accessToken,
+    cache: "no-store",
+  });
+}
+
+export async function syncMySimbriefAirframes(
+  accessToken: string,
+): Promise<SimbriefAirframesResponse> {
+  return apiRequest<SimbriefAirframesResponse>("/pilot/simbrief/airframes/sync", {
+    accessToken,
+    method: "POST",
+    cache: "no-store",
+  });
 }
 
 export async function uploadMyAvatar(

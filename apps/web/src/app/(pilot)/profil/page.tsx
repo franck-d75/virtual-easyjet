@@ -1,14 +1,20 @@
 import type { JSX } from "react";
 
 import { ProfileCard } from "@/components/pilot/profile-card";
+import { SimbriefAirframesCard } from "@/components/pilot/simbrief-airframes-card";
 import { SimbriefLatestOfpCard } from "@/components/pilot/simbrief-latest-ofp-card";
 import { SimbriefSettingsCard } from "@/components/pilot/simbrief-settings-card";
 import { Card } from "@/components/ui/card";
-import { getMyLatestSimbriefOfp, getMyPilotProfile } from "@/lib/api/pilot";
+import {
+  getMyLatestSimbriefOfp,
+  getMyPilotProfile,
+  getMySimbriefAirframes,
+} from "@/lib/api/pilot";
 import { getPublicHubs } from "@/lib/api/public";
 import type {
   HubResponse,
   PilotProfileResponse,
+  SimbriefAirframesResponse,
   SimbriefLatestOfpResponse,
   UserMeResponse,
 } from "@/lib/api/types";
@@ -76,15 +82,36 @@ function buildFallbackLatestOfp(
   };
 }
 
+function buildFallbackAirframes(
+  pilotId: string | null,
+  status: SimbriefAirframesResponse["status"] = "ERROR",
+  detail = "La synchronisation des airframes SimBrief est momentanément indisponible.",
+): SimbriefAirframesResponse {
+  return {
+    status,
+    pilotId,
+    detail,
+    fetchStatus: null,
+    fetchedAt: new Date().toISOString(),
+    source: null,
+    airframes: [],
+  };
+}
+
 export default async function ProfilePage(): Promise<JSX.Element> {
   const session = await requirePilotSession();
   const fallbackProfile = buildFallbackProfile(session.user);
-  const [profileResult, latestSimbriefOfpResult, hubsResult] =
-    await Promise.allSettled([
-      getMyPilotProfile(session.accessToken),
-      getMyLatestSimbriefOfp(session.accessToken),
-      getPublicHubs(),
-    ]);
+  const [
+    profileResult,
+    latestSimbriefOfpResult,
+    simbriefAirframesResult,
+    hubsResult,
+  ] = await Promise.allSettled([
+    getMyPilotProfile(session.accessToken),
+    getMyLatestSimbriefOfp(session.accessToken),
+    getMySimbriefAirframes(session.accessToken),
+    getPublicHubs(),
+  ]);
 
   const profile =
     profileResult.status === "fulfilled"
@@ -97,13 +124,21 @@ export default async function ProfilePage(): Promise<JSX.Element> {
           profile.simbriefPilotId,
           profile.simbriefPilotId ? "ERROR" : "NOT_CONFIGURED",
         );
+  const simbriefAirframes =
+    simbriefAirframesResult.status === "fulfilled"
+      ? simbriefAirframesResult.value
+      : buildFallbackAirframes(
+          profile.simbriefPilotId,
+          profile.simbriefPilotId ? "ERROR" : "NOT_CONFIGURED",
+        );
   const availableHubs =
     hubsResult.status === "fulfilled" && Array.isArray(hubsResult.value)
       ? hubsResult.value
       : ([] as HubResponse[]);
   const isDegraded =
     profileResult.status !== "fulfilled" ||
-    latestSimbriefOfpResult.status !== "fulfilled";
+    latestSimbriefOfpResult.status !== "fulfilled" ||
+    simbriefAirframesResult.status !== "fulfilled";
 
   if (profileResult.status !== "fulfilled") {
     logWebWarning("profile page profile fetch failed", profileResult.reason);
@@ -113,6 +148,13 @@ export default async function ProfilePage(): Promise<JSX.Element> {
     logWebWarning(
       "profile page latest simbrief fetch failed",
       latestSimbriefOfpResult.reason,
+    );
+  }
+
+  if (simbriefAirframesResult.status !== "fulfilled") {
+    logWebWarning(
+      "profile page simbrief airframes fetch failed",
+      simbriefAirframesResult.reason,
     );
   }
 
@@ -162,13 +204,29 @@ export default async function ProfilePage(): Promise<JSX.Element> {
       <section className="section-band">
         <div className="section-band__header">
           <div>
+            <span className="section-eyebrow">Airframes</span>
+            <h2>Synchronisation de vos airframes SimBrief</h2>
+          </div>
+          <p>
+            Cette section récupère vos airframes SimBrief réelles pour préparer
+            la flotte, relier vos appareils VA et garantir que vos OFP utilisent
+            le bon appareil avant le vol ACARS.
+          </p>
+        </div>
+
+        <SimbriefAirframesCard initialAirframes={simbriefAirframes} />
+      </section>
+      <section className="section-band">
+        <div className="section-band__header">
+          <div>
             <span className="section-eyebrow">Dernier OFP</span>
             <h2>Lecture SimBrief isolée</h2>
           </div>
           <p>
             Le web récupère ici le dernier plan de vol SimBrief en temps réel à
-            partir du SimBrief Pilot ID stocké dans votre profil, sans encore
-            injecter automatiquement ces données dans ACARS.
+            partir du SimBrief Pilot ID stocké dans votre profil, puis tente
+            d’associer l’airframe utilisée à votre flotte réelle si elle est
+            déjà synchronisée.
           </p>
         </div>
 
