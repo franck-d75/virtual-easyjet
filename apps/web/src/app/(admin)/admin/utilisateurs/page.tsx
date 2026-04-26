@@ -4,7 +4,10 @@ import { AdminUsersManager } from "@/components/admin/admin-users-manager";
 import { Card } from "@/components/ui/card";
 import { listAdminUsers } from "@/lib/api/admin";
 import type { AdminUserSummaryResponse } from "@/lib/api/types";
-import { requireAdminSession } from "@/lib/auth/guards";
+import {
+  handleProtectedPageApiError,
+  requireAdminSession,
+} from "@/lib/auth/guards";
 import { logWebWarning } from "@/lib/observability/log";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +21,7 @@ export default async function AdminUsersPage(): Promise<JSX.Element> {
     const response = await listAdminUsers(session.accessToken);
     users = Array.isArray(response) ? response : [];
   } catch (error) {
+    handleProtectedPageApiError(error);
     isDegraded = true;
     logWebWarning("admin users list fetch failed", error);
   }

@@ -4,7 +4,10 @@ import { AdminUserDetails } from "@/components/admin/admin-user-details";
 import { Card } from "@/components/ui/card";
 import { getAdminUser } from "@/lib/api/admin";
 import type { AdminUserDetailResponse } from "@/lib/api/types";
-import { requireAdminSession } from "@/lib/auth/guards";
+import {
+  handleProtectedPageApiError,
+  requireAdminSession,
+} from "@/lib/auth/guards";
 import { logWebWarning } from "@/lib/observability/log";
 
 type AdminUserDetailsPageProps = {
@@ -25,6 +28,7 @@ export default async function AdminUserDetailsPage({
   try {
     user = await getAdminUser(session.accessToken, id);
   } catch (error) {
+    handleProtectedPageApiError(error);
     logWebWarning("admin user details fetch failed", error);
   }
 

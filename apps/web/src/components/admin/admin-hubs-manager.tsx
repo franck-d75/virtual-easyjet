@@ -16,6 +16,7 @@ import type {
 
 import {
   extractApiMessage,
+  handleAdminUnauthorized,
   parseJsonPayload,
   type AdminFeedback,
 } from "./admin-feedback";
@@ -32,7 +33,24 @@ type HubFormState = {
   isActive: boolean;
 };
 
-function createInitialHubForm(referenceData: AdminReferenceDataResponse): HubFormState {
+function normalizeReferenceData(
+  referenceData: AdminReferenceDataResponse | null | undefined,
+): AdminReferenceDataResponse {
+  return {
+    airports: Array.isArray(referenceData?.airports) ? referenceData.airports : [],
+    hubs: Array.isArray(referenceData?.hubs) ? referenceData.hubs : [],
+    aircraftTypes: Array.isArray(referenceData?.aircraftTypes)
+      ? referenceData.aircraftTypes
+      : [],
+    simbriefAirframes: Array.isArray(referenceData?.simbriefAirframes)
+      ? referenceData.simbriefAirframes
+      : [],
+  };
+}
+
+function createInitialHubForm(
+  referenceData: AdminReferenceDataResponse,
+): HubFormState {
   return {
     code: "",
     name: "",
@@ -49,17 +67,20 @@ export function AdminHubsManager({
   initialHubs,
   referenceData,
 }: AdminHubsManagerProps): JSX.Element {
-  const [items, setItems] = useState(() => sortHubs(initialHubs));
+  const safeReferenceData = normalizeReferenceData(referenceData);
+  const [items, setItems] = useState(() =>
+    sortHubs(Array.isArray(initialHubs) ? initialHubs : []),
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<AdminFeedback | null>(null);
   const [formState, setFormState] = useState<HubFormState>(() =>
-    createInitialHubForm(referenceData),
+    createInitialHubForm(safeReferenceData),
   );
   const [isPending, startTransition] = useTransition();
 
   function resetForm(): void {
     setEditingId(null);
-    setFormState(createInitialHubForm(referenceData));
+    setFormState(createInitialHubForm(safeReferenceData));
   }
 
   function updateFormState<Field extends keyof HubFormState>(
@@ -86,6 +107,7 @@ export function AdminHubsManager({
     const endpoint = editingId ? `/api/admin/hubs/${editingId}` : "/api/admin/hubs";
     const response = await fetch(endpoint, {
       method: editingId ? "PATCH" : "POST",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
       },
@@ -96,9 +118,16 @@ export function AdminHubsManager({
     const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
 
     if (!response.ok) {
+      if (handleAdminUnauthorized(response)) {
+        return;
+      }
+
       setFeedback({
         tone: "danger",
-        message: extractApiMessage(responsePayload, "Impossible d’enregistrer ce hub."),
+        message: extractApiMessage(
+          responsePayload,
+          "Impossible d'enregistrer ce hub.",
+        ),
       });
       return;
     }
@@ -115,7 +144,7 @@ export function AdminHubsManager({
       });
       setFeedback({
         tone: "success",
-        message: editingId ? "Hub mis à jour." : "Hub créé avec succès.",
+        message: editingId ? "Hub mis a jour." : "Hub cree avec succes.",
       });
       resetForm();
     });
@@ -129,15 +158,23 @@ export function AdminHubsManager({
     setFeedback(null);
     const response = await fetch(`/api/admin/hubs/${id}`, {
       method: "DELETE",
+      credentials: "include",
     });
 
     const rawPayload = await response.text();
     const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
 
     if (!response.ok) {
+      if (handleAdminUnauthorized(response)) {
+        return;
+      }
+
       setFeedback({
         tone: "danger",
-        message: extractApiMessage(responsePayload, "Impossible de supprimer ce hub."),
+        message: extractApiMessage(
+          responsePayload,
+          "Impossible de supprimer ce hub.",
+        ),
       });
       return;
     }
@@ -149,7 +186,7 @@ export function AdminHubsManager({
       }
       setFeedback({
         tone: "success",
-        message: "Hub supprimé.",
+        message: "Hub supprime.",
       });
     });
   }
@@ -173,7 +210,7 @@ export function AdminHubsManager({
             <span className="section-eyebrow">Gestion hubs</span>
             <h2>{editingId ? "Modifier un hub" : "Ajouter un hub"}</h2>
           </div>
-          <p>Associez chaque hub à son aéroport de référence et à son état d’activité.</p>
+          <p>Associez chaque hub a son aeroport de reference et a son etat d'activite.</p>
         </div>
 
         <form className="auth-form admin-form-grid" onSubmit={handleSubmit}>
@@ -202,14 +239,14 @@ export function AdminHubsManager({
           </div>
 
           <div className="field">
-            <label htmlFor="hub-airport">Aéroport</label>
+            <label htmlFor="hub-airport">Aeroport</label>
             <select
               id="hub-airport"
               onChange={(event) => updateFormState("airportId", event.target.value)}
               required
               value={formState.airportId}
             >
-              {referenceData.airports.map((airport) => (
+              {safeReferenceData.airports.map((airport) => (
                 <option key={airport.id} value={airport.id}>
                   {airport.icao} · {airport.name}
                 </option>
@@ -237,8 +274,8 @@ export function AdminHubsManager({
               {isPending
                 ? "Enregistrement..."
                 : editingId
-                  ? "Mettre à jour"
-                  : "Créer le hub"}
+                  ? "Mettre a jour"
+                  : "Creer le hub"}
             </Button>
             {editingId ? (
               <Button onClick={resetForm} type="button" variant="ghost">
@@ -252,59 +289,60 @@ export function AdminHubsManager({
       <Card>
         <div className="admin-card-head">
           <div>
-            <span className="section-eyebrow">Réseau</span>
-            <h2>Hubs enregistrés</h2>
+            <span className="section-eyebrow">Reseau</span>
+            <h2>Hubs enregistres</h2>
           </div>
-          <p>{items.length} hub(s) configuré(s).</p>
+          <p>{items.length} hub(s) configure(s).</p>
         </div>
 
         {items.length === 0 ? (
           <EmptyState
-            description="Ajoutez un premier hub pour structurer la compagnie."
-            title="Aucun hub enregistré"
+            title="Aucun hub enregistre"
+            description="Créez votre premier hub réel à partir du référentiel aéroportuaire disponible."
           />
         ) : (
           <DataTable
             columns={[
               {
                 id: "code",
-                header: "Hub",
-                render: (item) => (
-                  <div className="table-primary">
-                    <strong>{item.code}</strong>
-                    <small>{item.name}</small>
-                  </div>
-                ),
+                header: "Code",
+                render: (item) => item.code,
+              },
+              {
+                id: "name",
+                header: "Nom",
+                render: (item) => item.name,
               },
               {
                 id: "airport",
                 header: "Aéroport",
-                render: (item) => (
-                  <div className="table-secondary">
-                    {item.airport.icao} · {item.airport.name}
-                  </div>
-                ),
+                render: (item) => `${item.airport.icao} · ${item.airport.name}`,
               },
               {
                 id: "status",
-                header: "État",
+                header: "Statut",
                 render: (item) => (
                   <Badge
                     label={item.isActive ? "Actif" : "Inactif"}
-                    tone={item.isActive ? "success" : "danger"}
+                    tone={item.isActive ? "success" : "neutral"}
                   />
                 ),
               },
               {
                 id: "actions",
                 header: "Actions",
-                className: "table-cell-actions",
                 render: (item) => (
-                  <div className="admin-table-actions">
-                    <Button onClick={() => handleEdit(item)} variant="ghost">
+                  <div className="table-actions">
+                    <Button onClick={() => handleEdit(item)} type="button" variant="ghost">
                       Modifier
                     </Button>
-                    <Button onClick={() => handleDelete(item.id)} variant="secondary">
+                    <Button
+                      onClick={() => {
+                        void handleDelete(item.id);
+                      }}
+                      type="button"
+                      variant="ghost"
+                    >
                       Supprimer
                     </Button>
                   </div>

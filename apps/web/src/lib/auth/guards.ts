@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { ApiError } from "../api/client";
 import type { UserMeResponse } from "../api/types";
 import { getServerSession } from "./session";
 
@@ -39,4 +40,16 @@ export async function requireAdminSession(): Promise<AdminSession> {
   }
 
   return session;
+}
+
+export function handleProtectedPageApiError(error: unknown): void {
+  if (error instanceof ApiError) {
+    if (error.status === 401) {
+      redirect("/connexion");
+    }
+
+    if (error.status === 403) {
+      redirect("/dashboard");
+    }
+  }
 }

@@ -1,7 +1,7 @@
 import type { AuthSession } from "@va/shared";
 import type { NextResponse } from "next/server";
 
-import { isProductionEnvironment } from "../config/env";
+import { getAppBaseUrl, isProductionEnvironment } from "../config/env";
 
 export const ACCESS_COOKIE_NAME = "vej_access_token";
 export const REFRESH_COOKIE_NAME = "vej_refresh_token";
@@ -38,13 +38,38 @@ function durationToSeconds(value: string): number {
 }
 
 function getCookieOptions(maxAge: number) {
+  const isProduction = isProductionEnvironment();
+
   return {
+    domain: getCookieDomain(),
     httpOnly: true,
     maxAge,
     path: "/",
-    sameSite: "lax" as const,
-    secure: isProductionEnvironment(),
+    sameSite: (isProduction ? "none" : "lax") as "none" | "lax",
+    secure: isProduction,
   };
+}
+
+function getCookieDomain(): string | undefined {
+  if (!isProductionEnvironment()) {
+    return undefined;
+  }
+
+  try {
+    const hostname = new URL(getAppBaseUrl()).hostname.toLowerCase();
+
+    if (
+      hostname === "localhost" ||
+      hostname.endsWith(".vercel.app") ||
+      !hostname.includes(".")
+    ) {
+      return undefined;
+    }
+
+    return hostname.startsWith("www.") ? `.${hostname.slice(4)}` : `.${hostname}`;
+  } catch {
+    return ".virtual-easyjet.fr";
+  }
 }
 
 export function applySessionCookies(

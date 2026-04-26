@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getAdminStats } from "@/lib/api/admin";
 import type { AdminStatsResponse } from "@/lib/api/types";
-import { requireAdminSession } from "@/lib/auth/guards";
+import {
+  handleProtectedPageApiError,
+  requireAdminSession,
+} from "@/lib/auth/guards";
 import { logWebWarning } from "@/lib/observability/log";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +32,7 @@ export default async function AdminDashboardPage(): Promise<JSX.Element> {
   try {
     stats = await getAdminStats(session.accessToken);
   } catch (error) {
+    handleProtectedPageApiError(error);
     isDegraded = true;
     logWebWarning("admin dashboard stats fetch failed", error);
   }

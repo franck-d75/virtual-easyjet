@@ -16,6 +16,7 @@ import type {
 
 import {
   extractApiMessage,
+  handleAdminUnauthorized,
   parseJsonPayload,
   type AdminFeedback,
 } from "./admin-feedback";
@@ -57,6 +58,21 @@ function createInitialRouteForm(
   };
 }
 
+function normalizeReferenceData(
+  referenceData: AdminReferenceDataResponse | null | undefined,
+): AdminReferenceDataResponse {
+  return {
+    airports: Array.isArray(referenceData?.airports) ? referenceData.airports : [],
+    hubs: Array.isArray(referenceData?.hubs) ? referenceData.hubs : [],
+    aircraftTypes: Array.isArray(referenceData?.aircraftTypes)
+      ? referenceData.aircraftTypes
+      : [],
+    simbriefAirframes: Array.isArray(referenceData?.simbriefAirframes)
+      ? referenceData.simbriefAirframes
+      : [],
+  };
+}
+
 function sortRoutes(items: RouteResponse[]): RouteResponse[] {
   return [...items].sort((left, right) => left.code.localeCompare(right.code));
 }
@@ -65,17 +81,20 @@ export function AdminRoutesManager({
   initialRoutes,
   referenceData,
 }: AdminRoutesManagerProps): JSX.Element {
-  const [items, setItems] = useState(() => sortRoutes(initialRoutes));
+  const safeReferenceData = normalizeReferenceData(referenceData);
+  const [items, setItems] = useState(() =>
+    sortRoutes(Array.isArray(initialRoutes) ? initialRoutes : []),
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<AdminFeedback | null>(null);
   const [formState, setFormState] = useState<RouteFormState>(() =>
-    createInitialRouteForm(referenceData),
+    createInitialRouteForm(safeReferenceData),
   );
   const [isPending, startTransition] = useTransition();
 
   function resetForm(): void {
     setEditingId(null);
-    setFormState(createInitialRouteForm(referenceData));
+    setFormState(createInitialRouteForm(safeReferenceData));
   }
 
   function updateFormState<Field extends keyof RouteFormState>(
@@ -111,6 +130,7 @@ export function AdminRoutesManager({
     const endpoint = editingId ? `/api/admin/routes/${editingId}` : "/api/admin/routes";
     const response = await fetch(endpoint, {
       method: editingId ? "PATCH" : "POST",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
       },
@@ -121,6 +141,10 @@ export function AdminRoutesManager({
     const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
 
     if (!response.ok) {
+      if (handleAdminUnauthorized(response)) {
+        return;
+      }
+
       setFeedback({
         tone: "danger",
         message: extractApiMessage(responsePayload, "Impossible d’enregistrer cette route."),
@@ -154,12 +178,17 @@ export function AdminRoutesManager({
     setFeedback(null);
     const response = await fetch(`/api/admin/routes/${id}`, {
       method: "DELETE",
+      credentials: "include",
     });
 
     const rawPayload = await response.text();
     const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
 
     if (!response.ok) {
+      if (handleAdminUnauthorized(response)) {
+        return;
+      }
+
       setFeedback({
         tone: "danger",
         message: extractApiMessage(responsePayload, "Impossible de supprimer cette route."),
@@ -241,7 +270,7 @@ export function AdminRoutesManager({
               required
               value={formState.departureAirportId}
             >
-              {referenceData.airports.map((airport) => (
+              {safeReferenceData.airports.map((airport) => (
                 <option key={airport.id} value={airport.id}>
                   {airport.icao} · {airport.name}
                 </option>
@@ -257,7 +286,7 @@ export function AdminRoutesManager({
               required
               value={formState.arrivalAirportId}
             >
-              {referenceData.airports.map((airport) => (
+              {safeReferenceData.airports.map((airport) => (
                 <option key={airport.id} value={airport.id}>
                   {airport.icao} · {airport.name}
                 </option>
@@ -273,7 +302,7 @@ export function AdminRoutesManager({
               value={formState.departureHubId}
             >
               <option value="">Aucun hub</option>
-              {referenceData.hubs.map((hub) => (
+              {safeReferenceData.hubs.map((hub) => (
                 <option key={hub.id} value={hub.id}>
                   {hub.code} · {hub.name}
                 </option>
@@ -289,7 +318,7 @@ export function AdminRoutesManager({
               value={formState.arrivalHubId}
             >
               <option value="">Aucun hub</option>
-              {referenceData.hubs.map((hub) => (
+              {safeReferenceData.hubs.map((hub) => (
                 <option key={hub.id} value={hub.id}>
                   {hub.code} · {hub.name}
                 </option>
@@ -305,7 +334,7 @@ export function AdminRoutesManager({
               value={formState.aircraftTypeId}
             >
               <option value="">Aucun type imposé</option>
-              {referenceData.aircraftTypes.map((aircraftType) => (
+              {safeReferenceData.aircraftTypes.map((aircraftType) => (
                 <option key={aircraftType.id} value={aircraftType.id}>
                   {aircraftType.icaoCode} · {aircraftType.name}
                 </option>

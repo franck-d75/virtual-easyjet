@@ -9,6 +9,8 @@ export function SessionKeepAlive() {
     const timer = window.setInterval(() => {
       void fetch("/api/session/refresh", {
         method: "POST",
+        cache: "no-store",
+        credentials: "include",
       });
     }, REFRESH_INTERVAL_MS);
 

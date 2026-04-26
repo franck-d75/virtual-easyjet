@@ -19,6 +19,7 @@ import type { BadgeTone } from "@/lib/utils/status";
 
 import {
   extractApiMessage,
+  handleAdminUnauthorized,
   parseJsonPayload,
   type AdminFeedback,
 } from "./admin-feedback";
@@ -62,6 +63,21 @@ function createInitialAircraftForm(
     status: "ACTIVE",
     notes: "",
     simbriefAirframeId: "",
+  };
+}
+
+function normalizeReferenceData(
+  referenceData: AdminReferenceDataResponse | null | undefined,
+): AdminReferenceDataResponse {
+  return {
+    airports: Array.isArray(referenceData?.airports) ? referenceData.airports : [],
+    hubs: Array.isArray(referenceData?.hubs) ? referenceData.hubs : [],
+    aircraftTypes: Array.isArray(referenceData?.aircraftTypes)
+      ? referenceData.aircraftTypes
+      : [],
+    simbriefAirframes: Array.isArray(referenceData?.simbriefAirframes)
+      ? referenceData.simbriefAirframes
+      : [],
   };
 }
 
@@ -150,15 +166,18 @@ export function AdminAircraftManager({
   initialAircraft,
   referenceData,
 }: AdminAircraftManagerProps): JSX.Element {
-  const [items, setItems] = useState(() => sortAircraft(initialAircraft));
+  const safeReferenceData = normalizeReferenceData(referenceData);
+  const [items, setItems] = useState(() =>
+    sortAircraft(Array.isArray(initialAircraft) ? initialAircraft : []),
+  );
   const [referenceDataState, setReferenceDataState] = useState({
-    ...referenceData,
-    simbriefAirframes: sortAirframes(referenceData.simbriefAirframes),
+    ...safeReferenceData,
+    simbriefAirframes: sortAirframes(safeReferenceData.simbriefAirframes),
   });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<AdminFeedback | null>(null);
   const [formState, setFormState] = useState<AircraftFormState>(() =>
-    createInitialAircraftForm(referenceData),
+    createInitialAircraftForm(safeReferenceData),
   );
   const [importState, setImportState] = useState<ImportState>(() =>
     createInitialImportState(),
@@ -216,12 +235,17 @@ export function AdminAircraftManager({
     try {
       const response = await fetch("/api/admin/reference-data/aircraft-types/init", {
         method: "POST",
+        credentials: "include",
       });
 
       const rawPayload = await response.text();
       const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
 
       if (!response.ok) {
+        if (handleAdminUnauthorized(response)) {
+          return;
+        }
+
         setFeedback({
           tone: "danger",
           message: extractApiMessage(
@@ -232,7 +256,9 @@ export function AdminAircraftManager({
         return;
       }
 
-      const nextReferenceData = responsePayload as AdminReferenceDataResponse;
+      const nextReferenceData = normalizeReferenceData(
+        responsePayload as AdminReferenceDataResponse,
+      );
       setReferenceDataState({
         ...nextReferenceData,
         simbriefAirframes: sortAirframes(nextReferenceData.simbriefAirframes),
@@ -272,6 +298,7 @@ export function AdminAircraftManager({
         "/api/admin/aircraft/import-from-simbrief-airframe",
         {
           method: "POST",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
           },
@@ -283,6 +310,10 @@ export function AdminAircraftManager({
       const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
 
       if (!response.ok) {
+        if (handleAdminUnauthorized(response)) {
+          return;
+        }
+
         setFeedback({
           tone: "danger",
           message: extractApiMessage(
@@ -349,6 +380,7 @@ export function AdminAircraftManager({
 
       const response = await fetch(endpoint, {
         method: editingId ? "PATCH" : "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
@@ -359,6 +391,10 @@ export function AdminAircraftManager({
       const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
 
       if (!response.ok) {
+        if (handleAdminUnauthorized(response)) {
+          return;
+        }
+
         setFeedback({
           tone: "danger",
           message: extractApiMessage(
@@ -407,12 +443,17 @@ export function AdminAircraftManager({
     setFeedback(null);
     const response = await fetch(`/api/admin/aircraft/${id}`, {
       method: "DELETE",
+      credentials: "include",
     });
 
     const rawPayload = await response.text();
     const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
 
     if (!response.ok) {
+      if (handleAdminUnauthorized(response)) {
+        return;
+      }
+
       setFeedback({
         tone: "danger",
         message: extractApiMessage(

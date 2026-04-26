@@ -32,6 +32,7 @@ import {
 
 import {
   extractApiMessage,
+  handleAdminUnauthorized,
   parseJsonPayload,
   type AdminFeedback,
 } from "./admin-feedback";
@@ -106,6 +107,7 @@ export function AdminUserDetails({
 
     const response = await fetch(`/api/admin/users/${user.id}`, {
       method: "PATCH",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
       },
@@ -116,6 +118,10 @@ export function AdminUserDetails({
     const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
 
     if (!response.ok) {
+      if (handleAdminUnauthorized(response)) {
+        return;
+      }
+
       setFeedback({
         tone: "danger",
         message: extractApiMessage(
@@ -179,12 +185,17 @@ export function AdminUserDetails({
 
     const response = await fetch(`/api/admin/users/${user.id}/suspend`, {
       method: "PATCH",
+      credentials: "include",
     });
 
     const rawPayload = await response.text();
     const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
 
     if (!response.ok) {
+      if (handleAdminUnauthorized(response)) {
+        return;
+      }
+
       setFeedback({
         tone: "danger",
         message: extractApiMessage(
@@ -210,12 +221,17 @@ export function AdminUserDetails({
 
     const response = await fetch(`/api/admin/users/${user.id}/activate`, {
       method: "PATCH",
+      credentials: "include",
     });
 
     const rawPayload = await response.text();
     const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
 
     if (!response.ok) {
+      if (handleAdminUnauthorized(response)) {
+        return;
+      }
+
       setFeedback({
         tone: "danger",
         message: extractApiMessage(

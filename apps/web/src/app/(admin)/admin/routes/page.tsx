@@ -4,7 +4,10 @@ import { AdminRoutesManager } from "@/components/admin/admin-routes-manager";
 import { Card } from "@/components/ui/card";
 import { getAdminReferenceData, listAdminRoutes } from "@/lib/api/admin";
 import type { AdminReferenceDataResponse } from "@/lib/api/types";
-import { requireAdminSession } from "@/lib/auth/guards";
+import {
+  handleProtectedPageApiError,
+  requireAdminSession,
+} from "@/lib/auth/guards";
 import { logWebWarning } from "@/lib/observability/log";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +19,21 @@ const EMPTY_REFERENCE_DATA: AdminReferenceDataResponse = {
   simbriefAirframes: [],
 };
 
+function normalizeReferenceData(
+  referenceData: AdminReferenceDataResponse | null | undefined,
+): AdminReferenceDataResponse {
+  return {
+    airports: Array.isArray(referenceData?.airports) ? referenceData.airports : [],
+    hubs: Array.isArray(referenceData?.hubs) ? referenceData.hubs : [],
+    aircraftTypes: Array.isArray(referenceData?.aircraftTypes)
+      ? referenceData.aircraftTypes
+      : [],
+    simbriefAirframes: Array.isArray(referenceData?.simbriefAirframes)
+      ? referenceData.simbriefAirframes
+      : [],
+  };
+}
+
 export default async function AdminRoutesPage(): Promise<JSX.Element> {
   const session = await requireAdminSession();
   const [routesResult, referenceDataResult] = await Promise.allSettled([
@@ -23,20 +41,25 @@ export default async function AdminRoutesPage(): Promise<JSX.Element> {
     getAdminReferenceData(session.accessToken),
   ]);
 
-  const routes = routesResult.status === "fulfilled" ? routesResult.value : [];
+  const routes =
+    routesResult.status === "fulfilled" && Array.isArray(routesResult.value)
+      ? routesResult.value
+      : [];
   const referenceData =
     referenceDataResult.status === "fulfilled"
-      ? referenceDataResult.value
+      ? normalizeReferenceData(referenceDataResult.value)
       : EMPTY_REFERENCE_DATA;
   const isDegraded =
     routesResult.status !== "fulfilled" ||
     referenceDataResult.status !== "fulfilled";
 
   if (routesResult.status !== "fulfilled") {
+    handleProtectedPageApiError(routesResult.reason);
     logWebWarning("admin routes list fetch failed", routesResult.reason);
   }
 
   if (referenceDataResult.status !== "fulfilled") {
+    handleProtectedPageApiError(referenceDataResult.reason);
     logWebWarning(
       "admin routes reference data fetch failed",
       referenceDataResult.reason,
