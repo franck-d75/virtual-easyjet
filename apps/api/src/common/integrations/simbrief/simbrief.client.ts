@@ -199,6 +199,17 @@ export class SimbriefClient {
 
     const source = buildSimbriefFlightPlanLookup(normalizedPilotId);
 
+    return {
+      status: "NOT_FOUND",
+      pilotId: normalizedPilotId,
+      detail:
+        "SimBrief ne fournit pas de liste airframes via cet endpoint; utilisez l'ajout manuel.",
+      fetchStatus: null,
+      fetchedAt,
+      source,
+      airframes: [],
+    };
+
     try {
       const liveListResult = await this.fetchSimbriefJson(source.airframesJsonUrl);
       const listAirframes = liveListResult.ok
@@ -227,11 +238,11 @@ export class SimbriefClient {
 
       if (inferredAirframeId) {
         const detailedAirframeResult = await this.fetchSimbriefJson(
-          source.airframeJsonUrl(inferredAirframeId),
+          source.airframeJsonUrl(inferredAirframeId!),
         );
 
         const detailedAirframes = detailedAirframeResult.ok
-          ? normalizeAirframes(detailedAirframeResult.payload, inferredAirframeId)
+          ? normalizeAirframes(detailedAirframeResult.payload, inferredAirframeId!)
           : [];
 
         if (detailedAirframes.length > 0) {
@@ -252,7 +263,7 @@ export class SimbriefClient {
 
         const fallbackAirframes = buildFallbackAirframesFromLatestOfp(
           latestOfpPayloadResult.payload,
-          inferredAirframeId,
+          inferredAirframeId!,
         );
 
         if (fallbackAirframes.length > 0) {

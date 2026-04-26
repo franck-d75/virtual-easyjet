@@ -6,6 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import { Prisma } from "@va/database";
 import type { AuthenticatedUser } from "@va/shared";
 
@@ -21,6 +22,7 @@ import {
 } from "../../common/utils/authenticated-user.utils.js";
 import { decimalToNumber } from "../../common/utils/decimal.utils.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import type { CreateMySimbriefAirframeDto } from "./dto/create-my-simbrief-airframe.dto.js";
 import type { UpdateMyPilotProfileDto } from "./dto/update-my-pilot-profile.dto.js";
 
 const pilotProfileInclude = {
@@ -58,6 +60,40 @@ function getAvatarUrl(value: unknown): string | null {
   }
 
   return null;
+}
+
+type SimbriefAirframeSource = "MANUAL" | "SIMBRIEF";
+
+type SimbriefAirframeMetadata = {
+  source: SimbriefAirframeSource;
+  externalAirframeId: string | null;
+  notes: string | null;
+};
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readOptionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function readSimbriefAirframeMetadata(rawJson: unknown): SimbriefAirframeMetadata {
+  if (!isJsonRecord(rawJson)) {
+    return {
+      source: "SIMBRIEF",
+      externalAirframeId: null,
+      notes: null,
+    };
+  }
+
+  const source = rawJson.source === "MANUAL" ? "MANUAL" : "SIMBRIEF";
+
+  return {
+    source,
+    externalAirframeId: readOptionalString(rawJson.externalAirframeId),
+    notes: readOptionalString(rawJson.notes),
+  };
 }
 
 @Injectable()
@@ -125,30 +161,49 @@ export class PilotProfilesService {
       throw new NotFoundException("Pilot profile not found.");
     }
 
-    const liveAirframes = await this.simbriefClient.getAirframes(
-      profile.simbriefPilotId,
+    const persistedAirframes = await this.listPersistedSimbriefAirframes(
+      profile.userId,
     );
 
-    const existingAirframes = await this.prisma.simbriefAirframe.findMany({
-      where: {
-        ownerUserId: profile.userId,
-      },
-      orderBy: [{ registration: "asc" }, { name: "asc" }],
-      include: simbriefAirframeInclude,
-    });
+    if (persistedAirframes.length > 0) {
+      return {
+        status: "AVAILABLE" as const,
+        pilotId: profile.simbriefPilotId,
+        detail:
+          "Vos airframes SimBrief enregistrees sont disponibles. L'ajout manuel reste la methode fiable pour preparer la flotte reelle.",
+        fetchStatus: null,
+        fetchedAt: new Date().toISOString(),
+        source: profile.simbriefPilotId
+          ? buildSimbriefFlightPlanLookup(profile.simbriefPilotId!)
+          : null,
+        airframes: persistedAirframes.map((airframe) =>
+          this.serializePersistedSimbriefAirframe(airframe),
+        ),
+      };
+    }
 
-    const existingAirframesBySimbriefId = new Map(
-      existingAirframes.map((airframe) => [airframe.simbriefAirframeId, airframe]),
-    );
+    if (!profile.simbriefPilotId) {
+      return {
+        status: "NOT_CONFIGURED" as const,
+        pilotId: null,
+        detail:
+          "Renseignez votre SimBrief Pilot ID pour l'import OFP. Les airframes peuvent etre ajoutees manuellement ci-dessous.",
+        fetchStatus: null,
+        fetchedAt: new Date().toISOString(),
+        source: null,
+        airframes: [],
+      };
+    }
 
     return {
-      ...liveAirframes,
-      airframes: liveAirframes.airframes.map((airframe) =>
-        this.serializeSimbriefAirframeLive(
-          airframe,
-          existingAirframesBySimbriefId.get(airframe.simbriefAirframeId) ?? null,
-        ),
-      ),
+      status: "NOT_FOUND" as const,
+      pilotId: profile.simbriefPilotId,
+      detail:
+        "SimBrief ne fournit pas de liste airframes via cet endpoint; utilisez l'ajout manuel.",
+      fetchStatus: null,
+      fetchedAt: new Date().toISOString(),
+      source: buildSimbriefFlightPlanLookup(profile.simbriefPilotId!),
+      airframes: [],
     };
   }
 
@@ -159,104 +214,95 @@ export class PilotProfilesService {
       throw new NotFoundException("Pilot profile not found.");
     }
 
-    const liveAirframes = await this.simbriefClient.getAirframes(
-      profile.simbriefPilotId,
+    const currentAirframes = await this.listPersistedSimbriefAirframes(
+      profile.userId,
     );
-
-    if (liveAirframes.status !== "AVAILABLE" || liveAirframes.airframes.length === 0) {
-      return {
-        ...liveAirframes,
-        airframes: [],
-      };
-    }
-
-    const mappedTypeCodes = [
-      ...new Set(
-        liveAirframes.airframes
-          .map((airframe) =>
-            this.simbriefClient.inferAircraftTypeCode(airframe.aircraftIcao),
-          )
-          .filter((value): value is string => value !== null),
-      ),
-    ];
-
-    const aircraftTypes = mappedTypeCodes.length
-      ? await this.prisma.aircraftType.findMany({
-          where: {
-            icaoCode: {
-              in: mappedTypeCodes,
-            },
-          },
-          select: {
-            id: true,
-            icaoCode: true,
-          },
-        })
-      : [];
-
-    const aircraftTypeIdByCode = new Map(
-      aircraftTypes.map((aircraftType) => [aircraftType.icaoCode, aircraftType.id]),
-    );
-
-    await this.prisma.$transaction(
-      liveAirframes.airframes.map((airframe) => {
-        const mappedTypeCode = this.simbriefClient.inferAircraftTypeCode(
-          airframe.aircraftIcao,
-        );
-
-        return this.prisma.simbriefAirframe.upsert({
-          where: {
-            simbriefAirframeId: airframe.simbriefAirframeId,
-          },
-          update: {
-            name: airframe.name,
-            aircraftIcao: airframe.aircraftIcao,
-            registration: airframe.registration,
-            selcal: airframe.selcal,
-            equipment: airframe.equipment,
-            engineType: airframe.engineType,
-            wakeCategory: airframe.wakeCategory,
-            rawJson: airframe.rawJson as Prisma.InputJsonValue,
-            linkedAircraftTypeId: mappedTypeCode
-              ? aircraftTypeIdByCode.get(mappedTypeCode) ?? null
-              : null,
-            ownerUserId: profile.userId,
-            pilotProfileId: profile.id,
-          },
-          create: {
-            simbriefAirframeId: airframe.simbriefAirframeId,
-            name: airframe.name,
-            aircraftIcao: airframe.aircraftIcao,
-            registration: airframe.registration,
-            selcal: airframe.selcal,
-            equipment: airframe.equipment,
-            engineType: airframe.engineType,
-            wakeCategory: airframe.wakeCategory,
-            rawJson: airframe.rawJson as Prisma.InputJsonValue,
-            linkedAircraftTypeId: mappedTypeCode
-              ? aircraftTypeIdByCode.get(mappedTypeCode) ?? null
-              : null,
-            ownerUserId: profile.userId,
-            pilotProfileId: profile.id,
-          },
-        });
-      }),
-    );
-
-    const persistedAirframes = await this.prisma.simbriefAirframe.findMany({
-      where: {
-        ownerUserId: profile.userId,
-      },
-      orderBy: [{ registration: "asc" }, { name: "asc" }],
-      include: simbriefAirframeInclude,
-    });
 
     return {
-      ...liveAirframes,
-      airframes: persistedAirframes.map((airframe) =>
+      status: currentAirframes.length > 0 ? ("AVAILABLE" as const) : ("NOT_FOUND" as const),
+      pilotId: profile.simbriefPilotId,
+      detail:
+        "SimBrief ne fournit pas de liste airframes via cet endpoint; utilisez l'ajout manuel.",
+      fetchStatus: null,
+      fetchedAt: new Date().toISOString(),
+      source: profile.simbriefPilotId
+        ? buildSimbriefFlightPlanLookup(profile.simbriefPilotId!)
+        : null,
+      airframes: currentAirframes.map((airframe) =>
         this.serializePersistedSimbriefAirframe(airframe),
       ),
     };
+  }
+
+  public async createMySimbriefAirframe(
+    user: AuthenticatedUser,
+    payload: CreateMySimbriefAirframeDto,
+  ) {
+    const profile = await this.getMySimbriefContext(user);
+
+    if (!profile) {
+      throw new NotFoundException("Pilot profile not found.");
+    }
+
+    const mappedTypeCode = this.simbriefClient.inferAircraftTypeCode(
+      payload.aircraftIcao,
+    );
+
+    if (!mappedTypeCode) {
+      throw new BadRequestException(
+        "Ce type ICAO n'est pas encore pris en charge pour la flotte Virtual Easyjet.",
+      );
+    }
+
+    const linkedAircraftType = await this.prisma.aircraftType.findUnique({
+      where: {
+        icaoCode: mappedTypeCode,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const externalAirframeId = payload.simbriefAirframeId?.trim() || null;
+    const persistedAirframeId =
+      externalAirframeId ?? `manual-${randomUUID()}`;
+
+    try {
+      const airframe = await this.prisma.simbriefAirframe.create({
+        data: {
+          simbriefAirframeId: persistedAirframeId,
+          name: payload.name.trim(),
+          aircraftIcao: payload.aircraftIcao.trim().toUpperCase(),
+          registration: payload.registration.trim().toUpperCase(),
+          selcal: null,
+          equipment: null,
+          engineType: payload.engineType?.trim() || null,
+          wakeCategory: null,
+          rawJson: {
+            source: "MANUAL",
+            externalAirframeId,
+            notes: payload.notes?.trim() || null,
+          } satisfies Prisma.InputJsonValue,
+          linkedAircraftTypeId: linkedAircraftType?.id ?? null,
+          ownerUserId: profile.userId,
+          pilotProfileId: profile.id,
+        },
+        include: simbriefAirframeInclude,
+      });
+
+      return this.serializePersistedSimbriefAirframe(airframe);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new ConflictException(
+          "Cette airframe SimBrief existe deja pour un autre profil ou utilise deja cet identifiant.",
+        );
+      }
+
+      throw error;
+    }
   }
 
   public async updateMe(
@@ -509,6 +555,16 @@ export class PilotProfilesService {
     ];
   }
 
+  private async listPersistedSimbriefAirframes(userId: string) {
+    return this.prisma.simbriefAirframe.findMany({
+      where: {
+        ownerUserId: userId,
+      },
+      orderBy: [{ registration: "asc" }, { name: "asc" }],
+      include: simbriefAirframeInclude,
+    });
+  }
+
   private async getMySimbriefContext(user: AuthenticatedUser) {
     const pilotProfileId = getRequiredPilotProfileId(user);
 
@@ -593,9 +649,20 @@ export class PilotProfilesService {
     liveAirframe: SimbriefAirframeSummary,
     persistedAirframe: SimbriefAirframeRecord | null,
   ) {
+    const metadata = persistedAirframe
+      ? readSimbriefAirframeMetadata(persistedAirframe.rawJson)
+      : {
+          source: "SIMBRIEF" as const,
+          externalAirframeId: liveAirframe.simbriefAirframeId,
+          notes: null,
+        };
+
     return {
       id: persistedAirframe?.id ?? null,
       simbriefAirframeId: liveAirframe.simbriefAirframeId,
+      externalAirframeId:
+        metadata.externalAirframeId ?? liveAirframe.simbriefAirframeId,
+      source: metadata.source,
       name: liveAirframe.name,
       aircraftIcao: liveAirframe.aircraftIcao,
       registration: liveAirframe.registration,
@@ -603,6 +670,7 @@ export class PilotProfilesService {
       equipment: liveAirframe.equipment,
       engineType: liveAirframe.engineType,
       wakeCategory: liveAirframe.wakeCategory,
+      notes: metadata.notes,
       rawJson: liveAirframe.rawJson,
       linkedAircraftType: persistedAirframe?.linkedAircraftType
         ? {
@@ -669,7 +737,7 @@ export class PilotProfilesService {
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
       simbrief: profile.simbriefPilotId
-        ? buildSimbriefFlightPlanLookup(profile.simbriefPilotId)
+        ? buildSimbriefFlightPlanLookup(profile.simbriefPilotId!)
         : null,
       user: {
         id: profile.user.id,

@@ -122,6 +122,8 @@ export interface SimbriefLatestOfpResponse {
 export interface SimbriefAirframeResponse {
   id: string | null;
   simbriefAirframeId: string;
+  externalAirframeId?: string | null;
+  source?: "MANUAL" | "SIMBRIEF";
   name: string;
   aircraftIcao: string;
   registration: string | null;
@@ -129,6 +131,7 @@ export interface SimbriefAirframeResponse {
   equipment: string | null;
   engineType: string | null;
   wakeCategory: string | null;
+  notes?: string | null;
   rawJson: unknown;
   linkedAircraftType: {
     id: string;
@@ -176,6 +179,15 @@ export interface SimbriefAirframesResponse {
   fetchedAt: string;
   source: SimbriefLookupResponse | null;
   airframes: SimbriefAirframeResponse[];
+}
+
+export interface CreateSimbriefAirframePayload {
+  name: string;
+  simbriefAirframeId?: string | null;
+  registration: string;
+  aircraftIcao: string;
+  engineType?: string | null;
+  notes?: string | null;
 }
 
 export interface PilotProfileResponse {

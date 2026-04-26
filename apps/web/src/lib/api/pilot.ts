@@ -1,8 +1,10 @@
 import type {
   BookingResponse,
+  CreateSimbriefAirframePayload,
   FlightResponse,
   HubResponse,
   PilotProfileResponse,
+  SimbriefAirframeResponse,
   SimbriefAirframesResponse,
   SimbriefLatestOfpResponse,
   UserMeResponse,
@@ -58,6 +60,18 @@ export async function getMySimbriefAirframes(
 ): Promise<SimbriefAirframesResponse> {
   return apiRequest<SimbriefAirframesResponse>("/pilot/simbrief/airframes", {
     accessToken,
+    cache: "no-store",
+  });
+}
+
+export async function createMySimbriefAirframe(
+  accessToken: string,
+  payload: CreateSimbriefAirframePayload,
+): Promise<SimbriefAirframeResponse> {
+  return apiRequest<SimbriefAirframeResponse>("/pilot/simbrief/airframes", {
+    accessToken,
+    method: "POST",
+    body: JSON.stringify(payload),
     cache: "no-store",
   });
 }
