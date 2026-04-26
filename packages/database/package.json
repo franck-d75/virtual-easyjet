@@ -24,6 +24,7 @@
     "prisma:generate": "prisma generate --schema ./prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:seed:demo": "tsx prisma/seed.demo.ts",
     "lint": "echo \"No lint configured for @va/database\"",
     "test": "echo \"No tests configured for @va/database\""
   },

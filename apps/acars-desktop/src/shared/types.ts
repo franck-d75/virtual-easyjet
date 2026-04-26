@@ -1,4 +1,5 @@
 export type BackendMode = "mock" | "live";
+export type TelemetryMode = "mock" | "simconnect";
 
 export interface DesktopConfig {
   apiBaseUrl: string;
@@ -6,7 +7,7 @@ export interface DesktopConfig {
   clientVersion: string;
   simulatorProvider: string;
   backendMode: BackendMode;
-  telemetryMode: "mock";
+  telemetryMode: TelemetryMode;
 }
 
 export interface LoginInput {

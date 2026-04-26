@@ -17,7 +17,7 @@ Le socle local actuellement stabilise couvre :
 - session web SSR fiabilisee pour l'espace pilote
 - espace pilote avec etats `loading / empty / error` homogenes
 - theme dark premium conserve
-- jeu de donnees local reseede automatiquement pour une demo relancable
+- seed de production vierge par defaut, avec seed demo separe explicite
 
 Ce sprint ne change pas le perimetre produit et n'ajoute pas de nouvelle feature metier.
 
@@ -47,7 +47,7 @@ Cette commande :
 1. verifie PostgreSQL sur `localhost:5432`
 2. demarre Docker Compose si besoin
 3. applique les migrations Prisma
-4. recharge les seeds de demo MVP
+4. recharge les seeds de demo explicites
 5. lance l'API NestJS
 6. lance le web Next.js
 
@@ -64,7 +64,8 @@ URLs locales :
 - pilote : `pilotdemo` / `Pilot123!`
 - email pilote : `pilot@va.local`
 
-Le seed recharge aussi les donnees de demonstration utiles pour tester l'espace pilote localement.
+Le jeu de demonstration n'est charge que par `pnpm dev:local` ou `pnpm db:seed:demo`.
+Le seed par defaut `pnpm db:seed` prepare une compagnie vierge avec admin, roles, ranks et settings systeme, sans donnees operationnelles fictives.
 
 ## Scripts utiles
 
@@ -82,8 +83,16 @@ Le seed recharge aussi les donnees de demonstration utiles pour tester l'espace 
 - `pnpm db:generate` : regenere Prisma Client
 - `pnpm db:migrate` : workflow de migration Prisma
 - `pnpm db:migrate:deploy` : applique les migrations versionnees en environnement cible
-- `pnpm db:seed` : recharge les seeds de demo
+- `pnpm db:seed` : seed de production vierge par defaut
+- `pnpm db:seed:demo` : recharge la seed de demonstration explicite
 - `pnpm test:e2e` : lance le test E2E MVP backend/ACARS
+
+Variables de seed utiles :
+
+- `SEED_ADMIN_EMAIL`
+- `SEED_ADMIN_USERNAME`
+- `SEED_ADMIN_PASSWORD`
+- `SEED_PILOT_*` uniquement si vous voulez precharger un vrai compte pilote vide
 
 ## Packaging ACARS Windows
 
@@ -174,6 +183,7 @@ Hors Sprint 1 :
 ## Documentation utile
 
 - `docs/architecture.md`
+- `docs/acars-msfs2024.md`
 - `docs/data-model.md`
 - `docs/manual-validation.md`
 - `docs/acars-distribution.md`

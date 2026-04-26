@@ -6,7 +6,11 @@ import {
   DEFAULT_DESKTOP_CONFIG,
   normalizeBaseUrl,
 } from "../shared/defaults.js";
-import type { BackendMode, DesktopConfig } from "../shared/types.js";
+import type {
+  BackendMode,
+  DesktopConfig,
+  TelemetryMode,
+} from "../shared/types.js";
 
 const WORKSPACE_MARKER = "pnpm-workspace.yaml";
 
@@ -30,6 +34,10 @@ function findWorkspaceRoot(startDirectory: string): string {
 
 function normalizeBackendMode(value: string | undefined): BackendMode {
   return value?.trim().toLowerCase() === "live" ? "live" : "mock";
+}
+
+function normalizeTelemetryMode(value: string | undefined): TelemetryMode {
+  return value?.trim().toLowerCase() === "simconnect" ? "simconnect" : "mock";
 }
 
 function parseEnvFile(fileContents: string): Record<string, string> {
@@ -108,5 +116,6 @@ export function loadDesktopRuntimeConfig(): DesktopConfig {
       environment.DESKTOP_SIMULATOR_PROVIDER?.trim() ||
       DEFAULT_DESKTOP_CONFIG.simulatorProvider,
     backendMode: normalizeBackendMode(environment.DESKTOP_BACKEND_MODE),
+    telemetryMode: normalizeTelemetryMode(environment.DESKTOP_TELEMETRY_MODE),
   };
 }

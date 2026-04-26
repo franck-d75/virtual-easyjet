@@ -26,7 +26,8 @@
     "db:generate": "pnpm --filter @va/database prisma:generate",
     "db:migrate": "pnpm --filter @va/database prisma:migrate",
     "db:migrate:deploy": "pnpm --filter @va/database exec prisma migrate deploy",
-    "db:seed": "pnpm --filter @va/database prisma:seed"
+    "db:seed": "pnpm --filter @va/database prisma:seed",
+    "db:seed:demo": "pnpm --filter @va/database prisma:seed:demo"
   },
   "devDependencies": {
     "tsx": "4.21.0",

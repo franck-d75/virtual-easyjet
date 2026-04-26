@@ -247,8 +247,8 @@ async function main() {
     "Prisma migrate deploy",
   );
 
-  logStep("Refreshing demo seed data...");
-  await runCommand(pnpmCommand, ["db:seed"], "Prisma seed");
+  logStep("Refreshing explicit demo seed data...");
+  await runCommand(pnpmCommand, ["db:seed:demo"], "Prisma demo seed");
 
   logStep("Starting API and web development servers...");
   spawnLongRunningProcess("api", ["--filter", "@va/api", "dev"]);

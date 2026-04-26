@@ -3,9 +3,13 @@
   "releaseChannel": "preview",
   "webAppUrl": "https://www.virtual-easyjet.fr",
   "apiBaseUrl": "https://api.virtual-easyjet.fr/api",
+  "acarsBaseUrl": "https://api.virtual-easyjet.fr/acars",
   "liveMapUrl": "https://www.virtual-easyjet.fr/live-map",
+  "backendMode": "live",
+  "simulatorProvider": "MSFS2024_SIMCONNECT",
   "notes": [
-    "Pack temporaire de pré-distribution",
-    "Le client desktop officiel sera publié prochainement"
+    "No mock traffic should be used in production",
+    "Use the live API and ACARS endpoints only",
+    "This preview pack documents the production target while the full desktop client is being finalized"
   ]
 }

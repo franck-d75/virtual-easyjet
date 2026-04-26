@@ -1,22 +1,23 @@
-# Déploiement pré-hébergement
+# Deployment
 
-Ce document fige la procédure de mise en ligne actuelle de Virtual Easyjet après validation locale complète du monorepo.
+This document captures the current deployment procedure for Virtual Easyjet after local validation of the monorepo.
 
-## État validé
+## Validated scope
 
-La version actuelle a été validée localement sur les points suivants :
+The current version has been validated on these points:
 
 - `pnpm build`
 - `pnpm test:e2e`
 - `pnpm package:acars-desktop`
-- pages web publiques : `/`, `/compagnie`, `/flotte`, `/hubs`, `/routes`, `/recrutement`, `/reglement`, `/connexion`, `/live-map`, `/acars`
-- session web SSR via cookies HttpOnly :
+- public web pages: `/`, `/compagnie`, `/flotte`, `/hubs`, `/routes`, `/recrutement`, `/reglement`, `/connexion`, `/live-map`, `/acars`
+- SSR web session via HttpOnly cookies:
   - `POST /api/session/login`
   - `GET /api/session/me`
   - `POST /api/session/refresh`
   - `POST /api/session/logout`
-  - accès aux pages `/dashboard`, `/profil`, `/bookings`, `/vols`, `/pireps`
-- API live :
+  - access to `/dashboard`, `/profil`, `/bookings`, `/vols`, `/pireps`
+- live API:
+  - `GET /api/public/home`
   - `GET /api/public/stats`
   - `POST /api/auth/login`
   - `GET /api/auth/me`
@@ -25,41 +26,34 @@ La version actuelle a été validée localement sur les points suivants :
   - `GET /api/bookings/me`
   - `GET /api/flights/me`
   - `GET /api/acars/live`
-- backend ACARS :
+- ACARS service:
   - `GET /acars/health`
   - `POST /acars/sessions`
   - `GET /acars/sessions/:id`
   - `POST /acars/sessions/:id/telemetry`
   - `POST /acars/sessions/:id/complete`
 
-## Composants à héberger
+## Hosted components
 
-Le projet se déploie en quatre blocs distincts :
+The platform deploys as four blocks:
 
-1. Web Next.js
-   Route publique recommandée : `https://virtualeasyjet.example`
-2. API NestJS
-   URL publique recommandée : `https://api.virtualeasyjet.example/api`
-3. Service ACARS NestJS
-   URL publique recommandée : `https://acars.virtualeasyjet.example/acars`
+1. Next.js web app
+2. NestJS API
+3. NestJS ACARS service
 4. PostgreSQL
-   Base de données séparée, non exposée publiquement
 
-Le desktop ACARS n’est pas un service serveur. Il doit être distribué séparément sous forme de binaire Windows :
+The Windows ACARS desktop client is distributed separately as a binary, not hosted as a server process.
 
-- `apps/acars-desktop/release/Virtual-Easyjet-ACARS-Setup-0.1.0-x64.exe`
-- `apps/acars-desktop/release/Virtual-Easyjet-ACARS-Portable-0.1.0-x64.exe`
+## Environment variables
 
-## Variables d’environnement
+The workspace loads variables from the repo root using `.env`, then `.env.local`, then system environment variables.
 
-Le workspace charge les variables depuis la racine via `.env`, puis `.env.local`, puis les variables système.
-
-### Variables communes minimales
+### Shared minimum
 
 ```dotenv
 NODE_ENV="production"
 DATABASE_URL="postgresql://user:password@db-host:5432/va_platform?schema=public"
-CORS_ORIGIN="https://virtualeasyjet.example"
+CORS_ORIGIN="https://www.virtual-easyjet.fr,https://virtual-easyjet.fr,https://virtual-easyjet-web.vercel.app"
 JWT_ACCESS_SECRET="change-me-long-random-secret"
 JWT_REFRESH_SECRET="change-me-long-random-secret"
 JWT_ACCESS_TTL="15m"
@@ -69,20 +63,14 @@ JWT_REFRESH_TTL="30d"
 ### Web
 
 ```dotenv
-WEB_API_BASE_URL="https://api.virtualeasyjet.example/api"
-NEXT_PUBLIC_API_BASE_URL="https://api.virtualeasyjet.example/api"
-NEXT_PUBLIC_APP_URL="https://virtualeasyjet.example"
+WEB_API_BASE_URL="https://api.virtual-easyjet.fr/api"
+NEXT_PUBLIC_API_BASE_URL="https://api.virtual-easyjet.fr/api"
+NEXT_PUBLIC_API_URL="https://api.virtual-easyjet.fr"
+NEXT_PUBLIC_APP_URL="https://www.virtual-easyjet.fr"
 NEXT_PUBLIC_ACARS_CURRENT_VERSION="0.1.0"
-ACARS_DOWNLOAD_URL="https://downloads.virtualeasyjet.example/Virtual-Easyjet-ACARS-Setup-0.1.0-x64.exe"
-NEXT_PUBLIC_ACARS_DOWNLOAD_URL="https://downloads.virtualeasyjet.example/Virtual-Easyjet-ACARS-Setup-0.1.0-x64.exe"
+ACARS_DOWNLOAD_URL="https://downloads.virtual-easyjet.fr/Virtual-Easyjet-ACARS-Setup-0.1.0-x64.exe"
+NEXT_PUBLIC_ACARS_DOWNLOAD_URL="https://downloads.virtual-easyjet.fr/Virtual-Easyjet-ACARS-Setup-0.1.0-x64.exe"
 ```
-
-Notes :
-
-- `WEB_API_BASE_URL` est utilisé côté serveur Next.js.
-- `NEXT_PUBLIC_API_BASE_URL` est utilisé côté client.
-- `ACARS_DOWNLOAD_URL` suffit pour la page `/acars` et le proxy `/api/downloads/acars`.
-- `NEXT_PUBLIC_ACARS_DOWNLOAD_URL` reste utile comme fallback public explicite.
 
 ### API
 
@@ -90,7 +78,7 @@ Notes :
 API_PORT="3001"
 ```
 
-### Service ACARS
+### ACARS service
 
 ```dotenv
 ACARS_PORT="3002"
@@ -99,141 +87,157 @@ ACARS_OVERSPEED_GRACE_SECONDS="15"
 ACARS_HARD_LANDING_THRESHOLD_FPM="-500"
 ```
 
-### Variables non nécessaires pour ce déploiement MVP
+### Optional clean production seed
 
-Ces variables existent dans `.env.example`, mais ne sont pas requises pour la mise en ligne MVP actuelle si vous ne branchez pas encore ce périmètre :
+```dotenv
+SEED_ADMIN_EMAIL="admin@virtual-easyjet.local"
+SEED_ADMIN_USERNAME="virtualeasyjet-admin"
+SEED_ADMIN_PASSWORD="ChangeMe-Admin123!"
+SEED_ADMIN_FIRST_NAME="Virtual"
+SEED_ADMIN_LAST_NAME="Admin"
+SEED_ADMIN_COUNTRY_CODE="FR"
+```
 
-- `S3_ENDPOINT`
-- `S3_REGION`
-- `S3_ACCESS_KEY`
-- `S3_SECRET_KEY`
-- `S3_BUCKET`
-- `NEXT_PUBLIC_ACARS_BASE_URL`
-- `NEXT_PUBLIC_WS_BASE_URL`
-- `DESKTOP_API_BASE_URL`
-- `DESKTOP_ACARS_BASE_URL`
-- `DESKTOP_BACKEND_MODE`
-- `DESKTOP_CLIENT_VERSION`
-- `DESKTOP_SIMULATOR_PROVIDER`
+Optional pilot bootstrap:
 
-## Commandes exactes côté serveur
+```dotenv
+SEED_PILOT_EMAIL=""
+SEED_PILOT_USERNAME=""
+SEED_PILOT_PASSWORD=""
+SEED_PILOT_FIRST_NAME=""
+SEED_PILOT_LAST_NAME=""
+SEED_PILOT_COUNTRY_CODE="FR"
+SEED_PILOT_NUMBER=""
+SEED_PILOT_CALLSIGN=""
+SEED_PILOT_SIMBRIEF_ID=""
+```
 
-Depuis la racine du monorepo :
+Leave `SEED_PILOT_*` empty if you want the production seed to keep public stats at `0`.
 
-### Installation
+## Server commands
+
+From the monorepo root:
+
+### Install
 
 ```bash
 pnpm install --frozen-lockfile
 ```
 
-### Génération Prisma
+### Prisma client
 
 ```bash
 pnpm db:generate
 ```
 
-### Migration de production
+### Migrations
 
 ```bash
 pnpm db:migrate:deploy
 ```
 
-### Seed
-
-Ne lancer le seed que pour une démo ou un environnement de recette.
+### Clean production seed
 
 ```bash
 pnpm db:seed
 ```
 
-### Build complet
+This seed keeps the platform empty by default:
+
+- admin account
+- roles
+- ranks
+- settings
+- no demo fleet
+- no demo hubs
+- no demo routes
+- no demo bookings
+- no demo flights
+- no demo PIREPs
+- no demo ACARS traffic
+
+### Optional demo seed
+
+```bash
+pnpm db:seed:demo
+```
+
+Use this demo seed only for local showcase or desktop validation, never as the default production bootstrap.
+
+### Full build
 
 ```bash
 pnpm build
 ```
 
-### Démarrage des services
+### Service start
 
-Web :
+Web:
 
 ```bash
 pnpm start:web:prod
 ```
 
-API :
+API:
 
 ```bash
 pnpm start:api:prod
 ```
 
-Service ACARS :
+ACARS service:
 
 ```bash
 pnpm start:acars-service:prod
 ```
 
-### Commandes directes équivalentes
+## Recommended deployment sequence
 
-Si vous préférez piloter les process sans `pnpm` :
+1. Provision PostgreSQL.
+2. Deploy the monorepo to the application host.
+3. Create the root `.env` file with production values.
+4. Run `pnpm install --frozen-lockfile`.
+5. Run `pnpm db:generate`.
+6. Run `pnpm db:migrate:deploy`.
+7. Run `pnpm db:seed`.
+8. Run `pnpm build`.
+9. Start the three application processes behind a supervisor.
+10. Publish the ACARS Windows binaries separately.
+11. Set `ACARS_DOWNLOAD_URL` and `NEXT_PUBLIC_ACARS_CURRENT_VERSION`.
 
-```bash
-node apps/api/dist/apps/api/src/main.js
-node apps/acars-service/dist/apps/acars-service/src/main.js
-pnpm --filter @va/web start
-```
+## Reverse proxy example
 
-## Procédure de mise en ligne recommandée
+- `www.virtual-easyjet.fr` -> `localhost:3000`
+- `api.virtual-easyjet.fr` -> `localhost:3001`
+- `acars.virtual-easyjet.fr` -> `localhost:3002`
 
-1. Provisionner PostgreSQL.
-2. Déployer le monorepo sur la machine applicative.
-3. Créer le fichier `.env` à la racine avec les valeurs de production.
-4. Lancer `pnpm install --frozen-lockfile`.
-5. Lancer `pnpm db:generate`.
-6. Lancer `pnpm db:migrate:deploy`.
-7. Lancer `pnpm build`.
-8. Démarrer les trois services via un superviseur de process :
-   - web
-   - api
-   - acars-service
-9. Mettre un reverse proxy devant les trois services.
-10. Publier les binaires ACARS Windows sur un stockage public ou GitHub Releases.
-11. Renseigner `ACARS_DOWNLOAD_URL` et `NEXT_PUBLIC_ACARS_CURRENT_VERSION`.
+Keep these rules:
 
-## Reverse proxy recommandé
+- align `CORS_ORIGIN` with the public web origin
+- enable TLS everywhere
+- never expose PostgreSQL publicly
+- keep separate process logs for web, API and ACARS
 
-Exemple d’exposition publique :
+## Release artifacts
 
-- `virtualeasyjet.example` -> `localhost:3000`
-- `api.virtualeasyjet.example` -> `localhost:3001`
-- `acars.virtualeasyjet.example` -> `localhost:3002`
+### Deploy on the server
 
-Points d’attention :
-
-- conserver `CORS_ORIGIN` aligné avec l’origine web publique
-- activer TLS partout
-- ne jamais exposer PostgreSQL
-- garder des logs de process séparés pour le web, l’API et ACARS
-
-## Artefacts à livrer
-
-### À déployer sur le serveur
-
-- code source du monorepo
-- `node_modules` issus de `pnpm install`
-- builds :
+- monorepo source code
+- installed dependencies from `pnpm install`
+- build outputs:
   - `apps/web/.next`
   - `apps/api/dist`
   - `apps/acars-service/dist`
 
-### À publier séparément
+### Publish separately
 
 - `apps/acars-desktop/release/Virtual-Easyjet-ACARS-Setup-0.1.0-x64.exe`
 - `apps/acars-desktop/release/Virtual-Easyjet-ACARS-Portable-0.1.0-x64.exe`
 
-## Points à surveiller avant production publique
+## Notes before public launch
 
-- le projet est prêt pour un pré-hébergement sérieux, mais il reste sans pipeline CI/CD automatisé
-- aucun lint structuré n’est encore câblé
-- la couverture de tests reste concentrée sur le flux MVP principal
-- le desktop Windows n’est pas signé
-- le seed reste orienté démonstration, pas données réelles d’exploitation
+- the project is ready for serious preproduction hosting
+- CI/CD is still manual
+- structured linting is still limited
+- tests are concentrated on the MVP flow
+- the Windows desktop binary is not code-signed yet
+- the default production seed is now clean and no longer loads demo operations

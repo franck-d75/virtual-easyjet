@@ -1,22 +1,38 @@
-Virtual Easyjet endpoints
-=========================
+Virtual Easyjet ACARS endpoints
+===============================
 
-Application web
+Public website
 https://www.virtual-easyjet.fr
 
-Base API publique
-https://api.virtual-easyjet.fr/api
-
-Carte en direct
+Public live map
 https://www.virtual-easyjet.fr/live-map
 
-Routes publiques utiles
+API base
+https://api.virtual-easyjet.fr/api
+
+ACARS base
+https://api.virtual-easyjet.fr/acars
+
+Useful public routes
 - GET /public/home
 - GET /public/stats
 - GET /acars/live
 
-Routes d’authentification utiles
+Useful authenticated routes for the real desktop client
 - POST /auth/login
 - POST /auth/refresh
 - POST /auth/logout
 - GET /auth/me
+- GET /bookings/me
+- GET /flights/me
+
+Useful ACARS routes for the real desktop client
+- POST /sessions
+- GET /sessions/:id
+- POST /sessions/:id/telemetry
+- POST /sessions/:id/complete
+
+SimBrief web context already available
+- pilot profile stores simbriefPilotId
+- latest OFP summary is available in the pilot area
+- SimBrief route overlay is available on the live map when data exists
