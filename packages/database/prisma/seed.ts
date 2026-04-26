@@ -355,6 +355,71 @@ async function cleanupLegacyDemoArtifacts(
     },
   });
 
+  if (demoPilotProfileIdsToDelete.length > 0) {
+    await prisma.staffNote.deleteMany({
+      where: {
+        OR: [
+          {
+            pilotProfileId: {
+              in: demoPilotProfileIdsToDelete,
+            },
+          },
+          ...(demoUserIdsToDelete.length > 0
+            ? [
+                {
+                  authorId: {
+                    in: demoUserIdsToDelete,
+                  },
+                },
+              ]
+            : []),
+        ],
+      },
+    });
+
+    await prisma.pilotQualification.deleteMany({
+      where: {
+        OR: [
+          {
+            pilotProfileId: {
+              in: demoPilotProfileIdsToDelete,
+            },
+          },
+          ...(demoUserIdsToDelete.length > 0
+            ? [
+                {
+                  awardedById: {
+                    in: demoUserIdsToDelete,
+                  },
+                },
+              ]
+            : []),
+        ],
+      },
+    });
+
+    await prisma.checkride.deleteMany({
+      where: {
+        OR: [
+          {
+            pilotProfileId: {
+              in: demoPilotProfileIdsToDelete,
+            },
+          },
+          ...(demoUserIdsToDelete.length > 0
+            ? [
+                {
+                  examinerId: {
+                    in: demoUserIdsToDelete,
+                  },
+                },
+              ]
+            : []),
+        ],
+      },
+    });
+  }
+
   await prisma.schedule.deleteMany({
     where: {
       id: {
@@ -420,13 +485,30 @@ async function cleanupLegacyDemoArtifacts(
     },
   });
 
-  await prisma.newsPost.deleteMany({
-    where: {
-      slug: DEMO_NEWS_SLUG,
-    },
-  });
-
   if (demoUserIdsToDelete.length > 0) {
+    await prisma.contentPage.deleteMany({
+      where: {
+        authorId: {
+          in: demoUserIdsToDelete,
+        },
+      },
+    });
+
+    await prisma.newsPost.deleteMany({
+      where: {
+        OR: [
+          {
+            authorId: {
+              in: demoUserIdsToDelete,
+            },
+          },
+          {
+            slug: DEMO_NEWS_SLUG,
+          },
+        ],
+      },
+    });
+
     await prisma.setting.updateMany({
       where: {
         updatedById: {
@@ -435,6 +517,14 @@ async function cleanupLegacyDemoArtifacts(
       },
       data: {
         updatedById: null,
+      },
+    });
+
+    await prisma.pilotProfile.deleteMany({
+      where: {
+        id: {
+          in: demoPilotProfileIdsToDelete,
+        },
       },
     });
 
