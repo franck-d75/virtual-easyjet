@@ -14,7 +14,6 @@ import type { LiveMapAircraft, LiveMapPhase } from "@va/shared";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { getAcarsLiveTraffic } from "@/lib/api/public";
 import { logWebWarning } from "@/lib/observability/log";
@@ -228,14 +227,11 @@ export function LiveMapPanel({
         attributionControl: true,
       });
 
-      L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-        {
-          attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
-          subdomains: "abcd",
-          maxZoom: 19,
-        },
-      ).addTo(map);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+        subdomains: ["a", "b", "c"],
+        maxZoom: 19,
+      }).addTo(map);
 
       routeLayerRef.current = L.layerGroup().addTo(map);
       markersLayerRef.current = L.layerGroup().addTo(map);
@@ -530,9 +526,9 @@ export function LiveMapPanel({
 
             {isMapReady && traffic.length === 0 && simbriefRoute === null ? (
               <div className="live-map-overlay live-map-overlay--notice">
-                {error ? (
-                  <ErrorState
-                    action={
+                <EmptyState
+                  action={
+                    error ? (
                       <Button
                         onClick={() => {
                           void refreshTraffic(false);
@@ -541,16 +537,15 @@ export function LiveMapPanel({
                       >
                         Réessayer
                       </Button>
-                    }
-                    description="Aucune position ACARS n’est exploitable pour le moment, ou l’API live n’a pas répondu."
-                    title="Carte en direct temporairement indisponible"
-                  />
-                ) : (
-                  <EmptyState
-                    description="Aucun avion n’est actuellement connecté via ACARS. Lancez une session desktop et envoyez de la télémétrie pour voir apparaître un marqueur."
-                    title="Aucun trafic en direct"
-                  />
-                )}
+                    ) : undefined
+                  }
+                  description={
+                    error
+                      ? "Aucune position ACARS n’est exploitable pour le moment. La carte reste disponible et vous pouvez relancer la récupération du trafic."
+                      : "Aucun avion n’est actuellement connecté via ACARS. Lancez une session desktop et envoyez de la télémétrie pour voir apparaître un marqueur."
+                  }
+                  title="Aucun trafic en direct"
+                />
               </div>
             ) : null}
 

@@ -8,16 +8,18 @@ export async function GET() {
     const traffic = await getBackendAcarsLiveTraffic();
     return NextResponse.json(traffic, {
       status: 200,
+      headers: {
+        "Cache-Control": "no-store",
+      },
     });
   } catch (error) {
     logWebError("public acars live proxy failed", error);
-    return NextResponse.json(
-      {
-        message: "Le flux ACARS live n'a pas pu être chargé.",
+    return NextResponse.json([], {
+      status: 200,
+      headers: {
+        "Cache-Control": "no-store",
+        "X-Live-Map-Warning": "live-traffic-unavailable",
       },
-      {
-        status: 502,
-      },
-    );
+    });
   }
 }
