@@ -20,5 +20,20 @@ export class PublicController {
   public stats() {
     return this.publicService.getStats();
   }
+
+  @Get("aircraft")
+  public aircraft() {
+    return this.publicService.getAircraft();
+  }
+
+  @Get("hubs")
+  public hubs() {
+    return this.publicService.getHubs();
+  }
+
+  @Get("routes")
+  public routes() {
+    return this.publicService.getRoutes();
+  }
 }
 

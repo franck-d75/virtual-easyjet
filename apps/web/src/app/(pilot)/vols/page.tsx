@@ -8,7 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getMyFlights, getMyLatestSimbriefOfp } from "@/lib/api/pilot";
+import type { SimbriefLatestOfpResponse } from "@/lib/api/types";
 import { requirePilotSession } from "@/lib/auth/guards";
+import { logWebWarning } from "@/lib/observability/log";
 import { formatDateTime, formatDurationMinutes } from "@/lib/utils/format";
 import {
   buildFlightSimbriefCandidate,
@@ -39,15 +41,46 @@ function getFirstQueryValue(
   return null;
 }
 
+function buildFallbackLatestOfp(): SimbriefLatestOfpResponse {
+  return {
+    status: "ERROR",
+    pilotId: null,
+    detail: "Le dernier OFP SimBrief est temporairement indisponible.",
+    fetchStatus: null,
+    fetchedAt: new Date().toISOString(),
+    source: null,
+    plan: null,
+  };
+}
+
 export default async function FlightsPage({
   searchParams,
 }: FlightsPageProps): Promise<JSX.Element> {
   const session = await requirePilotSession();
   const query = await searchParams;
-  const [flights, latestSimbriefOfp] = await Promise.all([
+  const [flightsResult, latestSimbriefOfpResult] = await Promise.allSettled([
     getMyFlights(session.accessToken),
     getMyLatestSimbriefOfp(session.accessToken),
   ]);
+  const flights =
+    flightsResult.status === "fulfilled" && Array.isArray(flightsResult.value)
+      ? flightsResult.value
+      : [];
+  const latestSimbriefOfp =
+    latestSimbriefOfpResult.status === "fulfilled"
+      ? latestSimbriefOfpResult.value
+      : buildFallbackLatestOfp();
+
+  if (flightsResult.status !== "fulfilled") {
+    logWebWarning("flights page flights fetch failed", flightsResult.reason);
+  }
+
+  if (latestSimbriefOfpResult.status !== "fulfilled") {
+    logWebWarning(
+      "flights page latest simbrief fetch failed",
+      latestSimbriefOfpResult.reason,
+    );
+  }
   const selectedFlightId = getFirstQueryValue(query.flight);
   const highlightedFlight =
     (selectedFlightId

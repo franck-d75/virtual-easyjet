@@ -5,13 +5,33 @@ import { AdminStatsGrid } from "@/components/admin/admin-stats-grid";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getAdminStats } from "@/lib/api/admin";
+import type { AdminStatsResponse } from "@/lib/api/types";
 import { requireAdminSession } from "@/lib/auth/guards";
+import { logWebWarning } from "@/lib/observability/log";
 
 export const dynamic = "force-dynamic";
 
+const EMPTY_ADMIN_STATS: AdminStatsResponse = {
+  totalUsers: 0,
+  totalPilots: 0,
+  totalAircraft: 0,
+  totalHubs: 0,
+  totalRoutes: 0,
+  activeBookings: 0,
+  inProgressFlights: 0,
+};
+
 export default async function AdminDashboardPage(): Promise<JSX.Element> {
   const session = await requireAdminSession();
-  const stats = await getAdminStats(session.accessToken);
+  let stats = EMPTY_ADMIN_STATS;
+  let isDegraded = false;
+
+  try {
+    stats = await getAdminStats(session.accessToken);
+  } catch (error) {
+    isDegraded = true;
+    logWebWarning("admin dashboard stats fetch failed", error);
+  }
 
   return (
     <div className="admin-page">
@@ -32,6 +52,17 @@ export default async function AdminDashboardPage(): Promise<JSX.Element> {
           </Button>
         </div>
       </section>
+
+      {isDegraded ? (
+        <Card className="ops-card">
+          <span className="section-eyebrow">Mode degrade</span>
+          <h2>Le tableau d&apos;administration reste disponible</h2>
+          <p>
+            Les statistiques globales n&apos;ont pas pu etre rechargees pour le
+            moment. Les acces aux modules restent disponibles.
+          </p>
+        </Card>
+      ) : null}
 
       <AdminStatsGrid stats={stats} />
 

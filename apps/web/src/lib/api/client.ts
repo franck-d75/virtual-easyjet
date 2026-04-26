@@ -28,6 +28,10 @@ const DEFAULT_FETCH_TIMEOUT_MS = 8_000;
 const DEFAULT_RETRY_COUNT = 1;
 const DEFAULT_RETRY_DELAY_MS = 350;
 const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+const SHOULD_LOG_DEBUG =
+  process.env.NODE_ENV !== "production" ||
+  process.env.VEJ_WEB_DEBUG_API === "true";
+let dnsPreferenceConfigured = false;
 
 function buildUrl(path: string): string {
   const baseUrl = `${getApiBaseUrl().replace(/\/+$/, "")}/`;
@@ -106,10 +110,34 @@ async function waitBeforeRetry(delayMs: number): Promise<void> {
   });
 }
 
+async function ensureServerDnsPreference(): Promise<void> {
+  if (typeof window !== "undefined" || dnsPreferenceConfigured) {
+    return;
+  }
+
+  dnsPreferenceConfigured = true;
+
+  try {
+    const importDns = new Function(
+      "specifier",
+      "return import(specifier);",
+    ) as (
+      specifier: string,
+    ) => Promise<{ setDefaultResultOrder?: (value: "ipv4first") => void }>;
+    const dnsModule = await importDns("node:dns");
+
+    dnsModule.setDefaultResultOrder?.("ipv4first");
+  } catch {
+    // Keep the runtime default when DNS preferences cannot be overridden.
+  }
+}
+
 export async function apiRequest<TResponse>(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<TResponse> {
+  await ensureServerDnsPreference();
+
   const {
     accessToken,
     headers: inputHeaders,
@@ -137,11 +165,6 @@ export async function apiRequest<TResponse>(
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
 
-  console.info("[web] api request", {
-    method: requestMethod,
-    url,
-  });
-
   let response: Response | null = null;
   let lastError: unknown = null;
 
@@ -166,13 +189,15 @@ export async function apiRequest<TResponse>(
       lastError = error;
       clearTimeout(timeoutId);
 
-      console.warn("[web] api request attempt failed", {
-        attempt,
-        attempts,
-        method: requestMethod,
-        url,
-        error: serializeError(error),
-      });
+      if (SHOULD_LOG_DEBUG || attempt >= attempts) {
+        console.warn("[web] api request attempt failed", {
+          attempt,
+          attempts,
+          method: requestMethod,
+          url,
+          error: serializeError(error),
+        });
+      }
 
       if (attempt >= attempts) {
         console.error("[web] api request failed", {
@@ -198,13 +223,15 @@ export async function apiRequest<TResponse>(
       break;
     }
 
-    console.warn("[web] api request retry scheduled", {
-      attempt,
-      attempts,
-      method: requestMethod,
-      url,
-      status: response.status,
-    });
+    if (SHOULD_LOG_DEBUG) {
+      console.warn("[web] api request retry scheduled", {
+        attempt,
+        attempts,
+        method: requestMethod,
+        url,
+        status: response.status,
+      });
+    }
 
     await waitBeforeRetry(retryDelayMs * attempt);
     response = null;

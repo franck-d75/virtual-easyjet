@@ -1,22 +1,38 @@
 export const APP_NAME = "Virtual Easyjet";
 export const APP_SHORT_NAME = "VEJ";
 export const APP_DESCRIPTION =
-  "Compagnie aérienne virtuelle moderne avec espace pilote, réservations, vols et PIREPs.";
+  "Compagnie aerienne virtuelle moderne avec espace pilote, reservations, vols et PIREPs.";
 export const UNOFFICIAL_DISCLAIMER =
-  "Virtual Easyjet est une compagnie aérienne virtuelle non officielle, créée par des passionnés de simulation de vol, sans affiliation avec easyJet.";
+  "Virtual Easyjet est une compagnie aerienne virtuelle non officielle, creee par des passionnes de simulation de vol, sans affiliation avec easyJet.";
 export const ACARS_DOWNLOAD_PROXY_PATH = "/api/acars/download";
 export const ACARS_PRODUCT_NAME = "Virtual Easyjet ACARS";
-const DEFAULT_API_BASE_URL = "http://localhost:3001/api";
+
+const DEFAULT_DEVELOPMENT_API_BASE_URL = "http://localhost:3001/api";
+const DEFAULT_PRODUCTION_API_BASE_URL = "https://api.virtual-easyjet.fr/api";
+const DEFAULT_DEVELOPMENT_APP_BASE_URL = "http://localhost:3000";
+const DEFAULT_PRODUCTION_APP_BASE_URL = "https://www.virtual-easyjet.fr";
+
+function getDefaultApiBaseUrl(): string {
+  return isProductionEnvironment()
+    ? DEFAULT_PRODUCTION_API_BASE_URL
+    : DEFAULT_DEVELOPMENT_API_BASE_URL;
+}
+
+function getDefaultAppBaseUrl(): string {
+  return isProductionEnvironment()
+    ? DEFAULT_PRODUCTION_APP_BASE_URL
+    : DEFAULT_DEVELOPMENT_APP_BASE_URL;
+}
 
 function normalizeApiBaseUrl(value: string | undefined): string {
   const trimmedValue = value?.trim();
 
   if (!trimmedValue) {
-    return DEFAULT_API_BASE_URL;
+    return getDefaultApiBaseUrl();
   }
 
   if (!/^https?:\/\//i.test(trimmedValue)) {
-    return DEFAULT_API_BASE_URL;
+    return getDefaultApiBaseUrl();
   }
 
   const withoutTrailingSlash = trimmedValue.replace(/\/+$/, "");
@@ -45,7 +61,7 @@ export function getApiBaseUrl(): string {
 }
 
 export function getAppBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return process.env.NEXT_PUBLIC_APP_URL?.trim() || getDefaultAppBaseUrl();
 }
 
 export function getAcarsCurrentVersion(): string {

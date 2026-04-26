@@ -1,9 +1,10 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
 
-import { fetchAuthenticatedUser } from "../api/auth";
+import { fetchAuthenticatedUser, refreshWithBackend } from "../api/auth";
 import { ApiError } from "../api/client";
 import type { UserMeResponse } from "../api/types";
+import { logWebWarning } from "../observability/log";
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from "./cookies";
 
 export interface WebSession {
@@ -15,6 +16,7 @@ export interface WebSession {
 export const getServerSession = cache(async (): Promise<WebSession | null> => {
   const cookieStore = await cookies();
   const accessToken = cookieStore.get(ACCESS_COOKIE_NAME)?.value;
+  const refreshToken = cookieStore.get(REFRESH_COOKIE_NAME)?.value ?? null;
 
   if (!accessToken) {
     return null;
@@ -25,14 +27,31 @@ export const getServerSession = cache(async (): Promise<WebSession | null> => {
 
     return {
       accessToken,
-      refreshToken: cookieStore.get(REFRESH_COOKIE_NAME)?.value ?? null,
+      refreshToken,
       user,
     };
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
+    if (!refreshToken) {
+      if (!(error instanceof ApiError) || error.status !== 401) {
+        logWebWarning("server session user lookup failed", error);
+      }
       return null;
     }
 
-    throw error;
+    try {
+      const refreshedSession = await refreshWithBackend({ refreshToken });
+      const user = await fetchAuthenticatedUser(
+        refreshedSession.tokens.accessToken,
+      );
+
+      return {
+        accessToken: refreshedSession.tokens.accessToken,
+        refreshToken: refreshedSession.tokens.refreshToken,
+        user,
+      };
+    } catch (refreshError) {
+      logWebWarning("server session refresh failed", refreshError);
+      return null;
+    }
   }
 });

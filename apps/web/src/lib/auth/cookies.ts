@@ -1,7 +1,7 @@
 import type { AuthSession } from "@va/shared";
 import type { NextResponse } from "next/server";
 
-import { getAppBaseUrl, isProductionEnvironment } from "../config/env";
+import { isProductionEnvironment } from "../config/env";
 
 export const ACCESS_COOKIE_NAME = "vej_access_token";
 export const REFRESH_COOKIE_NAME = "vej_refresh_token";
@@ -38,16 +38,12 @@ function durationToSeconds(value: string): number {
 }
 
 function getCookieOptions(maxAge: number) {
-  const appBaseUrl = getAppBaseUrl();
-  const secureCookies =
-    isProductionEnvironment() && appBaseUrl.startsWith("https://");
-
   return {
     httpOnly: true,
     maxAge,
     path: "/",
     sameSite: "lax" as const,
-    secure: secureCookies,
+    secure: isProductionEnvironment(),
   };
 }
 

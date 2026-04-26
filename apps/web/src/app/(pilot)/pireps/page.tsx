@@ -6,7 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getMyFlights } from "@/lib/api/pilot";
+import type { FlightResponse } from "@/lib/api/types";
 import { requirePilotSession } from "@/lib/auth/guards";
+import { logWebWarning } from "@/lib/observability/log";
 import { formatDateTime, formatDurationMinutes } from "@/lib/utils/format";
 import { getPirepStatusPresentation } from "@/lib/utils/status";
 
@@ -33,7 +35,14 @@ export default async function PirepsPage({
 }: PirepsPageProps): Promise<JSX.Element> {
   const session = await requirePilotSession();
   const query = await searchParams;
-  const flights = await getMyFlights(session.accessToken);
+  let flights: FlightResponse[] = [];
+
+  try {
+    const response = await getMyFlights(session.accessToken);
+    flights = Array.isArray(response) ? response : [];
+  } catch (error) {
+    logWebWarning("pireps page flights fetch failed", error);
+  }
   const pirepFlights = flights.filter((flight) => flight.pirep !== null);
   const selectedFlightId = getFirstQueryValue(query.flight);
   const highlightedFlight =

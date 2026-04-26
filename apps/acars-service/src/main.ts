@@ -25,6 +25,14 @@ type ResponseLike = {
 
 type NextLike = () => void;
 
+function shouldLogRequest(nodeEnv: string, statusCode: number): boolean {
+  if (nodeEnv !== "production") {
+    return true;
+  }
+
+  return statusCode >= 400;
+}
+
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const configService = app.get<ConfigService<AcarsEnvironment, true>>(ConfigService);
@@ -56,12 +64,14 @@ async function bootstrap(): Promise<void> {
       applyHttpSecurityHeaders(request, response);
 
       response.on("finish", () => {
-        console.info("[acars]", {
-          method: request.method,
-          path: request.originalUrl,
-          statusCode: response.statusCode,
-          durationMs: Date.now() - startedAt,
-        });
+        if (shouldLogRequest(nodeEnv, response.statusCode)) {
+          console.info("[acars]", {
+            method: request.method,
+            path: request.originalUrl,
+            statusCode: response.statusCode,
+            durationMs: Date.now() - startedAt,
+          });
+        }
       });
 
       next();

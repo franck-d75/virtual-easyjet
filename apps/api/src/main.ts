@@ -33,6 +33,14 @@ const DEFAULT_ALLOWED_CORS_ORIGINS = [
   "http://localhost:3000",
 ] as const;
 
+function shouldLogRequest(nodeEnv: string, statusCode: number): boolean {
+  if (nodeEnv !== "production") {
+    return true;
+  }
+
+  return statusCode >= 400;
+}
+
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const configService = app.get<ConfigService<ApiEnvironment, true>>(ConfigService);
@@ -79,12 +87,14 @@ async function bootstrap(): Promise<void> {
       applyHttpSecurityHeaders(request, response);
 
       response.on("finish", () => {
-        console.info("[api]", {
-          method: request.method,
-          path: request.originalUrl,
-          statusCode: response.statusCode,
-          durationMs: Date.now() - startedAt,
-        });
+        if (shouldLogRequest(nodeEnv, response.statusCode)) {
+          console.info("[api]", {
+            method: request.method,
+            path: request.originalUrl,
+            statusCode: response.statusCode,
+            durationMs: Date.now() - startedAt,
+          });
+        }
       });
 
       next();
