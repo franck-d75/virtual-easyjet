@@ -50,6 +50,13 @@ export class AdminController {
     return this.adminService.getReferenceData();
   }
 
+  @Post("reference-data/aircraft-types/init")
+  public initializeAircraftTypeReferenceData(
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.initializeAircraftTypeReferenceData(currentUser);
+  }
+
   @Get("users")
   public listUsers() {
     return this.adminService.listUsers();

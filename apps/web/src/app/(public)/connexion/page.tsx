@@ -31,7 +31,7 @@ export default async function LoginPage(): Promise<JSX.Element> {
           <h2>Se connecter</h2>
           <p>
             Utilisez vos identifiants pilote pour accéder au tableau de bord et
-            aux données opérationnelles.
+            aux données opérationnelles réelles de la compagnie.
           </p>
           <LoginForm />
         </Card>
@@ -39,38 +39,12 @@ export default async function LoginPage(): Promise<JSX.Element> {
         <Card className="auth-card">
           <h2>Créer un compte</h2>
           <p>
-            Rejoignez la compagnie avec un compte pilote simple, immédiatement
-            relié au backend MVP existant.
+            Rejoignez la compagnie avec un compte pilote relié à la plateforme
+            de production, prêt pour les réservations, SimBrief et l’ACARS.
           </p>
           <RegisterForm />
         </Card>
       </div>
-
-      <Card>
-        <h2>Démo locale du MVP</h2>
-        <p>
-          En environnement local seedé, vous pouvez également utiliser le
-          compte de démonstration ci-dessous pour tester le flux complet.
-        </p>
-        <div className="definition-grid">
-          <div>
-            <span>Utilisateur</span>
-            <strong>pilotdemo</strong>
-          </div>
-          <div>
-            <span>Adresse e-mail</span>
-            <strong>pilot@va.local</strong>
-          </div>
-          <div>
-            <span>Mot de passe</span>
-            <strong>Pilot123!</strong>
-          </div>
-          <div>
-            <span>Accès</span>
-            <strong>Espace pilote MVP</strong>
-          </div>
-        </div>
-      </Card>
     </>
   );
 }

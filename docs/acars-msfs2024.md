@@ -133,6 +133,19 @@ The next operational step for the real desktop client is:
 - let the pilot use the OFP as the basis for a real reservation or rotation
 - keep the app stable when no OFP exists
 
+The production reference workflow is:
+
+1. Store the real SimBrief Pilot ID in the pilot profile.
+2. Fetch the latest OFP from SimBrief.
+3. Read the OFP flight number, departure, arrival, route, aircraft ICAO, callsign,
+   fuel, payload, distance and estimated block time.
+4. Match the OFP aircraft ICAO against the production `AircraftType` reference
+   catalog.
+5. If the aircraft type is missing, create it as reference data only. Do not
+   create a fake route, fake aircraft or fake booking.
+6. Create or select the real booking or rotation that will be flown.
+7. Start the ACARS session from the real desktop client and send live telemetry.
+
 ## Airframes and future mapping
 
 Future production support should add explicit SimBrief airframe mapping:
@@ -140,6 +153,15 @@ Future production support should add explicit SimBrief airframe mapping:
 - store SimBrief airframes per pilot or per airline
 - associate a SimBrief airframe with a VA aircraft type or fleet entry
 - use that mapping to create or validate flights imported from SimBrief
+
+Recommended airframe fields:
+
+- SimBrief airframe ID
+- display name
+- aircraft ICAO
+- linked `AircraftType` ID
+- optional owner pilot profile
+- optional company-level scope
 
 No fake airframes should be seeded in production.
 

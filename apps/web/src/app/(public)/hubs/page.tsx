@@ -30,20 +30,20 @@ export default async function HubsPage(): Promise<JSX.Element> {
           <span className="section-eyebrow">Hubs</span>
           <h1>Nos hubs</h1>
           <p>
-            Nos hubs structurent l'activité de la compagnie virtuelle et servent
-            de point d'ancrage pour la flotte, les routes et la progression des
-            pilotes.
+            Les hubs publiés structurent l’activité réelle de la compagnie
+            virtuelle et servent de base à la flotte, aux routes et aux futures
+            opérations ACARS.
           </p>
           <p>
-            Chaque base est présentée avec son aéroport, son pays et le volume
-            de routes actuellement publiées depuis ce hub.
+            Une base de production peut démarrer sans hub actif : ils
+            apparaîtront ici dès qu’ils seront configurés par l’administration.
           </p>
         </section>
 
         {hubs.length === 0 ? (
           <EmptyState
             title="Aucun hub publié"
-            description="Les hubs apparaîtront ici dès qu'ils seront disponibles."
+            description="Les hubs apparaîtront ici dès qu’ils seront créés et publiés."
           />
         ) : (
           <section className="card-grid">
@@ -115,7 +115,7 @@ export default async function HubsPage(): Promise<JSX.Element> {
     return (
       <ErrorState
         title="Hubs indisponibles"
-        description="Les hubs n'ont pas pu être chargés depuis l'API."
+        description="Les hubs n’ont pas pu être chargés depuis l’API."
       />
     );
   }

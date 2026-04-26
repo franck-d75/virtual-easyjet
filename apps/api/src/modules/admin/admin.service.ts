@@ -67,6 +67,37 @@ type AdminRouteRecord = Prisma.RouteGetPayload<{
   include: typeof adminRouteInclude;
 }>;
 
+const REFERENCE_AIRCRAFT_TYPES = [
+  {
+    icaoCode: "A319",
+    name: "Airbus A319",
+    manufacturer: "Airbus",
+    category: "Narrow-body",
+    cruiseSpeedKts: 450,
+  },
+  {
+    icaoCode: "A320",
+    name: "Airbus A320",
+    manufacturer: "Airbus",
+    category: "Narrow-body",
+    cruiseSpeedKts: 450,
+  },
+  {
+    icaoCode: "A20N",
+    name: "Airbus A320neo",
+    manufacturer: "Airbus",
+    category: "Narrow-body",
+    cruiseSpeedKts: 447,
+  },
+  {
+    icaoCode: "A21N",
+    name: "Airbus A321neo",
+    manufacturer: "Airbus",
+    category: "Narrow-body",
+    cruiseSpeedKts: 450,
+  },
+] as const;
+
 const adminUserListInclude = {
   pilotProfile: {
     include: {
@@ -265,6 +296,19 @@ export class AdminService {
       hubs,
       aircraftTypes,
     };
+  }
+
+  public async initializeAircraftTypeReferenceData(
+    currentUser: AuthenticatedUser,
+  ) {
+    await this.upsertAircraftTypeReferenceData();
+    logAdminAction(
+      "reference.aircraft-types.initialize",
+      currentUser.id,
+      currentUser.id,
+    );
+
+    return this.getReferenceData();
   }
 
   public async listUsers() {
@@ -917,6 +961,18 @@ export class AdminService {
       throw new ForbiddenException(
         "The last active administrator cannot be suspended or demoted.",
       );
+    }
+  }
+
+  private async upsertAircraftTypeReferenceData(): Promise<void> {
+    for (const aircraftType of REFERENCE_AIRCRAFT_TYPES) {
+      await this.prisma.aircraftType.upsert({
+        where: {
+          icaoCode: aircraftType.icaoCode,
+        },
+        update: aircraftType,
+        create: aircraftType,
+      });
     }
   }
 

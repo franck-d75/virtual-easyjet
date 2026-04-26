@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent, JSX } from "react";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,22 +78,28 @@ export function AdminAircraftManager({
   referenceData,
 }: AdminAircraftManagerProps): JSX.Element {
   const [items, setItems] = useState(() => sortAircraft(initialAircraft));
+  const [referenceDataState, setReferenceDataState] = useState(referenceData);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<AdminFeedback | null>(null);
   const [formState, setFormState] = useState<AircraftFormState>(() =>
     createInitialAircraftForm(referenceData),
   );
-  const [isPending, startTransition] = useTransition();
+  const [isSaving, setIsSaving] = useState(false);
+  const [isInitializingTypes, setIsInitializingTypes] = useState(false);
 
   const aircraftTypeLabelById = useMemo(
     () =>
-      new Map(referenceData.aircraftTypes.map((item) => [item.id, item.name])),
-    [referenceData.aircraftTypes],
+      new Map(
+        referenceDataState.aircraftTypes.map((item) => [item.id, item.name]),
+      ),
+    [referenceDataState.aircraftTypes],
   );
 
-  function resetForm(): void {
+  const hasAircraftTypeReference = referenceDataState.aircraftTypes.length > 0;
+
+  function resetForm(nextReferenceData = referenceDataState): void {
     setEditingId(null);
-    setFormState(createInitialAircraftForm(referenceData));
+    setFormState(createInitialAircraftForm(nextReferenceData));
   }
 
   function updateFormState<Field extends keyof AircraftFormState>(
@@ -106,48 +112,95 @@ export function AdminAircraftManager({
     }));
   }
 
+  async function handleInitializeAircraftTypes(): Promise<void> {
+    setFeedback(null);
+    setIsInitializingTypes(true);
+
+    try {
+      const response = await fetch("/api/admin/reference-data/aircraft-types/init", {
+        method: "POST",
+      });
+
+      const rawPayload = await response.text();
+      const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
+
+      if (!response.ok) {
+        setFeedback({
+          tone: "danger",
+          message: extractApiMessage(
+            responsePayload,
+            "Impossible d'initialiser les types appareil de référence.",
+          ),
+        });
+        return;
+      }
+
+      const nextReferenceData = responsePayload as AdminReferenceDataResponse;
+      setReferenceDataState(nextReferenceData);
+      resetForm(nextReferenceData);
+      setFeedback({
+        tone: "success",
+        message:
+          "Les types appareil A319, A320, A20N et A21N sont prêts pour votre flotte réelle.",
+      });
+    } finally {
+      setIsInitializingTypes(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    setFeedback(null);
 
-    const payload: AdminAircraftPayload = {
-      registration: formState.registration.trim(),
-      label: formState.label.trim() || null,
-      aircraftTypeId: formState.aircraftTypeId,
-      hubId: formState.hubId || null,
-      status: formState.status,
-      notes: formState.notes.trim() || null,
-    };
-
-    const endpoint = editingId
-      ? `/api/admin/aircraft/${editingId}`
-      : "/api/admin/aircraft";
-
-    const response = await fetch(endpoint, {
-      method: editingId ? "PATCH" : "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const rawPayload = await response.text();
-    const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
-
-    if (!response.ok) {
+    if (!hasAircraftTypeReference) {
       setFeedback({
         tone: "danger",
-        message: extractApiMessage(
-          responsePayload,
-          "Impossible d’enregistrer cet appareil.",
-        ),
+        message:
+          "Initialisez d'abord les types appareil de référence avant de créer un avion.",
       });
       return;
     }
 
-    const savedAircraft = responsePayload as AircraftResponse;
+    setFeedback(null);
+    setIsSaving(true);
 
-    startTransition(() => {
+    try {
+      const payload: AdminAircraftPayload = {
+        registration: formState.registration.trim(),
+        label: formState.label.trim() || null,
+        aircraftTypeId: formState.aircraftTypeId,
+        hubId: formState.hubId || null,
+        status: formState.status,
+        notes: formState.notes.trim() || null,
+      };
+
+      const endpoint = editingId
+        ? `/api/admin/aircraft/${editingId}`
+        : "/api/admin/aircraft";
+
+      const response = await fetch(endpoint, {
+        method: editingId ? "PATCH" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const rawPayload = await response.text();
+      const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
+
+      if (!response.ok) {
+        setFeedback({
+          tone: "danger",
+          message: extractApiMessage(
+            responsePayload,
+            "Impossible d'enregistrer cet appareil.",
+          ),
+        });
+        return;
+      }
+
+      const savedAircraft = responsePayload as AircraftResponse;
+
       setItems((currentValue) => {
         const nextItems = editingId
           ? currentValue.map((item) =>
@@ -164,7 +217,9 @@ export function AdminAircraftManager({
           : "Appareil créé avec succès.",
       });
       resetForm();
-    });
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   async function handleDelete(id: string): Promise<void> {
@@ -191,15 +246,13 @@ export function AdminAircraftManager({
       return;
     }
 
-    startTransition(() => {
-      setItems((currentValue) => currentValue.filter((item) => item.id !== id));
-      if (editingId === id) {
-        resetForm();
-      }
-      setFeedback({
-        tone: "success",
-        message: "Appareil supprimé.",
-      });
+    setItems((currentValue) => currentValue.filter((item) => item.id !== id));
+    if (editingId === id) {
+      resetForm();
+    }
+    setFeedback({
+      tone: "success",
+      message: "Appareil supprimé.",
     });
   }
 
@@ -225,117 +278,155 @@ export function AdminAircraftManager({
             <h2>{editingId ? "Modifier un appareil" : "Ajouter un appareil"}</h2>
           </div>
           <p>
-            Gérez les immatriculations, leur type et leur hub d’affectation.
+            Gérez les immatriculations réelles, leur type, leur hub optionnel et
+            leur statut d'exploitation.
           </p>
         </div>
 
-        <form className="auth-form admin-form-grid" onSubmit={handleSubmit}>
-          <div className="field">
-            <label htmlFor="aircraft-registration">Immatriculation</label>
-            <input
-              id="aircraft-registration"
-              onChange={(event) => updateFormState("registration", event.target.value)}
-              placeholder="F-HVAA"
-              required
-              type="text"
-              value={formState.registration}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="aircraft-label">Libellé</label>
-            <input
-              id="aircraft-label"
-              onChange={(event) => updateFormState("label", event.target.value)}
-              placeholder="A320neo Paris 01"
-              type="text"
-              value={formState.label}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="aircraft-type">Type appareil</label>
-            <select
-              id="aircraft-type"
-              onChange={(event) => updateFormState("aircraftTypeId", event.target.value)}
-              required
-              value={formState.aircraftTypeId}
-            >
-              {referenceData.aircraftTypes.map((aircraftType) => (
-                <option key={aircraftType.id} value={aircraftType.id}>
-                  {aircraftType.icaoCode} · {aircraftType.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="aircraft-hub">Hub</label>
-            <select
-              id="aircraft-hub"
-              onChange={(event) => updateFormState("hubId", event.target.value)}
-              value={formState.hubId}
-            >
-              <option value="">Aucun hub</option>
-              {referenceData.hubs.map((hub) => (
-                <option key={hub.id} value={hub.id}>
-                  {hub.code} · {hub.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="aircraft-status">Statut</label>
-            <select
-              id="aircraft-status"
-              onChange={(event) =>
-                updateFormState(
-                  "status",
-                  event.target.value as (typeof AIRCRAFT_STATUSES)[number],
-                )
-              }
-              value={formState.status}
-            >
-              {AIRCRAFT_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field field--full">
-            <label htmlFor="aircraft-notes">Notes</label>
-            <textarea
-              id="aircraft-notes"
-              onChange={(event) => updateFormState("notes", event.target.value)}
-              rows={3}
-              value={formState.notes}
-            />
-          </div>
-
-          {feedback ? (
-            <p className={`inline-feedback inline-feedback--${feedback.tone}`} role="status">
-              {feedback.message}
-            </p>
-          ) : null}
-
-          <div className="admin-form-actions">
-            <Button disabled={isPending} type="submit">
-              {isPending
-                ? "Enregistrement..."
-                : editingId
-                  ? "Mettre à jour"
-                  : "Créer l’appareil"}
-            </Button>
-            {editingId ? (
-              <Button onClick={resetForm} type="button" variant="ghost">
-                Annuler
+        {!hasAircraftTypeReference ? (
+          <EmptyState
+            action={
+              <Button
+                disabled={isInitializingTypes}
+                onClick={() => {
+                  void handleInitializeAircraftTypes();
+                }}
+                type="button"
+              >
+                {isInitializingTypes
+                  ? "Initialisation..."
+                  : "Initialiser les types de référence"}
               </Button>
+            }
+            description="Initialisez les types appareil A319, A320, A20N et A21N pour pouvoir enregistrer votre flotte réelle."
+            title="Aucun type appareil disponible"
+          />
+        ) : (
+          <form className="auth-form admin-form-grid" onSubmit={handleSubmit}>
+            <div className="field">
+              <label htmlFor="aircraft-registration">Immatriculation</label>
+              <input
+                id="aircraft-registration"
+                onChange={(event) =>
+                  updateFormState("registration", event.target.value)
+                }
+                placeholder="HB-JXA"
+                required
+                type="text"
+                value={formState.registration}
+              />
+            </div>
+
+            <div className="field">
+              <label htmlFor="aircraft-label">Libellé</label>
+              <input
+                id="aircraft-label"
+                onChange={(event) => updateFormState("label", event.target.value)}
+                placeholder="Fenix A320 easyJet Switzerland 01"
+                type="text"
+                value={formState.label}
+              />
+            </div>
+
+            <div className="field">
+              <label htmlFor="aircraft-type">Type appareil</label>
+              <select
+                id="aircraft-type"
+                onChange={(event) =>
+                  updateFormState("aircraftTypeId", event.target.value)
+                }
+                required
+                value={formState.aircraftTypeId}
+              >
+                {referenceDataState.aircraftTypes.map((aircraftType) => (
+                  <option key={aircraftType.id} value={aircraftType.id}>
+                    {aircraftType.icaoCode} · {aircraftType.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label htmlFor="aircraft-hub">Hub</label>
+              <select
+                id="aircraft-hub"
+                onChange={(event) => updateFormState("hubId", event.target.value)}
+                value={formState.hubId}
+              >
+                <option value="">Aucun hub</option>
+                {referenceDataState.hubs.map((hub) => (
+                  <option key={hub.id} value={hub.id}>
+                    {hub.code} · {hub.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label htmlFor="aircraft-status">Statut</label>
+              <select
+                id="aircraft-status"
+                onChange={(event) =>
+                  updateFormState(
+                    "status",
+                    event.target.value as (typeof AIRCRAFT_STATUSES)[number],
+                  )
+                }
+                value={formState.status}
+              >
+                {AIRCRAFT_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field field--full">
+              <label htmlFor="aircraft-notes">Notes</label>
+              <textarea
+                id="aircraft-notes"
+                onChange={(event) => updateFormState("notes", event.target.value)}
+                placeholder="Commentaires internes sur la livrée, l'affectation ou le simulateur."
+                rows={3}
+                value={formState.notes}
+              />
+            </div>
+
+            {feedback ? (
+              <p
+                className={`inline-feedback inline-feedback--${feedback.tone}`}
+                role="status"
+              >
+                {feedback.message}
+              </p>
             ) : null}
-          </div>
-        </form>
+
+            <div className="admin-form-actions">
+              <Button disabled={isSaving} type="submit">
+                {isSaving
+                  ? "Enregistrement..."
+                  : editingId
+                    ? "Mettre à jour"
+                    : "Créer l'appareil"}
+              </Button>
+              {editingId ? (
+                <Button onClick={() => resetForm()} type="button" variant="ghost">
+                  Annuler
+                </Button>
+              ) : null}
+            </div>
+          </form>
+        )}
+
+        {feedback && !hasAircraftTypeReference ? (
+          <p
+            className={`inline-feedback inline-feedback--${feedback.tone}`}
+            role="status"
+          >
+            {feedback.message}
+          </p>
+        ) : null}
       </Card>
 
       <Card>
@@ -349,7 +440,7 @@ export function AdminAircraftManager({
 
         {items.length === 0 ? (
           <EmptyState
-            description="Ajoutez votre premier appareil pour démarrer la flotte administrative."
+            description="Enregistrez votre premier appareil pour exploiter votre flotte réelle."
             title="Aucun appareil enregistré"
           />
         ) : (
@@ -370,7 +461,8 @@ export function AdminAircraftManager({
                 header: "Type",
                 render: (item) => (
                   <div className="table-secondary">
-                    {aircraftTypeLabelById.get(item.aircraftType.id) ?? item.aircraftType.name}
+                    {aircraftTypeLabelById.get(item.aircraftType.id) ??
+                      item.aircraftType.name}
                   </div>
                 ),
               },
@@ -387,10 +479,7 @@ export function AdminAircraftManager({
                 id: "status",
                 header: "Statut",
                 render: (item) => (
-                  <Badge
-                    label={item.status}
-                    tone={getAircraftStatusTone(item.status)}
-                  />
+                  <Badge label={item.status} tone={getAircraftStatusTone(item.status)} />
                 ),
               },
               {

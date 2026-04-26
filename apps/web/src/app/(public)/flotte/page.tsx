@@ -16,7 +16,7 @@ function getAircraftStatusPresentation(status: string): {
 } {
   switch (status) {
     case "ACTIVE":
-      return { label: "En ligne", tone: "success" };
+      return { label: "En service", tone: "success" };
     case "MAINTENANCE":
       return { label: "Maintenance", tone: "warning" };
     case "RETIRED":
@@ -36,20 +36,21 @@ export default async function FleetPage(): Promise<JSX.Element> {
           <span className="section-eyebrow">Flotte</span>
           <h1>Notre flotte</h1>
           <p>
-            Notre flotte virtuelle est pensée pour les opérations court et
-            moyen-courrier, avec des appareils efficaces, fréquents et adaptés
-            à un réseau européen moderne.
+            La flotte Virtual Easyjet regroupe les appareils réellement publiés
+            par l’administration, avec leur type, leur base éventuelle et leur
+            statut d’exploitation.
           </p>
           <p>
-            Chaque avion est rattaché à une base, à un type précis et à un
-            statut opérationnel lisible pour les pilotes comme pour le staff.
+            La plateforme peut rester vierge au lancement : les appareils
+            apparaîtront ici au fur et à mesure de la construction de la flotte
+            réelle.
           </p>
         </section>
 
         {aircraft.length === 0 ? (
           <EmptyState
-            title="Flotte indisponible"
-            description="Aucun appareil n'est publié pour le moment."
+            title="Aucun appareil enregistré"
+            description="La flotte sera publiée dès qu’un appareil réel sera ajouté."
           />
         ) : (
           <section className="card-grid">
@@ -75,8 +76,9 @@ export default async function FleetPage(): Promise<JSX.Element> {
                   <div className="showcase-card__spotlight">
                     <strong>{airframe.aircraftType.name}</strong>
                     <span>
-                      {airframe.aircraftType.manufacturer ?? "Constructeur non renseigné"}{" "}
-                      · {airframe.hub?.name ?? "Base non affectée"}
+                      {airframe.aircraftType.manufacturer ??
+                        "Constructeur non renseigné"}{" "}
+                      · {airframe.hub?.name ?? "Aucun hub affecté"}
                     </span>
                   </div>
 
@@ -91,7 +93,7 @@ export default async function FleetPage(): Promise<JSX.Element> {
                     </div>
                     <div>
                       <span>Hub</span>
-                      <strong>{airframe.hub?.code ?? "Libre"}</strong>
+                      <strong>{airframe.hub?.code ?? "Non affecté"}</strong>
                     </div>
                     <div>
                       <span>Statut</span>
@@ -118,7 +120,7 @@ export default async function FleetPage(): Promise<JSX.Element> {
     return (
       <ErrorState
         title="Flotte indisponible"
-        description="La liste des appareils n'a pas pu être chargée."
+        description="La liste des appareils n’a pas pu être chargée."
       />
     );
   }

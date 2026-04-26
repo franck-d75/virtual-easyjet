@@ -31,6 +31,19 @@ export async function getAdminReferenceData(
   });
 }
 
+export async function initializeAdminAircraftTypes(
+  accessToken: string,
+): Promise<AdminReferenceDataResponse> {
+  return apiRequest<AdminReferenceDataResponse>(
+    "/admin/reference-data/aircraft-types/init",
+    {
+      accessToken,
+      method: "POST",
+      cache: "no-store",
+    },
+  );
+}
+
 export async function listAdminUsers(
   accessToken: string,
 ): Promise<AdminUserSummaryResponse[]> {

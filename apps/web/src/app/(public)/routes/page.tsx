@@ -20,20 +20,20 @@ export default async function RoutesPage(): Promise<JSX.Element> {
           <span className="section-eyebrow">Routes</span>
           <h1>Réseau et routes</h1>
           <p>
-            Explorez un réseau de lignes européennes pensé pour un rythme de VA
-            réaliste, avec des rotations lisibles, fréquentes et cohérentes avec
-            la flotte publiée.
+            Les routes publiées définissent les rotations réelles exploitables
+            par les pilotes, avec leur départ, leur arrivée, leur distance et
+            leur durée estimée.
           </p>
           <p>
-            Chaque route met en avant son départ, son arrivée, sa distance et sa
-            durée estimée afin de faciliter la préparation d'une rotation.
+            Tant qu’aucune route n’est publiée, la plateforme reste pleinement
+            fonctionnelle et prête à recevoir de nouvelles opérations.
           </p>
         </section>
 
         {routes.length === 0 ? (
           <EmptyState
             title="Aucune route publiée"
-            description="Les routes apparaîtront ici dès qu'elles seront disponibles."
+            description="Les routes apparaîtront ici dès qu’elles seront créées par l’administration."
           />
         ) : (
           <section className="card-grid">
@@ -84,7 +84,7 @@ export default async function RoutesPage(): Promise<JSX.Element> {
                     <strong>{formatDurationMinutes(route.blockTimeMinutes)}</strong>
                   </div>
                   <div>
-                    <span>Appareil</span>
+                    <span>Type appareil</span>
                     <strong>{route.aircraftType?.icaoCode ?? "Libre"}</strong>
                   </div>
                   <div>
@@ -114,7 +114,7 @@ export default async function RoutesPage(): Promise<JSX.Element> {
     return (
       <ErrorState
         title="Routes indisponibles"
-        description="Le réseau n'a pas pu être chargé depuis l'API."
+        description="Le réseau n’a pas pu être chargé depuis l’API."
       />
     );
   }
