@@ -397,33 +397,32 @@ export class SimbriefClient {
   }
 
   private async fetchSimbriefJson(url: string): Promise<SimbriefHttpResult> {
-    const response = await fetch(url, {
+    const response = (await fetch(url, {
       headers: {
         Accept: "application/json",
         "User-Agent": SIMBRIEF_USER_AGENT,
       },
       signal: AbortSignal.timeout(SIMBRIEF_FETCH_TIMEOUT_MS),
-    });
+    })) as globalThis.Response;
 
-    const httpResponse = response as Response;
-    const rawPayload = await httpResponse.text();
+    const rawPayload = await response.text();
     const payload = tryParseJson(rawPayload);
     const fetchStatus = readString(payload, ["fetch", "status"]);
 
-    if (!httpResponse.ok) {
+    if (!response.ok) {
       return {
         ok: false,
-        statusCode: httpResponse.status,
+        statusCode: response.status,
         fetchStatus,
         payload,
         detail:
-          fetchStatus ?? `SimBrief returned HTTP ${String(httpResponse.status)}.`,
+          fetchStatus ?? `SimBrief returned HTTP ${String(response.status)}.`,
       };
     }
 
     return {
       ok: true,
-      statusCode: httpResponse.status,
+      statusCode: response.status,
       fetchStatus,
       payload,
       detail: null,
