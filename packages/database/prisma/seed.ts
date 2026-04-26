@@ -12,75 +12,6 @@ Object.assign(process.env, loadRootEnvironment());
 
 const prisma = new PrismaClient();
 
-const DEMO_BOOKING_IDS = [
-  "seed-booking-demo-reserved",
-  "seed-booking-demo-active",
-  "seed-booking-demo-history",
-  "seed-booking-demo-return",
-  "seed-booking-demo-history-barcelona",
-  "seed-booking-demo-history-lisbon",
-  "seed-booking-demo-history-amsterdam",
-  "seed-booking-demo-history-nice",
-] as const;
-
-const DEMO_FLIGHT_IDS = [
-  "seed-flight-demo-active",
-  "seed-flight-demo-history",
-  "seed-flight-demo-history-barcelona",
-  "seed-flight-demo-history-lisbon",
-  "seed-flight-demo-history-amsterdam",
-  "seed-flight-demo-history-nice",
-] as const;
-
-const DEMO_PIREP_IDS = [
-  "seed-pirep-demo-history",
-  "seed-pirep-demo-history-barcelona",
-  "seed-pirep-demo-history-lisbon",
-  "seed-pirep-demo-history-amsterdam",
-  "seed-pirep-demo-history-nice",
-] as const;
-
-const DEMO_SCHEDULE_IDS = [
-  "seed-afr100-daily",
-  "seed-vej102-daily",
-  "seed-vej215-daily",
-  "seed-vej216-daily",
-  "seed-vej331-daily",
-  "seed-vej332-daily",
-  "seed-vej441-weekday",
-  "seed-vej442-weekday",
-  "seed-vej551-daily",
-  "seed-vej552-daily",
-  "seed-vej661-weekend",
-] as const;
-
-const DEMO_ROUTE_CODES = [
-  "VEJ101",
-  "VEJ102",
-  "VEJ215",
-  "VEJ216",
-  "VEJ331",
-  "VEJ332",
-  "VEJ441",
-  "VEJ442",
-  "VEJ551",
-  "VEJ552",
-  "VEJ661",
-] as const;
-
-const DEMO_AIRCRAFT_REGISTRATIONS = [
-  "F-HVEJ",
-  "G-VEJA",
-  "G-VEJB",
-  "EC-VEJC",
-  "I-VEJD",
-  "CS-VEJE",
-] as const;
-
-const DEMO_HUB_CODES = ["PAR", "LGW", "BCN", "MXP", "LIS"] as const;
-const DEMO_NEWS_SLUG = "virtual-easyjet-network-ready";
-const DEMO_USER_EMAILS = ["admin@va.local", "pilot@va.local"] as const;
-
 type AccountSeedConfig = {
   email: string;
   username: string;
@@ -155,387 +86,37 @@ function readOptionalPilotConfig(): AccountSeedConfig | null {
   };
 }
 
-async function cleanupLegacyDemoArtifacts(
-  preservedEmails: readonly string[],
-): Promise<void> {
-  const demoUsersToDelete = await prisma.user.findMany({
-    where: {
-      email: {
-        in: [...DEMO_USER_EMAILS].filter(
-          (email) => !preservedEmails.includes(email),
-        ),
-      },
-    },
-    select: {
-      id: true,
-      pilotProfile: {
-        select: {
-          id: true,
-        },
-      },
-    },
-  });
+async function resetProductionDatabase(): Promise<void> {
+  await prisma.$executeRawUnsafe(`TRUNCATE TABLE
+    "Violation",
+    "FlightEvent",
+    "TelemetryPoint",
+    "AcarsSession",
+    "Pirep",
+    "Flight",
+    "Booking",
+    "Schedule",
+    "Route",
+    "Aircraft",
+    "AircraftType",
+    "Hub",
+    "Airport",
+    "StaffNote",
+    "PilotQualification",
+    "Checkride",
+    "Exam",
+    "Qualification",
+    "NewsPost",
+    "ContentPage",
+    "PilotProfile",
+    "RefreshToken",
+    "UserRole",
+    "Setting"
+  RESTART IDENTITY CASCADE;`);
 
-  const demoUserIdsToDelete = demoUsersToDelete.map((user) => user.id);
-  const demoPilotProfileIdsToDelete = demoUsersToDelete
-    .map((user) => user.pilotProfile?.id ?? null)
-    .filter((pilotProfileId): pilotProfileId is string => pilotProfileId !== null);
-
-  const demoPilotBookings = await prisma.booking.findMany({
-    where: {
-      pilotProfileId: {
-        in: demoPilotProfileIdsToDelete,
-      },
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  const demoPilotFlights = await prisma.flight.findMany({
-    where: {
-      pilotProfileId: {
-        in: demoPilotProfileIdsToDelete,
-      },
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  const demoPilotPireps = await prisma.pirep.findMany({
-    where: {
-      pilotProfileId: {
-        in: demoPilotProfileIdsToDelete,
-      },
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  const bookingIdsToDelete = [
-    ...new Set([
-      ...DEMO_BOOKING_IDS,
-      ...demoPilotBookings.map((booking) => booking.id),
-    ]),
-  ];
-
-  const flightIdsToDelete = [
-    ...new Set([
-      ...DEMO_FLIGHT_IDS,
-      ...demoPilotFlights.map((flight) => flight.id),
-    ]),
-  ];
-
-  const pirepIdsToDelete = [
-    ...new Set([
-      ...DEMO_PIREP_IDS,
-      ...demoPilotPireps.map((pirep) => pirep.id),
-    ]),
-  ];
-
-  const demoSessions = await prisma.acarsSession.findMany({
-    where: {
-      flightId: {
-        in: flightIdsToDelete,
-      },
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  const demoSessionIds = demoSessions.map((session) => session.id);
-
-  await prisma.violation.deleteMany({
-    where: {
-      OR: [
-        {
-          flightId: {
-            in: flightIdsToDelete,
-          },
-        },
-        {
-          pirepId: {
-            in: pirepIdsToDelete,
-          },
-        },
-        ...(demoSessionIds.length > 0
-          ? [
-              {
-                sessionId: {
-                  in: demoSessionIds,
-                },
-              },
-            ]
-          : []),
-      ],
-    },
-  });
-
-  if (demoSessionIds.length > 0) {
-    await prisma.telemetryPoint.deleteMany({
-      where: {
-        sessionId: {
-          in: demoSessionIds,
-        },
-      },
-    });
-  }
-
-  await prisma.flightEvent.deleteMany({
-    where: {
-      OR: [
-        {
-          flightId: {
-            in: flightIdsToDelete,
-          },
-        },
-        ...(demoSessionIds.length > 0
-          ? [
-              {
-                sessionId: {
-                  in: demoSessionIds,
-                },
-              },
-            ]
-          : []),
-      ],
-    },
-  });
-
-  await prisma.pirep.deleteMany({
-    where: {
-      OR: [
-        {
-          id: {
-            in: pirepIdsToDelete,
-          },
-        },
-        {
-          flightId: {
-            in: flightIdsToDelete,
-          },
-        },
-      ],
-    },
-  });
-
-  await prisma.acarsSession.deleteMany({
-    where: {
-      flightId: {
-        in: flightIdsToDelete,
-      },
-    },
-  });
-
-  await prisma.flight.deleteMany({
-    where: {
-      OR: [
-        {
-          id: {
-            in: flightIdsToDelete,
-          },
-        },
-        {
-          bookingId: {
-            in: bookingIdsToDelete,
-          },
-        },
-      ],
-    },
-  });
-
-  await prisma.booking.deleteMany({
-    where: {
-      id: {
-        in: bookingIdsToDelete,
-      },
-    },
-  });
-
-  if (demoPilotProfileIdsToDelete.length > 0) {
-    await prisma.staffNote.deleteMany({
-      where: {
-        OR: [
-          {
-            pilotProfileId: {
-              in: demoPilotProfileIdsToDelete,
-            },
-          },
-          ...(demoUserIdsToDelete.length > 0
-            ? [
-                {
-                  authorId: {
-                    in: demoUserIdsToDelete,
-                  },
-                },
-              ]
-            : []),
-        ],
-      },
-    });
-
-    await prisma.pilotQualification.deleteMany({
-      where: {
-        OR: [
-          {
-            pilotProfileId: {
-              in: demoPilotProfileIdsToDelete,
-            },
-          },
-          ...(demoUserIdsToDelete.length > 0
-            ? [
-                {
-                  awardedById: {
-                    in: demoUserIdsToDelete,
-                  },
-                },
-              ]
-            : []),
-        ],
-      },
-    });
-
-    await prisma.checkride.deleteMany({
-      where: {
-        OR: [
-          {
-            pilotProfileId: {
-              in: demoPilotProfileIdsToDelete,
-            },
-          },
-          ...(demoUserIdsToDelete.length > 0
-            ? [
-                {
-                  examinerId: {
-                    in: demoUserIdsToDelete,
-                  },
-                },
-              ]
-            : []),
-        ],
-      },
-    });
-  }
-
-  await prisma.schedule.deleteMany({
-    where: {
-      id: {
-        in: [...DEMO_SCHEDULE_IDS],
-      },
-    },
-  });
-
-  await prisma.route.deleteMany({
-    where: {
-      code: {
-        in: [...DEMO_ROUTE_CODES],
-      },
-      schedules: {
-        none: {},
-      },
-      bookings: {
-        none: {},
-      },
-      flights: {
-        none: {},
-      },
-    },
-  });
-
-  await prisma.aircraft.deleteMany({
-    where: {
-      registration: {
-        in: [...DEMO_AIRCRAFT_REGISTRATIONS],
-      },
-      schedules: {
-        none: {},
-      },
-      bookings: {
-        none: {},
-      },
-      flights: {
-        none: {},
-      },
-      pireps: {
-        none: {},
-      },
-    },
-  });
-
-  await prisma.hub.deleteMany({
-    where: {
-      code: {
-        in: [...DEMO_HUB_CODES],
-      },
-      pilots: {
-        none: {},
-      },
-      aircraft: {
-        none: {},
-      },
-      routesFrom: {
-        none: {},
-      },
-      routesTo: {
-        none: {},
-      },
-    },
-  });
-
-  if (demoUserIdsToDelete.length > 0) {
-    await prisma.contentPage.deleteMany({
-      where: {
-        authorId: {
-          in: demoUserIdsToDelete,
-        },
-      },
-    });
-
-    await prisma.newsPost.deleteMany({
-      where: {
-        OR: [
-          {
-            authorId: {
-              in: demoUserIdsToDelete,
-            },
-          },
-          {
-            slug: DEMO_NEWS_SLUG,
-          },
-        ],
-      },
-    });
-
-    await prisma.setting.updateMany({
-      where: {
-        updatedById: {
-          in: demoUserIdsToDelete,
-        },
-      },
-      data: {
-        updatedById: null,
-      },
-    });
-
-    await prisma.pilotProfile.deleteMany({
-      where: {
-        id: {
-          in: demoPilotProfileIdsToDelete,
-        },
-      },
-    });
-
-    await prisma.user.deleteMany({
-      where: {
-        id: {
-          in: demoUserIdsToDelete,
-        },
-      },
-    });
-  }
+  await prisma.user.deleteMany();
+  await prisma.role.deleteMany();
+  await prisma.rank.deleteMany();
 }
 
 async function seedRoles(): Promise<void> {
@@ -791,13 +372,7 @@ async function seedSettings(adminEmail: string): Promise<void> {
 async function main(): Promise<void> {
   const adminConfig = readAdminConfig();
   const optionalPilotConfig = readOptionalPilotConfig();
-  const preservedEmails = [adminConfig.email];
-
-  if (optionalPilotConfig) {
-    preservedEmails.push(optionalPilotConfig.email);
-  }
-
-  await cleanupLegacyDemoArtifacts(preservedEmails);
+  await resetProductionDatabase();
   await seedRoles();
   await seedRanks();
   await seedUserAccount(adminConfig);
@@ -806,7 +381,6 @@ async function main(): Promise<void> {
     await seedUserAccount(optionalPilotConfig);
   }
 
-  await cleanupLegacyDemoArtifacts(preservedEmails);
   await seedSettings(adminConfig.email);
 }
 
