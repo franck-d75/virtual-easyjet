@@ -296,7 +296,8 @@ export class AdminService {
   }
 
   public async getReferenceData() {
-    const [airports, hubs, aircraftTypes, simbriefAirframes] = await Promise.all([
+    const [airportsResult, hubsResult, aircraftTypesResult, simbriefAirframesResult] =
+      await Promise.allSettled([
       this.prisma.airport.findMany({
         orderBy: { icao: "asc" },
         select: {
@@ -332,13 +333,19 @@ export class AdminService {
     ]);
 
     return {
-      airports,
-      hubs,
-      aircraftTypes,
-      simbriefAirframes: simbriefAirframes.map((airframe) =>
-        this.serializeSimbriefAirframe(airframe),
+      airports: this.unwrapReferenceDataset("airports", airportsResult),
+      hubs: this.unwrapReferenceDataset("hubs", hubsResult),
+      aircraftTypes: this.unwrapReferenceDataset(
+        "aircraft types",
+        aircraftTypesResult,
       ),
-    };
+      simbriefAirframes: this.serializeSimbriefAirframeList(
+        this.unwrapReferenceDataset(
+          "SimBrief airframes",
+          simbriefAirframesResult,
+        ) as AdminSimbriefAirframeRecord[],
+      ),
+    } as const;
   }
 
   public async listAirports() {
@@ -375,13 +382,35 @@ export class AdminService {
     }));
   }
 
-  public async listSimbriefAirframes() {
-    const airframes = await this.prisma.simbriefAirframe.findMany({
-      orderBy: [{ registration: "asc" }, { name: "asc" }],
-      include: simbriefAirframeInclude,
-    });
+  public async listAircraftTypes() {
+    try {
+      return await this.prisma.aircraftType.findMany({
+        orderBy: { icaoCode: "asc" },
+        select: {
+          id: true,
+          icaoCode: true,
+          name: true,
+          manufacturer: true,
+        },
+      });
+    } catch (error) {
+      this.logAdminDatasetError("aircraft types", error);
+      return [];
+    }
+  }
 
-    return airframes.map((airframe) => this.serializeSimbriefAirframe(airframe));
+  public async listSimbriefAirframes() {
+    try {
+      const airframes = await this.prisma.simbriefAirframe.findMany({
+        orderBy: [{ registration: "asc" }, { name: "asc" }],
+        include: simbriefAirframeInclude,
+      });
+
+      return this.serializeSimbriefAirframeList(airframes);
+    } catch (error) {
+      this.logAdminDatasetError("SimBrief airframes", error);
+      return [];
+    }
   }
 
   public async initializeAircraftTypeReferenceData(
@@ -678,7 +707,7 @@ export class AdminService {
       include: adminAircraftInclude,
     });
 
-    return aircraft.map((item) => this.serializeAircraft(item));
+    return this.serializeAircraftList(aircraft);
   }
 
   public async getAircraft(id: string) {
@@ -996,12 +1025,17 @@ export class AdminService {
   }
 
   public async listHubs() {
-    const hubs = await this.prisma.hub.findMany({
-      orderBy: { code: "asc" },
-      include: adminHubInclude,
-    });
+    try {
+      const hubs = await this.prisma.hub.findMany({
+        orderBy: { code: "asc" },
+        include: adminHubInclude,
+      });
 
-    return hubs.map((item) => this.serializeHub(item));
+      return this.serializeHubList(hubs);
+    } catch (error) {
+      this.logAdminDatasetError("hubs", error);
+      return [];
+    }
   }
 
   public async getHub(id: string) {
@@ -1562,11 +1596,13 @@ export class AdminService {
               : null,
           }
         : null,
-      ownerUser: {
-        id: airframe.ownerUser.id,
-        username: airframe.ownerUser.username,
-        email: airframe.ownerUser.email,
-      },
+      ownerUser: airframe.ownerUser
+        ? {
+            id: airframe.ownerUser.id,
+            username: airframe.ownerUser.username,
+            email: airframe.ownerUser.email,
+          }
+        : null,
       pilotProfile: airframe.pilotProfile
         ? {
             id: airframe.pilotProfile.id,
@@ -1627,6 +1663,77 @@ export class AdminService {
           }
         : null,
     };
+  }
+
+  private serializeAircraftList(aircraft: AdminAircraftRecord[]) {
+    return aircraft.flatMap((item) => {
+      try {
+        return [this.serializeAircraft(item)];
+      } catch (error) {
+        this.logAdminDatasetError(
+          `aircraft ${item.registration}`,
+          error,
+        );
+        return [];
+      }
+    });
+  }
+
+  private serializeHubList(hubs: AdminHubRecord[]) {
+    return hubs.flatMap((item) => {
+      try {
+        return [this.serializeHub(item)];
+      } catch (error) {
+        this.logAdminDatasetError(`hub ${item.code}`, error);
+        return [];
+      }
+    });
+  }
+
+  private serializeSimbriefAirframeList(
+    airframes: AdminSimbriefAirframeRecord[],
+  ) {
+    return airframes.flatMap((airframe) => {
+      try {
+        return [this.serializeSimbriefAirframe(airframe)];
+      } catch (error) {
+        this.logAdminDatasetError(
+          `SimBrief airframe ${airframe.registration ?? airframe.name}`,
+          error,
+        );
+        return [];
+      }
+    });
+  }
+
+  private unwrapReferenceDataset<TValue>(
+    label: string,
+    result: PromiseSettledResult<TValue[]>,
+  ): TValue[] {
+    if (result.status === "fulfilled") {
+      return result.value;
+    }
+
+    this.logAdminDatasetError(label, result.reason);
+    return [];
+  }
+
+  private logAdminDatasetError(label: string, error: unknown): void {
+    const serializedError =
+      error instanceof Error
+        ? {
+            name: error.name,
+            message: error.message,
+          }
+        : {
+            name: typeof error,
+            message: String(error),
+          };
+
+    console.error("[admin] dataset failed", {
+      label,
+      error: serializedError,
+    });
   }
 
   private serializeHub(hub: AdminHubRecord) {

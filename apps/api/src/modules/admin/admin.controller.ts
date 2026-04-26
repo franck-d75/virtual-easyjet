@@ -57,6 +57,11 @@ export class AdminController {
     return this.adminService.listAirports();
   }
 
+  @Get("aircraft-types")
+  public listAircraftTypes() {
+    return this.adminService.listAircraftTypes();
+  }
+
   @Get("simbrief-airframes")
   public listSimbriefAirframes() {
     return this.adminService.listSimbriefAirframes();

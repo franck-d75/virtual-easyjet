@@ -3,6 +3,7 @@ import type {
   AdminAircraftPayload,
   AdminAircraftImportFromSimbriefAirframePayload,
   AdminAircraftLinkSimbriefAirframePayload,
+  AdminAircraftTypeOptionResponse,
   AdminUserDetailResponse,
   AdminUserPayload,
   AdminUserSummaryResponse,
@@ -136,6 +137,15 @@ export async function listAdminSimbriefAirframes(
   accessToken: string,
 ): Promise<SimbriefAirframeResponse[]> {
   return apiRequest<SimbriefAirframeResponse[]>("/admin/simbrief-airframes", {
+    accessToken,
+    cache: "no-store",
+  });
+}
+
+export async function listAdminAircraftTypes(
+  accessToken: string,
+): Promise<AdminAircraftTypeOptionResponse[]> {
+  return apiRequest<AdminAircraftTypeOptionResponse[]>("/admin/aircraft-types", {
     accessToken,
     cache: "no-store",
   });

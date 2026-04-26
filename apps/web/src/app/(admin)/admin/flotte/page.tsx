@@ -2,8 +2,18 @@ import type { JSX } from "react";
 
 import { AdminAircraftManager } from "@/components/admin/admin-aircraft-manager";
 import { Card } from "@/components/ui/card";
-import { getAdminReferenceData, listAdminAircraft } from "@/lib/api/admin";
-import type { AdminReferenceDataResponse } from "@/lib/api/types";
+import {
+  listAdminAircraft,
+  listAdminAircraftTypes,
+  listAdminHubs,
+  listAdminSimbriefAirframes,
+} from "@/lib/api/admin";
+import { ApiError } from "@/lib/api/client";
+import { getPublicAircraft } from "@/lib/api/public";
+import type {
+  AdminReferenceDataResponse,
+  AircraftResponse,
+} from "@/lib/api/types";
 import {
   handleProtectedPageApiError,
   requireAdminSession,
@@ -19,8 +29,13 @@ const EMPTY_REFERENCE_DATA: AdminReferenceDataResponse = {
   simbriefAirframes: [],
 };
 
+type AdminFleetIssue = {
+  title: string;
+  message: string;
+};
+
 function normalizeReferenceData(
-  referenceData: AdminReferenceDataResponse | null | undefined,
+  referenceData: Partial<AdminReferenceDataResponse> | null | undefined,
 ): AdminReferenceDataResponse {
   return {
     airports: Array.isArray(referenceData?.airports) ? referenceData.airports : [],
@@ -34,37 +49,100 @@ function normalizeReferenceData(
   };
 }
 
+function extractErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    return `${error.status} ${error.message}`;
+  }
+
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  return "Erreur interne serveur";
+}
+
 export default async function AdminFleetPage(): Promise<JSX.Element> {
   const session = await requireAdminSession();
-  const [aircraftResult, referenceDataResult] = await Promise.allSettled([
+  const [
+    aircraftResult,
+    publicAircraftFallbackResult,
+    aircraftTypesResult,
+    hubsResult,
+    simbriefAirframesResult,
+  ] = await Promise.allSettled([
     listAdminAircraft(session.accessToken),
-    getAdminReferenceData(session.accessToken),
+    getPublicAircraft(),
+    listAdminAircraftTypes(session.accessToken),
+    listAdminHubs(session.accessToken),
+    listAdminSimbriefAirframes(session.accessToken),
   ]);
 
-  const aircraft =
-    aircraftResult.status === "fulfilled" && Array.isArray(aircraftResult.value)
-      ? aircraftResult.value
-      : [];
-  const referenceData =
-    referenceDataResult.status === "fulfilled"
-      ? normalizeReferenceData(referenceDataResult.value)
-      : EMPTY_REFERENCE_DATA;
-  const isDegraded =
-    aircraftResult.status !== "fulfilled" ||
-    referenceDataResult.status !== "fulfilled";
+  const issues: AdminFleetIssue[] = [];
 
   if (aircraftResult.status !== "fulfilled") {
     handleProtectedPageApiError(aircraftResult.reason);
     logWebWarning("admin fleet aircraft fetch failed", aircraftResult.reason);
+    issues.push({
+      title: "Liste flotte admin",
+      message:
+        extractErrorMessage(aircraftResult.reason) +
+        (publicAircraftFallbackResult.status === "fulfilled"
+          ? " Les appareils publiés restent affichés en secours."
+          : ""),
+    });
   }
 
-  if (referenceDataResult.status !== "fulfilled") {
-    handleProtectedPageApiError(referenceDataResult.reason);
+  if (aircraftTypesResult.status !== "fulfilled") {
+    handleProtectedPageApiError(aircraftTypesResult.reason);
     logWebWarning(
-      "admin fleet reference data fetch failed",
-      referenceDataResult.reason,
+      "admin fleet aircraft types fetch failed",
+      aircraftTypesResult.reason,
     );
+    issues.push({
+      title: "Types appareil",
+      message: extractErrorMessage(aircraftTypesResult.reason),
+    });
   }
+
+  if (hubsResult.status !== "fulfilled") {
+    handleProtectedPageApiError(hubsResult.reason);
+    logWebWarning("admin fleet hubs fetch failed", hubsResult.reason);
+    issues.push({
+      title: "Hubs",
+      message: extractErrorMessage(hubsResult.reason),
+    });
+  }
+
+  if (simbriefAirframesResult.status !== "fulfilled") {
+    handleProtectedPageApiError(simbriefAirframesResult.reason);
+    logWebWarning(
+      "admin fleet simbrief airframes fetch failed",
+      simbriefAirframesResult.reason,
+    );
+    issues.push({
+      title: "Airframes SimBrief",
+      message: extractErrorMessage(simbriefAirframesResult.reason),
+    });
+  }
+
+  const aircraft: AircraftResponse[] =
+    aircraftResult.status === "fulfilled" && Array.isArray(aircraftResult.value)
+      ? aircraftResult.value
+      : publicAircraftFallbackResult.status === "fulfilled" &&
+          Array.isArray(publicAircraftFallbackResult.value)
+        ? publicAircraftFallbackResult.value
+        : [];
+
+  const referenceData = normalizeReferenceData({
+    ...EMPTY_REFERENCE_DATA,
+    aircraftTypes:
+      aircraftTypesResult.status === "fulfilled" ? aircraftTypesResult.value : [],
+    hubs: hubsResult.status === "fulfilled" ? hubsResult.value : [],
+    simbriefAirframes:
+      simbriefAirframesResult.status === "fulfilled"
+        ? simbriefAirframesResult.value
+        : [],
+  });
 
   return (
     <div className="admin-page">
@@ -79,14 +157,21 @@ export default async function AdminFleetPage(): Promise<JSX.Element> {
         </div>
       </section>
 
-      {isDegraded ? (
+      {issues.length > 0 ? (
         <Card className="ops-card">
-          <span className="section-eyebrow">Mode dégradé</span>
-          <h2>La flotte reste consultable</h2>
+          <span className="section-eyebrow">Diagnostic admin</span>
+          <h2>Certaines données n&apos;ont pas pu être chargées</h2>
           <p>
-            Certaines données de référence sont temporairement indisponibles.
-            Les appareils déjà récupérés restent affichés.
+            La page reste accessible, et les appareils déjà disponibles
+            continuent d&apos;être affichés quand un secours est possible.
           </p>
+          <ul className="ops-list">
+            {issues.map((issue) => (
+              <li key={issue.title}>
+                <strong>{issue.title} :</strong> {issue.message}
+              </li>
+            ))}
+          </ul>
         </Card>
       ) : null}
 
