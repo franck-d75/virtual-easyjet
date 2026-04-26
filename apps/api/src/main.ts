@@ -26,6 +26,13 @@ type ResponseLike = {
 
 type NextLike = () => void;
 
+const DEFAULT_ALLOWED_CORS_ORIGINS = [
+  "https://virtual-easyjet.fr",
+  "https://www.virtual-easyjet.fr",
+  "https://virtual-easyjet-web.vercel.app",
+  "http://localhost:3000",
+] as const;
+
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const configService = app.get<ConfigService<ApiEnvironment, true>>(ConfigService);
@@ -33,7 +40,10 @@ async function bootstrap(): Promise<void> {
   const corsOrigin = configService.get("CORS_ORIGIN", { infer: true });
   const apiPort = configService.get("API_PORT", { infer: true });
   const nodeEnv = configService.get("NODE_ENV", { infer: true });
-  const corsOrigins = parseCorsOrigins(corsOrigin);
+  const corsOrigins = Array.from(
+    new Set([...DEFAULT_ALLOWED_CORS_ORIGINS, ...parseCorsOrigins(corsOrigin)]),
+  );
+  const corsOriginValue = corsOrigins.join(",");
 
   app.getHttpAdapter().getInstance().disable?.("x-powered-by");
   app.setGlobalPrefix("api");
@@ -45,8 +55,22 @@ async function bootstrap(): Promise<void> {
     }),
   );
   app.enableCors({
-    origin: createCorsOriginHandler(corsOrigin, nodeEnv),
+    origin: createCorsOriginHandler(corsOriginValue, nodeEnv),
     credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Accept",
+      "Authorization",
+      "Content-Type",
+      "Origin",
+      "X-Requested-With",
+    ],
+    exposedHeaders: [
+      "Retry-After",
+      "X-RateLimit-Limit",
+      "X-RateLimit-Remaining",
+      "X-RateLimit-Reset",
+    ],
   });
   app.use(
     (request: RequestLike, response: ResponseLike, next: NextLike) => {
