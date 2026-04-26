@@ -244,39 +244,50 @@ export class PilotProfilesService {
       throw new NotFoundException("Pilot profile not found.");
     }
 
-    const mappedTypeCode = this.simbriefClient.inferAircraftTypeCode(
-      payload.aircraftIcao,
-    );
-
-    if (!mappedTypeCode) {
-      throw new BadRequestException(
-        "Ce type ICAO n'est pas encore pris en charge pour la flotte Virtual Easyjet.",
-      );
-    }
-
-    const linkedAircraftType = await this.prisma.aircraftType.findUnique({
-      where: {
-        icaoCode: mappedTypeCode,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    const externalAirframeId = payload.simbriefAirframeId?.trim() || null;
-    const persistedAirframeId =
-      externalAirframeId ?? `manual-${randomUUID()}`;
-
     try {
+      const normalizedName = payload.name?.trim();
+      const normalizedRegistration = payload.registration
+        ?.trim()
+        .toUpperCase();
+      const normalizedIcao =
+        payload.icao?.trim().toUpperCase() ||
+        payload.aircraftIcao?.trim().toUpperCase() ||
+        "A320";
+      const normalizedEngineType = payload.engineType?.trim() || "CFM56";
+
+      if (!normalizedName || !normalizedRegistration || !normalizedIcao) {
+        throw new BadRequestException("Invalid airframe data");
+      }
+
+      const mappedTypeCode =
+        this.simbriefClient.inferAircraftTypeCode(normalizedIcao);
+
+      if (!mappedTypeCode) {
+        throw new BadRequestException("Invalid airframe data");
+      }
+
+      const linkedAircraftType = await this.prisma.aircraftType.findUnique({
+        where: {
+          icaoCode: mappedTypeCode,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      const externalAirframeId = payload.simbriefAirframeId?.trim() || null;
+      const persistedAirframeId =
+        externalAirframeId ?? `manual-${randomUUID()}`;
+
       const airframe = await this.prisma.simbriefAirframe.create({
         data: {
           simbriefAirframeId: persistedAirframeId,
-          name: payload.name.trim(),
-          aircraftIcao: payload.aircraftIcao.trim().toUpperCase(),
-          registration: payload.registration.trim().toUpperCase(),
+          name: normalizedName,
+          aircraftIcao: normalizedIcao,
+          registration: normalizedRegistration,
           selcal: null,
           equipment: null,
-          engineType: payload.engineType?.trim() || null,
+          engineType: normalizedEngineType,
           wakeCategory: null,
           rawJson: {
             source: "MANUAL",
@@ -301,7 +312,17 @@ export class PilotProfilesService {
         );
       }
 
-      throw error;
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      console.error("[api][simbrief] create airframe failed", {
+        userId: profile.userId,
+        pilotProfileId: profile.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      throw new BadRequestException("Invalid airframe data");
     }
   }
 

@@ -27,7 +27,7 @@ type AirframeFormState = {
   name: string;
   simbriefAirframeId: string;
   registration: string;
-  aircraftIcao: string;
+  icao: string;
   engineType: string;
   notes: string;
 };
@@ -67,7 +67,7 @@ function createInitialFormState(): AirframeFormState {
     name: "",
     simbriefAirframeId: "",
     registration: "",
-    aircraftIcao: "A320",
+    icao: "A320",
     engineType: "",
     notes: "",
   };
@@ -184,7 +184,7 @@ export function SimbriefAirframesCard({
         name: formState.name.trim(),
         simbriefAirframeId: formState.simbriefAirframeId.trim() || null,
         registration: formState.registration.trim().toUpperCase(),
-        aircraftIcao: formState.aircraftIcao.trim().toUpperCase(),
+        icao: formState.icao.trim().toUpperCase(),
         engineType: formState.engineType.trim() || null,
         notes: formState.notes.trim() || null,
       };
@@ -201,6 +201,7 @@ export function SimbriefAirframesCard({
       const responsePayload = rawPayload.length > 0 ? parsePayload(rawPayload) : null;
 
       if (!response.ok) {
+        console.error("[web][simbrief-airframes] create failed", responsePayload);
         setFeedback({
           tone: "danger",
           message: extractMessage(
@@ -302,8 +303,8 @@ export function SimbriefAirframesCard({
           <label htmlFor="simbrief-airframe-icao">Type ICAO</label>
           <select
             id="simbrief-airframe-icao"
-            onChange={(event) => updateFormState("aircraftIcao", event.target.value)}
-            value={formState.aircraftIcao}
+            onChange={(event) => updateFormState("icao", event.target.value)}
+            value={formState.icao}
           >
             <option value="A319">A319</option>
             <option value="A320">A320</option>

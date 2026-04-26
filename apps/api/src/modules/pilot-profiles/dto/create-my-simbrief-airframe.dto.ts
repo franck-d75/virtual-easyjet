@@ -57,10 +57,25 @@ export class CreateMySimbriefAirframeDto {
     message:
       "Le type ICAO ne peut contenir que des lettres et des chiffres.",
   })
+  @Transform(({ value, obj }) => {
+    if (typeof value === "string") {
+      return value.trim().toUpperCase();
+    }
+
+    if (typeof obj?.aircraftIcao === "string") {
+      return obj.aircraftIcao.trim().toUpperCase();
+    }
+
+    return value;
+  })
+  public icao!: string;
+
+  @IsOptional()
+  @IsString()
   @Transform(({ value }) =>
     typeof value === "string" ? value.trim().toUpperCase() : value,
   )
-  public aircraftIcao!: string;
+  public aircraftIcao?: string;
 
   @IsOptional()
   @IsString()

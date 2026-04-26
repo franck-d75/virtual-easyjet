@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       createMySimbriefAirframe(accessToken, payload),
     );
 
-    return createBackendJsonResponse(result.data, result.refreshedSession);
+    return createBackendJsonResponse(result.data, result.refreshedSession, 201);
   } catch (error) {
     logWebError("pilot simbrief airframe create failed", error);
     return createBackendErrorResponse(error);

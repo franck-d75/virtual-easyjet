@@ -185,7 +185,7 @@ export interface CreateSimbriefAirframePayload {
   name: string;
   simbriefAirframeId?: string | null;
   registration: string;
-  aircraftIcao: string;
+  icao: string;
   engineType?: string | null;
   notes?: string | null;
 }
