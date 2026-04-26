@@ -298,6 +298,40 @@ export class AdminService {
     };
   }
 
+  public async listAirports() {
+    const airports = await this.prisma.airport.findMany({
+      where: {
+        isActive: true,
+      },
+      orderBy: { icao: "asc" },
+      select: {
+        id: true,
+        icao: true,
+        iata: true,
+        name: true,
+        city: true,
+        countryCode: true,
+        latitude: true,
+        longitude: true,
+        elevationFt: true,
+        isActive: true,
+      },
+    });
+
+    return airports.map((airport) => ({
+      id: airport.id,
+      icao: airport.icao,
+      iata: airport.iata,
+      name: airport.name,
+      city: airport.city,
+      countryCode: airport.countryCode,
+      latitude: decimalToNumber(airport.latitude),
+      longitude: decimalToNumber(airport.longitude),
+      elevationFt: airport.elevationFt,
+      isActive: airport.isActive,
+    }));
+  }
+
   public async initializeAircraftTypeReferenceData(
     currentUser: AuthenticatedUser,
   ) {
