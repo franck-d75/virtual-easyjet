@@ -1,4 +1,41 @@
-const fsuipc = require("fsuipc");
+const path = require("node:path");
+
+let fsuipcModule = null;
+
+function getFsuipcCandidatePaths() {
+  const basePath = process.resourcesPath || __dirname;
+
+  return [
+    path.join(basePath, "app.asar.unpacked", "node_modules", "fsuipc"),
+    path.join(basePath, "node_modules", "fsuipc"),
+    path.join(__dirname, "..", "node_modules", "fsuipc"),
+    "fsuipc",
+  ];
+}
+
+function loadFsuipcModule() {
+  if (fsuipcModule) {
+    return fsuipcModule;
+  }
+
+  const candidates = getFsuipcCandidatePaths();
+  let lastError = null;
+
+  for (const candidate of candidates) {
+    try {
+      const resolvedPath =
+        candidate === "fsuipc" ? require.resolve(candidate) : require.resolve(candidate);
+      fsuipcModule = require(resolvedPath);
+      return fsuipcModule;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  const errorMessage =
+    lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`FSUIPC module load failed: ${errorMessage}`);
+}
 
 const FEET_PER_METER = 3.280839895;
 const KNOTS_PER_MPS = 1.943844492;
@@ -111,6 +148,8 @@ function buildTelemetrySample(payload) {
 }
 
 function registerOffsets(targetClient) {
+  const fsuipc = loadFsuipcModule();
+
   if (targetClient[REGISTERED_FLAG]) {
     return;
   }
@@ -131,6 +170,8 @@ function registerOffsets(targetClient) {
 }
 
 function isWrongFs(error) {
+  const fsuipc = loadFsuipcModule();
+
   if (!error || typeof error !== "object") {
     return false;
   }
@@ -158,6 +199,7 @@ async function closeQuietly(client) {
 }
 
 async function connectOfficial(log) {
+  const fsuipc = loadFsuipcModule();
   let client = new fsuipc.FSUIPC();
 
   try {
@@ -248,6 +290,6 @@ module.exports = {
   closeQuietly,
   connectAndSampleOnce,
   connectOfficial,
-  fsuipc,
+  loadFsuipcModule,
   sampleClient,
 };

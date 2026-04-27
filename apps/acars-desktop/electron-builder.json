@@ -5,7 +5,8 @@
   "asar": true,
   "asarUnpack": [
     "**/*.node",
-    "scripts/**"
+    "scripts/**",
+    "node_modules/**"
   ],
   "npmRebuild": false,
   "afterPack": "./scripts/after-pack.cjs",

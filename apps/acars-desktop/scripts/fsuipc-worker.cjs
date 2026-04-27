@@ -1,6 +1,7 @@
 const {
   closeQuietly,
   connectOfficial,
+  loadFsuipcModule,
   sampleClient,
 } = require("./fsuipc-official.cjs");
 
@@ -161,7 +162,21 @@ async function sampleOnce() {
 }
 
 async function bootstrap() {
+  console.log("FSUIPC worker boot");
   log("info", "FSUIPC worker started");
+
+  try {
+    loadFsuipcModule();
+    console.log("FSUIPC module loaded");
+    log("info", "FSUIPC module loaded");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`FSUIPC require failed: ${message}`);
+    log("error", `FSUIPC require failed: ${message}`);
+    process.exit(1);
+    return;
+  }
+
   await sampleOnce();
   sampleInterval = setInterval(() => {
     void sampleOnce();

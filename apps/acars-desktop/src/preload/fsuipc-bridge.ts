@@ -294,6 +294,10 @@ export class FsuipcBridge {
 
       this.log(`Worker stdout received: ${rawLine}`);
 
+      if (!rawLine.startsWith("{")) {
+        continue;
+      }
+
       try {
         const parsedLine = JSON.parse(rawLine) as unknown;
 
