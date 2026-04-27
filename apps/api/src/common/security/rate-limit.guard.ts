@@ -52,6 +52,21 @@ const API_RATE_LIMIT_POLICIES = {
     limit: 10,
     windowMs: 60 * 60_000,
   },
+  acarsSessionCreate: {
+    name: "acars.session.create",
+    limit: 30,
+    windowMs: 10 * 60_000,
+  },
+  acarsTelemetry: {
+    name: "acars.telemetry",
+    limit: 1_200,
+    windowMs: 60_000,
+  },
+  acarsSessionComplete: {
+    name: "acars.session.complete",
+    limit: 30,
+    windowMs: 10 * 60_000,
+  },
   adminWrite: {
     name: "admin.write",
     limit: 60,
@@ -102,6 +117,33 @@ function resolvePolicy(
     return {
       policy: API_RATE_LIMIT_POLICIES.avatarUpload,
       key: `${API_RATE_LIMIT_POLICIES.avatarUpload.name}:${getRequestActorKey(request)}`,
+    };
+  }
+
+  if (method === "POST" && path === "/api/acars/sessions") {
+    return {
+      policy: API_RATE_LIMIT_POLICIES.acarsSessionCreate,
+      key: `${API_RATE_LIMIT_POLICIES.acarsSessionCreate.name}:${getRequestActorKey(request)}`,
+    };
+  }
+
+  if (
+    method === "POST" &&
+    /\/api\/acars\/sessions\/[^/]+\/telemetry$/.test(path)
+  ) {
+    return {
+      policy: API_RATE_LIMIT_POLICIES.acarsTelemetry,
+      key: `${API_RATE_LIMIT_POLICIES.acarsTelemetry.name}:${getRequestActorKey(request)}:${path}`,
+    };
+  }
+
+  if (
+    method === "POST" &&
+    /\/api\/acars\/sessions\/[^/]+\/complete$/.test(path)
+  ) {
+    return {
+      policy: API_RATE_LIMIT_POLICIES.acarsSessionComplete,
+      key: `${API_RATE_LIMIT_POLICIES.acarsSessionComplete.name}:${getRequestActorKey(request)}:${path}`,
     };
   }
 

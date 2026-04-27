@@ -13,6 +13,7 @@ import { validateApiEnv } from "./config/env.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
 import { AdminModule } from "./modules/admin/admin.module.js";
 import { AcarsLiveModule } from "./modules/acars-live/acars-live.module.js";
+import { AcarsSessionsModule } from "./modules/acars-sessions/acars-sessions.module.js";
 import { AircraftModule } from "./modules/aircraft/aircraft.module.js";
 import { AirportsModule } from "./modules/airports/airports.module.js";
 import { BookingsModule } from "./modules/bookings/bookings.module.js";
@@ -64,6 +65,7 @@ const repositoryRoot = findWorkspaceRoot(appModuleDirectory);
     HealthModule,
     PublicModule,
     AcarsLiveModule,
+    AcarsSessionsModule,
     AuthModule,
     AdminModule,
     UsersModule,

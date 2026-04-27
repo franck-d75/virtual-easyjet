@@ -875,8 +875,7 @@ export class DesktopService {
       return this.createMockSession(flightId);
     }
 
-    const session = await this.authorizedRequestJson<SessionSummary>(
-      this.config.acarsBaseUrl,
+    const session = await this.authorizedAcarsRequestJson<SessionSummary>(
       "/sessions",
       {
         method: "POST",
@@ -900,8 +899,7 @@ export class DesktopService {
       return cloneValue(this.ensureMockSessionState(sessionId).session);
     }
 
-    return this.authorizedRequestJson<SessionSummary>(
-      this.config.acarsBaseUrl,
+    return this.authorizedAcarsRequestJson<SessionSummary>(
       `/sessions/${encodeURIComponent(sessionId)}`,
     );
   }
@@ -1082,8 +1080,7 @@ export class DesktopService {
       return this.sendMockTelemetry(sessionId, payload);
     }
 
-    const session = await this.authorizedRequestJson<SessionSummary>(
-      this.config.acarsBaseUrl,
+    const session = await this.authorizedAcarsRequestJson<SessionSummary>(
       `/sessions/${encodeURIComponent(sessionId)}/telemetry`,
       {
         method: "POST",
@@ -1170,8 +1167,7 @@ export class DesktopService {
       return this.completeMockSession(sessionId, pilotComment);
     }
 
-    const session = await this.authorizedRequestJson<SessionSummary>(
-      this.config.acarsBaseUrl,
+    const session = await this.authorizedAcarsRequestJson<SessionSummary>(
       `/sessions/${encodeURIComponent(sessionId)}/complete`,
       {
         method: "POST",
@@ -1203,8 +1199,7 @@ export class DesktopService {
     }
 
     try {
-      await this.authorizedRequestJson<SessionSummary>(
-        this.config.acarsBaseUrl,
+      await this.authorizedAcarsRequestJson<SessionSummary>(
         `/sessions/${encodeURIComponent(sessionId)}/telemetry`,
         {
           method: "POST",
@@ -2129,6 +2124,46 @@ export class DesktopService {
 
         throw secondError;
       }
+    }
+  }
+
+  private async authorizedAcarsRequestJson<T>(
+    path: string,
+    init: RequestInitWithJson = {},
+  ): Promise<T> {
+    const primaryBaseUrl = this.config.acarsBaseUrl;
+
+    try {
+      return await this.authorizedRequestJson<T>(primaryBaseUrl, path, init);
+    } catch (error) {
+      if (!(error instanceof HttpError) || error.status !== 404) {
+        throw error;
+      }
+
+      const fallbackBaseUrl = normalizeBaseUrl(`${this.config.apiBaseUrl}/acars`);
+
+      if (fallbackBaseUrl === primaryBaseUrl) {
+        throw error;
+      }
+
+      this.log("acars request fallback to api base", {
+        from: primaryBaseUrl,
+        to: fallbackBaseUrl,
+        path,
+      });
+
+      const payload = await this.authorizedRequestJson<T>(
+        fallbackBaseUrl,
+        path,
+        init,
+      );
+
+      this.config = {
+        ...this.config,
+        acarsBaseUrl: fallbackBaseUrl,
+      };
+
+      return payload;
     }
   }
 

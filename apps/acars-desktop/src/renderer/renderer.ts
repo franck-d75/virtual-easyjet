@@ -72,9 +72,6 @@ const simulatorSummary = requireElement<HTMLDivElement>("simulator-summary");
 const refreshSessionButton = requireElement<HTMLButtonElement>(
   "refresh-session-button",
 );
-const startTrackingButton = requireElement<HTMLButtonElement>(
-  "start-tracking-button",
-);
 const pauseTrackingButton = requireElement<HTMLButtonElement>(
   "pause-tracking-button",
 );
@@ -714,9 +711,12 @@ function updateActionState(): void {
 
   refreshDispatchButton.disabled = !authenticated;
   refreshSessionButton.disabled = !canOperate;
-  startTrackingButton.disabled = !canOperate || trackingStatus === "RUNNING";
   pauseTrackingButton.disabled = !canOperate || trackingStatus !== "RUNNING";
   resumeTrackingButton.disabled = !canOperate || trackingStatus !== "PAUSED";
+  refreshSessionButton.hidden = !hasSession;
+  pauseTrackingButton.hidden = !hasSession;
+  resumeTrackingButton.hidden = !hasSession;
+  completeSessionForm.hidden = !hasSession;
 
   const completeControls = completeSessionForm.querySelectorAll<
     HTMLTextAreaElement | HTMLButtonElement
@@ -957,10 +957,6 @@ function bindEvents(): void {
 
   refreshSessionButton.addEventListener("click", () => {
     void runSafely(refreshSession);
-  });
-
-  startTrackingButton.addEventListener("click", () => {
-    void runSafely(startTracking);
   });
 
   pauseTrackingButton.addEventListener("click", () => {
