@@ -32,12 +32,38 @@ function findWorkspaceRoot(startDirectory: string): string {
   }
 }
 
-function normalizeBackendMode(value: string | undefined): BackendMode {
-  return value?.trim().toLowerCase() === "live" ? "live" : "mock";
+function normalizeBackendMode(value: string | undefined): BackendMode | undefined {
+  const normalizedValue = value?.trim().toLowerCase();
+
+  if (normalizedValue === "live") {
+    return "live";
+  }
+
+  if (normalizedValue === "mock") {
+    return "mock";
+  }
+
+  return undefined;
 }
 
-function normalizeTelemetryMode(value: string | undefined): TelemetryMode {
-  return value?.trim().toLowerCase() === "simconnect" ? "simconnect" : "mock";
+function normalizeTelemetryMode(
+  value: string | undefined,
+): TelemetryMode | undefined {
+  const normalizedValue = value?.trim().toLowerCase();
+
+  if (normalizedValue === "simconnect") {
+    return "simconnect";
+  }
+
+  if (normalizedValue === "fsuipc") {
+    return "fsuipc";
+  }
+
+  if (normalizedValue === "mock") {
+    return "mock";
+  }
+
+  return undefined;
 }
 
 function parseEnvFile(fileContents: string): Record<string, string> {
@@ -105,6 +131,17 @@ export function loadDesktopRuntimeConfig(): DesktopConfig {
         DEFAULT_DESKTOP_CONFIG.acarsBaseUrl,
     ) || DEFAULT_DESKTOP_CONFIG.acarsBaseUrl;
 
+  const backendMode =
+    normalizeBackendMode(environment.DESKTOP_BACKEND_MODE) ??
+    DEFAULT_DESKTOP_CONFIG.backendMode;
+  const telemetryMode =
+    normalizeTelemetryMode(environment.DESKTOP_TELEMETRY_MODE) ??
+    DEFAULT_DESKTOP_CONFIG.telemetryMode;
+  const telemetryFallbackMode =
+    normalizeTelemetryMode(environment.DESKTOP_TELEMETRY_FALLBACK_MODE) ??
+    DEFAULT_DESKTOP_CONFIG.telemetryFallbackMode ??
+    null;
+
   return {
     ...DEFAULT_DESKTOP_CONFIG,
     apiBaseUrl,
@@ -115,7 +152,9 @@ export function loadDesktopRuntimeConfig(): DesktopConfig {
     simulatorProvider:
       environment.DESKTOP_SIMULATOR_PROVIDER?.trim() ||
       DEFAULT_DESKTOP_CONFIG.simulatorProvider,
-    backendMode: normalizeBackendMode(environment.DESKTOP_BACKEND_MODE),
-    telemetryMode: normalizeTelemetryMode(environment.DESKTOP_TELEMETRY_MODE),
+    backendMode,
+    telemetryMode,
+    telemetryFallbackMode:
+      telemetryFallbackMode === "mock" ? null : telemetryFallbackMode,
   };
 }

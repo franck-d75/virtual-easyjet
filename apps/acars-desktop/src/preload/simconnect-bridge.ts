@@ -5,12 +5,14 @@ const CONNECT_RETRY_INTERVAL_SECONDS = 5;
 const DEFAULT_SIMULATOR_SNAPSHOT: SimulatorSnapshot = {
   status: "UNAVAILABLE",
   telemetryMode: "simconnect",
+  dataSource: "none",
   message: "MSFS2024 n'est pas detecte pour le moment.",
   connected: false,
   aircraftDetected: false,
   aircraft: null,
   lastSampleAt: null,
   telemetry: null,
+  indicatedAirspeedKts: null,
   error: null,
 };
 
@@ -185,6 +187,7 @@ export class SimConnectBridge {
         "PLANE LONGITUDE",
         "PLANE ALTITUDE",
         "GROUND VELOCITY",
+        "AIRSPEED INDICATED",
         "PLANE HEADING DEGREES TRUE",
         "VERTICAL SPEED",
         "SIM ON GROUND",
@@ -200,11 +203,15 @@ export class SimConnectBridge {
       const registration = readString(payload, "ATC ID");
       const transponder = readString(payload, "TRANSPONDER CODE:1");
       const model = readString(payload, "ATC MODEL");
+      const indicatedAirspeedKts = roundInteger(
+        readNumber(payload, "AIRSPEED INDICATED"),
+      );
       const aircraftDetected = Boolean(aircraftTitle || registration || model);
 
       this.snapshot = {
         status: aircraftDetected ? "AIRCRAFT_DETECTED" : "CONNECTED",
         telemetryMode: this.getConfig().telemetryMode,
+        dataSource: "simconnect",
         message: aircraftDetected
           ? "MSFS2024 connecte, appareil detecte."
           : "MSFS2024 connecte. En attente d'un appareil exploitable.",
@@ -218,6 +225,7 @@ export class SimConnectBridge {
         },
         lastSampleAt: new Date().toISOString(),
         telemetry,
+        indicatedAirspeedKts,
         error: null,
       };
       return telemetry;
@@ -231,8 +239,10 @@ export class SimConnectBridge {
         ...this.snapshot,
         status: "ERROR",
         telemetryMode: this.getConfig().telemetryMode,
+        dataSource: "none",
         message: "La lecture de la telemetrie SimConnect a echoue.",
         connected: Boolean(this.api?.connected),
+        aircraftDetected: false,
         error: message,
       };
       this.log("simconnect sample failed", {
@@ -243,15 +253,6 @@ export class SimConnectBridge {
   }
 
   private async ensureApiInitialized(): Promise<void> {
-    if (this.getConfig().telemetryMode !== "simconnect") {
-      this.snapshot = {
-        ...DEFAULT_SIMULATOR_SNAPSHOT,
-        telemetryMode: this.getConfig().telemetryMode,
-        message: "Le mode de telemetrie actuel n'utilise pas SimConnect.",
-      };
-      return;
-    }
-
     if (this.connectStarted) {
       return;
     }
@@ -261,6 +262,7 @@ export class SimConnectBridge {
       ...this.snapshot,
       status: "CONNECTING",
       telemetryMode: this.getConfig().telemetryMode,
+      dataSource: "none",
       message: "Connexion SimConnect en cours...",
       connected: false,
       error: null,
@@ -281,6 +283,7 @@ export class SimConnectBridge {
             ...this.snapshot,
             status: "CONNECTED",
             telemetryMode: this.getConfig().telemetryMode,
+            dataSource: "simconnect",
             message: "Connexion SimConnect etablie avec MSFS2024.",
             connected: true,
             error: null,
@@ -292,6 +295,7 @@ export class SimConnectBridge {
             ...this.snapshot,
             status: "UNAVAILABLE",
             telemetryMode: this.getConfig().telemetryMode,
+            dataSource: "none",
             message: `MSFS2024 non detecte. Nouvelle tentative dans ${retryInterval} seconde(s).`,
             connected: false,
           };
@@ -301,6 +305,7 @@ export class SimConnectBridge {
             ...this.snapshot,
             status: "ERROR",
             telemetryMode: this.getConfig().telemetryMode,
+            dataSource: "none",
             message: "SimConnect a signale une exception.",
             connected: false,
             error: exceptionName,
@@ -322,6 +327,7 @@ export class SimConnectBridge {
         ...this.snapshot,
         status: "ERROR",
         telemetryMode: this.getConfig().telemetryMode,
+        dataSource: "none",
         message: "Le module SimConnect n'a pas pu etre initialise.",
         connected: false,
         error: message,

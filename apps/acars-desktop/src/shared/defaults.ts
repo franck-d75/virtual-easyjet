@@ -4,9 +4,10 @@ export const DEFAULT_DESKTOP_CONFIG: DesktopConfig = {
   apiBaseUrl: "https://api.virtual-easyjet.fr/api",
   acarsBaseUrl: "https://api.virtual-easyjet.fr/acars",
   clientVersion: "0.2.0",
-  simulatorProvider: "MSFS2024",
+  simulatorProvider: "MSFS2024_FSUIPC7",
   backendMode: "live",
-  telemetryMode: "simconnect",
+  telemetryMode: "fsuipc",
+  telemetryFallbackMode: "simconnect",
 };
 
 export const DEFAULT_MANUAL_TELEMETRY: TelemetryInput = {

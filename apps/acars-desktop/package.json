@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.preload.json",
     "build:app": "pnpm run build",
-    "prepare:native": "electron-builder install-app-deps",
+    "prepare:native": "node ./scripts/prepare-native.cjs",
     "dev": "pnpm run prepare:native && pnpm run build && electron dist/main/main.js",
     "start": "electron dist/main/main.js",
     "package": "pnpm run package:win",
@@ -19,6 +19,7 @@
     "test": "echo \"No tests configured for @va/acars\""
   },
   "dependencies": {
+    "fsuipc": "^0.7.3",
     "msfs-simconnect-api-wrapper": "^4.5.0"
   },
   "devDependencies": {

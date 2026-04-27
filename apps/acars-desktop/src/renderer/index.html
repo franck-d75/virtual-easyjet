@@ -32,8 +32,9 @@
             <h1>ACARS Virtual Easyjet</h1>
             <p class="hero-copy">
               Client desktop Windows pour exploiter un vol reel Virtual Easyjet,
-              charger le dernier OFP SimBrief, connecter MSFS2024 via SimConnect
-              et transmettre une telemetrie canonique au backend ACARS.
+              charger le dernier OFP SimBrief, connecter MSFS2024 via FSUIPC7
+              avec fallback SimConnect et transmettre une telemetrie canonique
+              au backend ACARS.
             </p>
             <p class="hero-disclaimer">
               Aucun trafic mock n'est genere dans ce client. Si aucun vol ou
@@ -116,7 +117,8 @@
             <p>
               Le web gere la reservation, le dashboard et le suivi. Le desktop
               charge ensuite vos vols exploitables, ouvre une session ACARS
-              reelle et alimente la live map via la telemetrie SimConnect.
+              reelle et alimente la live map via la telemetrie FSUIPC7 ou
+              SimConnect.
             </p>
           </div>
 
@@ -180,13 +182,13 @@
         <section class="panel panel--telemetry">
           <div class="panel-head">
             <div>
-              <p class="eyebrow">SimConnect</p>
+              <p class="eyebrow">FSUIPC7 / SimConnect</p>
               <h2>MSFS2024 et telemetrie</h2>
             </div>
           </div>
 
           <div class="session-summary" id="simulator-summary">
-            Statut SimConnect en attente d'initialisation.
+            Statut FSUIPC7 en attente d'initialisation.
           </div>
         </section>
 

@@ -3,6 +3,9 @@
   "productName": "Virtual Easyjet ACARS",
   "artifactName": "${productName}-${version}-${arch}.${ext}",
   "asar": true,
+  "asarUnpack": [
+    "**/*.node"
+  ],
   "npmRebuild": false,
   "afterPack": "./scripts/after-pack.cjs",
   "directories": {

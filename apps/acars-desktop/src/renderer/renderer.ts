@@ -196,6 +196,86 @@ function getSimulatorTone(snapshot: SimulatorSnapshot | null): PresentationTone 
   }
 }
 
+function getConfiguredTelemetrySource(
+  snapshot: DesktopSnapshot | null,
+): "mock" | "simconnect" | "fsuipc" {
+  const configuredSource = snapshot?.config.telemetryMode ?? "mock";
+
+  return configuredSource === "fsuipc" || configuredSource === "simconnect"
+    ? configuredSource
+    : "mock";
+}
+
+function getActiveTelemetrySource(
+  snapshot: DesktopSnapshot | null,
+  simulator: SimulatorSnapshot | null,
+): "mock" | "simconnect" | "fsuipc" {
+  if (simulator?.dataSource === "fsuipc" || simulator?.dataSource === "simconnect") {
+    return simulator.dataSource;
+  }
+
+  return getConfiguredTelemetrySource(snapshot);
+}
+
+function getTelemetryStatusLabel(
+  snapshot: DesktopSnapshot | null,
+  simulator: SimulatorSnapshot | null,
+): string {
+  if (simulator?.dataSource === "fsuipc" && (simulator.connected || simulator.telemetry)) {
+    return "FSUIPC live";
+  }
+
+  if (
+    simulator?.dataSource === "simconnect" &&
+    (simulator.connected || simulator.telemetry)
+  ) {
+    return "SimConnect live";
+  }
+
+  switch (getConfiguredTelemetrySource(snapshot)) {
+    case "fsuipc":
+      return "FSUIPC attente";
+    case "simconnect":
+      return "SimConnect attente";
+    default:
+      return "mock";
+  }
+}
+
+function getSimulatorTitle(
+  snapshot: DesktopSnapshot | null,
+  simulator: SimulatorSnapshot | null,
+): string {
+  const source = getActiveTelemetrySource(snapshot, simulator);
+
+  switch (source) {
+    case "fsuipc":
+      return "MSFS2024 / FSUIPC7";
+    case "simconnect":
+      return "MSFS2024 / SimConnect";
+    default:
+      return "MSFS2024 / Telemetrie";
+  }
+}
+
+function getSimulatorAvailabilityLabel(snapshot: SimulatorSnapshot | null): string {
+  if (!snapshot) {
+    return "UNAVAILABLE";
+  }
+
+  switch (snapshot.status) {
+    case "CONNECTED":
+    case "AIRCRAFT_DETECTED":
+      return "AVAILABLE";
+    case "CONNECTING":
+      return "CONNECTING";
+    case "ERROR":
+      return "ERROR";
+    default:
+      return "UNAVAILABLE";
+  }
+}
+
 function getDisplayPilotName(snapshot: DesktopSnapshot | null): string {
   const pilotProfile = snapshot?.user?.pilotProfile;
 
@@ -256,6 +336,7 @@ function applySnapshotDefaults(snapshot: DesktopSnapshot | null): void {
 
 function renderSnapshot(): void {
   const snapshot = state.snapshot;
+  const simulator = state.simulator ?? snapshot?.simulator ?? null;
   const backendPresentation = getBackendModePresentation(
     snapshot?.config.backendMode ?? "live",
   );
@@ -293,8 +374,8 @@ function renderSnapshot(): void {
     <div class="token-row">
       ${renderToken(`Utilisateur: ${snapshot.user.username}`)}
       ${renderToken(`SimBrief Pilot ID: ${snapshot.user.pilotProfile?.simbriefPilotId ?? "non renseigne"}`)}
-      ${renderToken(`Telemetrie: ${snapshot.config.telemetryMode}`)}
-      ${renderToken(`Simulateur: ${snapshot.config.simulatorProvider}`)}
+      ${renderToken(`Telemetrie: ${getTelemetryStatusLabel(snapshot, simulator)}`)}
+      ${renderToken(`Simulateur: ${getSimulatorTitle(snapshot, simulator)}`)}
     </div>
   `;
 }
@@ -456,7 +537,7 @@ function renderSimulator(): void {
   if (!simulator) {
     simulatorSummary.innerHTML = `
       <div class="empty-state">
-        Le statut SimConnect sera visible ici apres initialisation du client.
+        Le statut du simulateur sera visible ici apres initialisation du client.
       </div>
     `;
     return;
@@ -465,10 +546,10 @@ function renderSimulator(): void {
   simulatorSummary.innerHTML = `
     <div class="list-item__header">
       <div>
-        <strong>MSFS2024 / SimConnect</strong>
+        <strong>${escapeHtml(getSimulatorTitle(state.snapshot, simulator))}</strong>
         <p class="helper">${escapeHtml(simulator.message)}</p>
       </div>
-      ${renderBadge(simulator.status, getSimulatorTone(simulator))}
+      ${renderBadge(getSimulatorAvailabilityLabel(simulator), getSimulatorTone(simulator))}
     </div>
     <div class="summary-grid">
       <div class="metric">
@@ -486,6 +567,10 @@ function renderSimulator(): void {
       <div class="metric">
         <span class="metric-label">Vitesse sol</span>
         <span class="metric-value">${simulator.telemetry?.groundspeedKts ?? "n/d"}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Vitesse indiquee</span>
+        <span class="metric-value">${simulator.indicatedAirspeedKts ?? "n/d"}</span>
       </div>
       <div class="metric">
         <span class="metric-label">Au sol</span>
@@ -680,7 +765,7 @@ async function createSession(flightId: string): Promise<void> {
   state.tracking = await getDesktopBridge().getTrackingState();
   renderSession();
   appendLog(`Session ACARS ${state.activeSession.id} ouverte.`);
-  setNotice("Session ACARS ouverte. Le suivi SimConnect est pret.", "success");
+  setNotice("Session ACARS ouverte. Le suivi live est pret.", "success");
   await loadDispatch();
 }
 
@@ -711,7 +796,7 @@ async function startTracking(): Promise<void> {
 
   state.tracking = await getDesktopBridge().startSessionTracking(state.activeSession.id);
   await refreshRuntimeState();
-  appendLog("Suivi SimConnect demarre.");
+  appendLog("Suivi live demarre.");
   setNotice("Le suivi live ACARS tourne maintenant sur la telemetrie MSFS2024.", "success");
 }
 

@@ -1,5 +1,5 @@
 export type BackendMode = "mock" | "live";
-export type TelemetryMode = "mock" | "simconnect";
+export type TelemetryMode = "mock" | "simconnect" | "fsuipc";
 
 export interface DesktopConfig {
   apiBaseUrl: string;
@@ -8,6 +8,7 @@ export interface DesktopConfig {
   simulatorProvider: string;
   backendMode: BackendMode;
   telemetryMode: TelemetryMode;
+  telemetryFallbackMode?: Exclude<TelemetryMode, "mock"> | null;
 }
 
 export interface LoginInput {
@@ -59,6 +60,12 @@ export type SimulatorConnectionStatus =
   | "AIRCRAFT_DETECTED"
   | "ERROR";
 
+export type SimulatorDataSource =
+  | "mock"
+  | "simconnect"
+  | "fsuipc"
+  | "none";
+
 export interface SimulatorAircraftState {
   title: string | null;
   registration: string | null;
@@ -69,12 +76,14 @@ export interface SimulatorAircraftState {
 export interface SimulatorSnapshot {
   status: SimulatorConnectionStatus;
   telemetryMode: TelemetryMode;
+  dataSource: SimulatorDataSource;
   message: string;
   connected: boolean;
   aircraftDetected: boolean;
   aircraft: SimulatorAircraftState | null;
   lastSampleAt: string | null;
   telemetry: TelemetryInput | null;
+  indicatedAirspeedKts?: number | null;
   error: string | null;
 }
 

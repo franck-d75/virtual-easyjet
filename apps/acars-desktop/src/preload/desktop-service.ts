@@ -3,6 +3,7 @@ import {
   normalizeBaseUrl,
 } from "../shared/defaults.js";
 import { createMockTelemetrySequence } from "../shared/mock-telemetry.js";
+import { FsuipcBridge } from "./fsuipc-bridge.js";
 import { SimConnectBridge } from "./simconnect-bridge.js";
 import { loadDesktopRuntimeConfig } from "./runtime-config.js";
 import type {
@@ -28,6 +29,12 @@ import type {
   TelemetryInput,
   TelemetryTrackingState,
 } from "../shared/types.js";
+
+type LiveTelemetryBridge = {
+  connect: () => Promise<SimulatorSnapshot>;
+  getSnapshot: () => SimulatorSnapshot;
+  sampleTelemetry: () => Promise<TelemetryInput | null>;
+};
 
 type RequestInitWithJson = {
   method?: "GET" | "POST";
@@ -576,6 +583,10 @@ export class DesktopService {
   private readonly mockSessionStates = new Map<string, MockSessionState>();
   private mockDispatchState: MockDispatchState | null = null;
   private mockSessionCounter = 1;
+  private readonly fsuipcBridge = new FsuipcBridge(
+    () => this.config,
+    (message, details) => this.log(message, details),
+  );
   private readonly simConnectBridge = new SimConnectBridge(
     () => this.config,
     (message, details) => this.log(message, details),
@@ -593,17 +604,18 @@ export class DesktopService {
       clientVersion: this.config.clientVersion,
       simulatorProvider: this.config.simulatorProvider,
       telemetryMode: this.config.telemetryMode,
+      telemetryFallbackMode: this.config.telemetryFallbackMode ?? null,
     });
   }
 
   public async getSnapshot(): Promise<DesktopSnapshot> {
-    await this.simConnectBridge.connect();
+    await this.refreshTelemetrySnapshot();
     return cloneValue(this.buildSnapshot());
   }
 
   public async getSimulatorSnapshot(): Promise<SimulatorSnapshot> {
-    await this.simConnectBridge.connect();
-    return this.simConnectBridge.getSnapshot();
+    await this.refreshTelemetrySnapshot();
+    return this.getCurrentSimulatorSnapshot();
   }
 
   public async login(input: LoginInput): Promise<DesktopSnapshot> {
@@ -646,7 +658,7 @@ export class DesktopService {
         userId: this.authSession.user.id,
         pilotProfileId: this.authSession.user.pilotProfileId ?? null,
       });
-      await this.simConnectBridge.connect();
+      await this.refreshTelemetrySnapshot();
     }
 
     return cloneValue(this.buildSnapshot());
@@ -771,12 +783,12 @@ export class DesktopService {
         body: {
           flightId,
           clientVersion: this.config.clientVersion,
-          simulatorProvider: this.config.simulatorProvider,
+          simulatorProvider: this.getCurrentSimulatorProvider(),
         },
       },
     );
 
-    if (this.config.telemetryMode === "simconnect") {
+    if (this.config.telemetryMode !== "mock") {
       await this.startSessionTracking(session.id);
     }
 
@@ -799,11 +811,11 @@ export class DesktopService {
   ): Promise<TelemetryTrackingState> {
     if (this.isMockBackend()) {
       throw new Error(
-        "Le suivi automatique SimConnect n'est pas disponible en mode mock.",
+        "Le suivi automatique ACARS n'est pas disponible en mode mock.",
       );
     }
 
-    await this.simConnectBridge.connect();
+    await this.refreshTelemetrySnapshot();
     this.stopTracking(false);
 
     this.trackingState = {
@@ -967,12 +979,12 @@ export class DesktopService {
       return;
     }
 
-    const telemetry = await this.simConnectBridge.sampleTelemetry();
+    const telemetry = await this.samplePreferredTelemetry();
 
     if (!telemetry) {
       this.trackingState = {
         ...this.trackingState,
-        lastError: this.simConnectBridge.getSnapshot().message,
+        lastError: this.getCurrentSimulatorSnapshot().message,
       };
       return;
     }
@@ -1008,6 +1020,157 @@ export class DesktopService {
         error: message,
       });
     }
+  }
+
+  private getMockSimulatorSnapshot(): SimulatorSnapshot {
+    return {
+      status: "UNAVAILABLE",
+      telemetryMode: this.config.telemetryMode,
+      dataSource: "mock",
+      message: "Le client ACARS est en mode mock. Activez le mode reel pour suivre MSFS2024.",
+      connected: false,
+      aircraftDetected: false,
+      aircraft: null,
+      lastSampleAt: null,
+      telemetry: null,
+      indicatedAirspeedKts: null,
+      error: null,
+    };
+  }
+
+  private getTelemetryBridge(
+    mode: "fsuipc" | "simconnect",
+  ): LiveTelemetryBridge {
+    return mode === "fsuipc" ? this.fsuipcBridge : this.simConnectBridge;
+  }
+
+  private getPrimaryTelemetryBridge(): LiveTelemetryBridge | null {
+    if (this.config.telemetryMode === "mock") {
+      return null;
+    }
+
+    return this.getTelemetryBridge(this.config.telemetryMode);
+  }
+
+  private getFallbackTelemetryBridge(): LiveTelemetryBridge | null {
+    const fallbackMode = this.config.telemetryFallbackMode;
+
+    if (!fallbackMode || fallbackMode === this.config.telemetryMode) {
+      return null;
+    }
+
+    return this.getTelemetryBridge(fallbackMode);
+  }
+
+  private isUsableTelemetrySnapshot(snapshot: SimulatorSnapshot | null): boolean {
+    return Boolean(
+      snapshot &&
+        (snapshot.telemetry !== null ||
+          snapshot.aircraftDetected ||
+          snapshot.connected),
+    );
+  }
+
+  private selectTelemetrySnapshot(
+    primarySnapshot: SimulatorSnapshot | null,
+    fallbackSnapshot: SimulatorSnapshot | null,
+  ): SimulatorSnapshot {
+    if (this.isMockBackend() || this.config.telemetryMode === "mock") {
+      return this.getMockSimulatorSnapshot();
+    }
+
+    if (this.isUsableTelemetrySnapshot(primarySnapshot)) {
+      return cloneValue(primarySnapshot as SimulatorSnapshot);
+    }
+
+    if (this.isUsableTelemetrySnapshot(fallbackSnapshot)) {
+      return cloneValue(fallbackSnapshot as SimulatorSnapshot);
+    }
+
+    if (primarySnapshot?.status === "CONNECTING") {
+      return cloneValue(primarySnapshot);
+    }
+
+    if (fallbackSnapshot?.status === "CONNECTING") {
+      return cloneValue(fallbackSnapshot);
+    }
+
+    return cloneValue(primarySnapshot ?? fallbackSnapshot ?? this.getMockSimulatorSnapshot());
+  }
+
+  private getCurrentSimulatorSnapshot(): SimulatorSnapshot {
+    const primarySnapshot = this.getPrimaryTelemetryBridge()?.getSnapshot() ?? null;
+    const fallbackSnapshot = this.getFallbackTelemetryBridge()?.getSnapshot() ?? null;
+
+    return this.selectTelemetrySnapshot(primarySnapshot, fallbackSnapshot);
+  }
+
+  private getCurrentSimulatorProvider(): string {
+    const snapshot = this.getCurrentSimulatorSnapshot();
+
+    switch (snapshot.dataSource) {
+      case "fsuipc":
+        return "MSFS2024_FSUIPC7";
+      case "simconnect":
+        return "MSFS2024_SIMCONNECT";
+      default:
+        return this.config.simulatorProvider;
+    }
+  }
+
+  private async refreshTelemetrySnapshot(): Promise<void> {
+    if (this.isMockBackend() || this.config.telemetryMode === "mock") {
+      return;
+    }
+
+    const telemetry = await this.samplePreferredTelemetry();
+
+    if (telemetry) {
+      return;
+    }
+
+    await this.refreshTelemetryConnections();
+  }
+
+  private async refreshTelemetryConnections(): Promise<void> {
+    const primaryBridge = this.getPrimaryTelemetryBridge();
+    const fallbackBridge = this.getFallbackTelemetryBridge();
+
+    if (!primaryBridge) {
+      return;
+    }
+
+    await primaryBridge.connect();
+
+    if (
+      fallbackBridge &&
+      !this.isUsableTelemetrySnapshot(primaryBridge.getSnapshot())
+    ) {
+      await fallbackBridge.connect();
+    }
+  }
+
+  private async samplePreferredTelemetry(): Promise<TelemetryInput | null> {
+    const primaryBridge = this.getPrimaryTelemetryBridge();
+    const fallbackBridge = this.getFallbackTelemetryBridge();
+
+    if (!primaryBridge) {
+      return null;
+    }
+
+    await primaryBridge.connect();
+    const primaryTelemetry = await primaryBridge.sampleTelemetry();
+
+    if (primaryTelemetry) {
+      return primaryTelemetry;
+    }
+
+    if (!fallbackBridge) {
+      return null;
+    }
+
+    await fallbackBridge.connect();
+    return fallbackBridge.sampleTelemetry();
   }
 
   private stopTracking(clearSessionId = true): void {
@@ -1111,7 +1274,7 @@ export class DesktopService {
       config: this.config,
       isAuthenticated: this.authSession !== null,
       user: this.authSession?.user ?? null,
-      simulator: this.simConnectBridge.getSnapshot(),
+      simulator: this.getCurrentSimulatorSnapshot(),
       tracking: cloneValue(this.trackingState),
     };
   }
