@@ -15,6 +15,7 @@
     "package": "pnpm run package:win",
     "package:dir": "pnpm run prepare:native && pnpm run build && electron-builder --config electron-builder.json --dir",
     "package:win": "pnpm run prepare:native && pnpm run build && electron-builder --config electron-builder.json --win nsis portable",
+    "test:fsuipc": "node ./scripts/test-fsuipc.cjs",
     "lint": "echo \"No lint configured for @va/acars\"",
     "test": "echo \"No tests configured for @va/acars\""
   },

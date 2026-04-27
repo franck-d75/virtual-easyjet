@@ -553,6 +553,10 @@ function renderSimulator(): void {
     </div>
     <div class="summary-grid">
       <div class="metric">
+        <span class="metric-label">FSUIPC detecte</span>
+        <span class="metric-value">${simulator.dataSource === "fsuipc" && simulator.connected ? "Oui" : "Non"}</span>
+      </div>
+      <div class="metric">
         <span class="metric-label">Appareil detecte</span>
         <span class="metric-value">${escapeHtml(simulator.aircraft?.registration ?? simulator.aircraft?.title ?? "n/d")}</span>
       </div>
@@ -579,6 +583,10 @@ function renderSimulator(): void {
       <div class="metric">
         <span class="metric-label">Dernier echantillon</span>
         <span class="metric-value">${escapeHtml(formatDate(simulator.lastSampleAt))}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Derniere erreur</span>
+        <span class="metric-value">${escapeHtml(simulator.error ?? "Aucune")}</span>
       </div>
     </div>
   `;

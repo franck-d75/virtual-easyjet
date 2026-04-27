@@ -1,17 +1,11 @@
-import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
+import { fork, type ChildProcess } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 import type { DesktopConfig, SimulatorSnapshot, TelemetryInput } from "../shared/types.js";
 
-const require = createRequire(import.meta.url);
-
-type FsuipcModule = typeof import("fsuipc");
-type FsuipcClient = InstanceType<FsuipcModule["FSUIPC"]>;
-
+const REQUEST_TIMEOUT_MS = 8_000;
 const CONNECT_RETRY_INTERVAL_MS = 5_000;
-const FEET_PER_METER = 3.280839895;
-const KNOTS_PER_MPS = 1.943844492;
-const FEET_PER_MINUTE_PER_MPS = 196.8503937;
-const RADIANS_TO_DEGREES = 180 / Math.PI;
 
 const DEFAULT_SIMULATOR_SNAPSHOT: SimulatorSnapshot = {
   status: "UNAVAILABLE",
@@ -27,119 +21,60 @@ const DEFAULT_SIMULATOR_SNAPSHOT: SimulatorSnapshot = {
   error: null,
 };
 
-function readNumber(payload: Record<string, unknown>, key: string): number | null {
-  const rawValue = payload[key];
+type WorkerRequestType = "connect" | "sample";
 
-  if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
-    return rawValue;
-  }
+type WorkerRequest = {
+  id: number;
+  type: WorkerRequestType;
+};
 
-  if (typeof rawValue === "bigint") {
-    return Number(rawValue);
-  }
+type WorkerLogMessage = {
+  type: "log";
+  level: "info" | "error";
+  message: string;
+  details?: Record<string, unknown>;
+};
 
-  if (typeof rawValue === "string" && rawValue.trim().length > 0) {
-    const parsedValue = Number(rawValue);
-    return Number.isFinite(parsedValue) ? parsedValue : null;
-  }
+type WorkerResponse = {
+  type: "response";
+  id: number;
+  ok: boolean;
+  snapshot?: SimulatorSnapshot;
+  telemetry?: TelemetryInput | null;
+  error?: string;
+};
 
-  return null;
+type PendingRequest = {
+  reject: (reason?: unknown) => void;
+  resolve: (value: WorkerResponse) => void;
+  timeout: ReturnType<typeof setTimeout>;
+};
+
+function isWorkerLogMessage(value: unknown): value is WorkerLogMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    (value as { type?: unknown }).type === "log"
+  );
 }
 
-function readString(payload: Record<string, unknown>, key: string): string | null {
-  const rawValue = payload[key];
-
-  if (typeof rawValue !== "string") {
-    return null;
-  }
-
-  const normalizedValue = rawValue.replace(/\0+/gu, "").trim();
-  return normalizedValue.length > 0 ? normalizedValue : null;
-}
-
-function roundInteger(value: number | null): number | null {
-  return typeof value === "number" ? Math.round(value) : null;
-}
-
-function normalizeHeadingDegrees(radians: number | null): number | null {
-  if (typeof radians !== "number" || !Number.isFinite(radians)) {
-    return null;
-  }
-
-  const degrees = (radians * RADIANS_TO_DEGREES) % 360;
-  const normalizedDegrees = degrees < 0 ? degrees + 360 : degrees;
-
-  return Math.round(normalizedDegrees);
-}
-
-function buildTelemetrySample(payload: Record<string, unknown>): {
-  telemetry: TelemetryInput | null;
-  indicatedAirspeedKts: number | null;
-} {
-  const latitude = readNumber(payload, "latitudeDeg");
-  const longitude = readNumber(payload, "longitudeDeg");
-  const altitudeMeters = readNumber(payload, "altitudeMeters");
-  const groundspeedMps = readNumber(payload, "groundspeedMps");
-  const headingRadians = readNumber(payload, "headingRadians");
-  const verticalSpeedRaw = readNumber(payload, "verticalSpeedRaw");
-  const onGroundFlag = readNumber(payload, "onGroundFlag");
-  const indicatedAirspeedRaw = readNumber(payload, "indicatedAirspeedRaw");
-
-  const altitudeFt = roundInteger(
-    typeof altitudeMeters === "number" ? altitudeMeters * FEET_PER_METER : null,
+function isWorkerResponse(value: unknown): value is WorkerResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    (value as { type?: unknown }).type === "response"
   );
-  const groundspeedKts = roundInteger(
-    typeof groundspeedMps === "number" ? groundspeedMps * KNOTS_PER_MPS : null,
-  );
-  const headingDeg = normalizeHeadingDegrees(headingRadians);
-  const verticalSpeedFpm = roundInteger(
-    typeof verticalSpeedRaw === "number"
-      ? (verticalSpeedRaw / 256) * FEET_PER_MINUTE_PER_MPS
-      : null,
-  );
-  const indicatedAirspeedKts = roundInteger(
-    typeof indicatedAirspeedRaw === "number"
-      ? indicatedAirspeedRaw / 128
-      : null,
-  );
-  const onGround =
-    typeof onGroundFlag === "number" ? onGroundFlag >= 1 : null;
-
-  if (
-    latitude === null ||
-    longitude === null ||
-    altitudeFt === null ||
-    groundspeedKts === null ||
-    headingDeg === null ||
-    verticalSpeedFpm === null ||
-    onGround === null
-  ) {
-    return {
-      telemetry: null,
-      indicatedAirspeedKts,
-    };
-  }
-
-  return {
-    telemetry: {
-      capturedAt: new Date().toISOString(),
-      latitude,
-      longitude,
-      altitudeFt,
-      groundspeedKts,
-      headingDeg,
-      verticalSpeedFpm,
-      onGround,
-    },
-    indicatedAirspeedKts,
-  };
 }
 
 export class FsuipcBridge {
-  private client: FsuipcClient | null = null;
-  private connectPromise: Promise<void> | null = null;
+  private worker: ChildProcess | null = null;
+  private requestIdCounter = 1;
   private lastConnectAttemptAt = 0;
+  private firstTelemetryLogged = false;
   private snapshot: SimulatorSnapshot = structuredClone(DEFAULT_SIMULATOR_SNAPSHOT);
+  private readonly pendingRequests = new Map<number, PendingRequest>();
 
   public constructor(
     private readonly getConfig: () => DesktopConfig,
@@ -154,15 +89,6 @@ export class FsuipcBridge {
   }
 
   public async connect(): Promise<SimulatorSnapshot> {
-    if (this.client) {
-      return this.getSnapshot();
-    }
-
-    if (this.connectPromise) {
-      await this.connectPromise;
-      return this.getSnapshot();
-    }
-
     if (
       Date.now() - this.lastConnectAttemptAt < CONNECT_RETRY_INTERVAL_MS &&
       this.snapshot.status === "UNAVAILABLE"
@@ -182,56 +108,38 @@ export class FsuipcBridge {
       error: null,
     };
 
-    this.connectPromise = this.openClient();
-
     try {
-      await this.connectPromise;
-    } finally {
-      this.connectPromise = null;
+      const response = await this.sendRequest("connect");
+      this.applyWorkerResponse(response);
+    } catch (error) {
+      this.snapshot = {
+        ...this.snapshot,
+        status: "UNAVAILABLE",
+        telemetryMode: this.getConfig().telemetryMode,
+        dataSource: "none",
+        message: "FSUIPC7 est indisponible. Lancez FSUIPC7 avant ACARS.",
+        connected: false,
+        aircraftDetected: false,
+        error: error instanceof Error ? error.message : "Connexion FSUIPC7 impossible.",
+      };
     }
 
     return this.getSnapshot();
   }
 
   public async sampleTelemetry(): Promise<TelemetryInput | null> {
-    await this.connect();
-
-    if (!this.client) {
-      return null;
-    }
-
     try {
-      const payload = (await this.client.process()) as Record<string, unknown>;
-      const { telemetry, indicatedAirspeedKts } = buildTelemetrySample(payload);
-      const aircraftTitle = readString(payload, "aircraftTitle");
-      const aircraftRegistration = readString(payload, "aircraftRegistration");
-      const aircraftType = readString(payload, "aircraftType");
-      const aircraftDetected = Boolean(
-        aircraftTitle || aircraftRegistration || aircraftType || telemetry,
-      );
+      const response = await this.sendRequest("sample");
+      this.applyWorkerResponse(response);
 
-      this.snapshot = {
-        status: aircraftDetected ? "AIRCRAFT_DETECTED" : "CONNECTED",
-        telemetryMode: this.getConfig().telemetryMode,
-        dataSource: "fsuipc",
-        message: aircraftDetected
-          ? "FSUIPC7 connecte a MSFS2024. Telemetrie live recue."
-          : "FSUIPC7 connecte a MSFS2024. En attente d'un appareil exploitable.",
-        connected: true,
-        aircraftDetected,
-        aircraft: {
-          title: aircraftTitle,
-          registration: aircraftRegistration,
-          transponder: null,
-          model: aircraftType ?? aircraftTitle,
-        },
-        lastSampleAt: new Date().toISOString(),
-        telemetry,
-        indicatedAirspeedKts,
-        error: null,
-      };
+      if (response.telemetry && !this.firstTelemetryLogged) {
+        this.firstTelemetryLogged = true;
+        this.log("fsuipc first telemetry received", {
+          capturedAt: response.telemetry.capturedAt ?? null,
+        });
+      }
 
-      return telemetry;
+      return response.telemetry ?? null;
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Lecture FSUIPC7 impossible.";
@@ -246,79 +154,151 @@ export class FsuipcBridge {
         aircraftDetected: false,
         error: message,
       };
-      this.log("fsuipc sample failed", {
+      this.log("fsuipc error", {
         error: message,
       });
-      await this.resetClient();
+      this.disposeWorker();
 
       return null;
     }
   }
 
-  private async openClient(): Promise<void> {
-    try {
-      const { FSUIPC, Simulator, Type } = require("fsuipc") as FsuipcModule;
-      const client = new FSUIPC();
+  private applyWorkerResponse(response: WorkerResponse): void {
+    this.snapshot = structuredClone({
+      ...(response.snapshot ?? DEFAULT_SIMULATOR_SNAPSHOT),
+      telemetryMode: this.getConfig().telemetryMode,
+    });
+  }
 
-      await client.open(Simulator.MSFS);
-      client.add("aircraftTitle", 0x3d00, Type.String, 256);
-      client.add("aircraftRegistration", 0x313c, Type.String, 24);
-      client.add("aircraftType", 0x3160, Type.String, 24);
-      client.add("latitudeDeg", 0x6010, Type.Double);
-      client.add("longitudeDeg", 0x6018, Type.Double);
-      client.add("altitudeMeters", 0x6020, Type.Double);
-      client.add("groundspeedMps", 0x6030, Type.Double);
-      client.add("headingRadians", 0x6038, Type.Double);
-      client.add("onGroundFlag", 0x0366, Type.Int16);
-      client.add("verticalSpeedRaw", 0x030c, Type.Int32);
-      client.add("indicatedAirspeedRaw", 0x02bc, Type.Int32);
+  private sendRequest(type: WorkerRequestType): Promise<WorkerResponse> {
+    const worker = this.ensureWorker();
+    const id = this.requestIdCounter;
+    this.requestIdCounter += 1;
 
-      this.client = client;
-      this.snapshot = {
-        ...this.snapshot,
-        status: "CONNECTED",
-        telemetryMode: this.getConfig().telemetryMode,
-        dataSource: "fsuipc",
-        message: "Connexion FSUIPC7 etablie avec MSFS2024.",
-        connected: true,
-        aircraftDetected: false,
-        error: null,
-      };
-      this.log("fsuipc connected");
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Chargement du module FSUIPC7 impossible.";
+    return new Promise<WorkerResponse>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(id);
+        reject(new Error(`FSUIPC ${type} timed out after ${REQUEST_TIMEOUT_MS} ms.`));
+      }, REQUEST_TIMEOUT_MS);
 
-      this.snapshot = {
-        ...this.snapshot,
-        status: "UNAVAILABLE",
-        telemetryMode: this.getConfig().telemetryMode,
-        dataSource: "none",
-        message: "FSUIPC7 est indisponible. Lancez FSUIPC7 avant ACARS.",
-        connected: false,
-        aircraftDetected: false,
-        error: message,
-      };
-      this.log("fsuipc initialization failed", {
-        error: message,
+      this.pendingRequests.set(id, {
+        resolve,
+        reject,
+        timeout,
       });
-      await this.resetClient();
+
+      const payload: WorkerRequest = {
+        id,
+        type,
+      };
+
+      worker.send(payload);
+    });
+  }
+
+  private ensureWorker(): ChildProcess {
+    if (this.worker && !this.worker.killed) {
+      return this.worker;
+    }
+
+    const workerPath = fileURLToPath(
+      new URL("../../scripts/fsuipc-worker.cjs", import.meta.url),
+    );
+
+    if (!existsSync(workerPath)) {
+      throw new Error(`FSUIPC worker introuvable: ${workerPath}`);
+    }
+
+    const worker = fork(workerPath, [], {
+      cwd: fileURLToPath(new URL("../../", import.meta.url)),
+      silent: true,
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
+    });
+
+    worker.on("message", (message: unknown) => {
+      if (isWorkerLogMessage(message)) {
+        this.log(message.message, message.details);
+        return;
+      }
+
+      if (!isWorkerResponse(message)) {
+        return;
+      }
+
+      const pendingRequest = this.pendingRequests.get(message.id);
+
+      if (!pendingRequest) {
+        return;
+      }
+
+      clearTimeout(pendingRequest.timeout);
+      this.pendingRequests.delete(message.id);
+
+      if (!message.ok) {
+        pendingRequest.reject(new Error(message.error ?? "FSUIPC worker failed."));
+        return;
+      }
+
+      pendingRequest.resolve(message);
+    });
+
+    worker.on("exit", (code, signal) => {
+      this.log("fsuipc worker exited", {
+        code,
+        signal,
+      });
+      this.rejectPendingRequests(
+        new Error(
+          `FSUIPC worker stopped unexpectedly (code=${code ?? "null"}, signal=${signal ?? "null"}).`,
+        ),
+      );
+      this.worker = null;
+    });
+
+    worker.on("error", (error) => {
+      this.log("fsuipc worker process error", {
+        error: error.message,
+      });
+    });
+
+    worker.stdout?.on("data", (chunk) => {
+      const message = chunk.toString("utf8").trim();
+
+      if (message.length > 0) {
+        this.log("fsuipc worker stdout", {
+          message,
+        });
+      }
+    });
+
+    worker.stderr?.on("data", (chunk) => {
+      const message = chunk.toString("utf8").trim();
+
+      if (message.length > 0) {
+        this.log("fsuipc worker stderr", {
+          message,
+        });
+      }
+    });
+
+    this.worker = worker;
+    return worker;
+  }
+
+  private rejectPendingRequests(error: Error): void {
+    for (const [id, pendingRequest] of this.pendingRequests.entries()) {
+      clearTimeout(pendingRequest.timeout);
+      pendingRequest.reject(error);
+      this.pendingRequests.delete(id);
     }
   }
 
-  private async resetClient(): Promise<void> {
-    if (!this.client) {
+  private disposeWorker(): void {
+    if (!this.worker) {
       return;
     }
 
-    try {
-      await this.client.close();
-    } catch {
-      // Best effort cleanup for the next connection attempt.
-    }
-
-    this.client = null;
+    this.worker.kill();
+    this.worker = null;
   }
 }
