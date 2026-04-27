@@ -67,7 +67,9 @@ export type SimulatorDataSource =
   | "none";
 
 export interface SimulatorAircraftState {
+  displayName: string | null;
   title: string | null;
+  icaoCode: string | null;
   registration: string | null;
   transponder: string | null;
   model: string | null;

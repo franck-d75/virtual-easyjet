@@ -98,6 +98,66 @@ function roundInteger(value: number | null): number | null {
   return typeof value === "number" ? Math.round(value) : null;
 }
 
+function looksLikeRegistration(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const normalizedValue = value.trim().toUpperCase();
+
+  return /^[A-Z]{1,2}-[A-Z0-9]{2,5}$/.test(normalizedValue) || /^JA\d{3,4}$/.test(normalizedValue);
+}
+
+function detectAircraftIcao(title: string | null, model: string | null): string | null {
+  const haystack = `${title ?? ""} ${model ?? ""}`.toUpperCase();
+
+  if (haystack.includes("A321NEO") || haystack.includes("A21N") || haystack.includes("A321 NEO")) {
+    return "A21N";
+  }
+
+  if (haystack.includes("A320NEO") || haystack.includes("A20N") || haystack.includes("A320 NEO")) {
+    return "A20N";
+  }
+
+  if (haystack.includes("A319")) {
+    return "A319";
+  }
+
+  if (haystack.includes("FENIX") && haystack.includes("A320")) {
+    return "A320";
+  }
+
+  if (haystack.includes("A320")) {
+    return "A320";
+  }
+
+  return null;
+}
+
+function detectAircraftDisplayName(
+  title: string | null,
+  model: string | null,
+  icaoCode: string | null,
+): string | null {
+  const normalizedTitle = title?.trim() ?? null;
+  const normalizedModel = model?.trim() ?? null;
+  const haystack = `${normalizedTitle ?? ""} ${normalizedModel ?? ""}`.toUpperCase();
+
+  if (haystack.includes("FENIX") && haystack.includes("A320")) {
+    return "Fenix A320";
+  }
+
+  if (normalizedTitle && !looksLikeRegistration(normalizedTitle)) {
+    return normalizedTitle;
+  }
+
+  if (normalizedModel && !looksLikeRegistration(normalizedModel)) {
+    return normalizedModel;
+  }
+
+  return icaoCode;
+}
+
 function buildTelemetrySample(payload: Record<string, unknown>): TelemetryInput | null {
   const latitude = readNumber(payload, "PLANE LATITUDE", "GPS POSITION LAT");
   const longitude = readNumber(payload, "PLANE LONGITUDE", "GPS POSITION LON");
@@ -203,10 +263,12 @@ export class SimConnectBridge {
       const registration = readString(payload, "ATC ID");
       const transponder = readString(payload, "TRANSPONDER CODE:1");
       const model = readString(payload, "ATC MODEL");
+      const icaoCode = detectAircraftIcao(aircraftTitle, model);
+      const displayName = detectAircraftDisplayName(aircraftTitle, model, icaoCode);
       const indicatedAirspeedKts = roundInteger(
         readNumber(payload, "AIRSPEED INDICATED"),
       );
-      const aircraftDetected = Boolean(aircraftTitle || registration || model);
+      const aircraftDetected = Boolean(displayName || aircraftTitle || model || icaoCode);
 
       this.snapshot = {
         status: aircraftDetected ? "AIRCRAFT_DETECTED" : "CONNECTED",
@@ -218,7 +280,9 @@ export class SimConnectBridge {
         connected: true,
         aircraftDetected,
         aircraft: {
+          displayName,
           title: aircraftTitle,
+          icaoCode,
           registration,
           transponder,
           model,

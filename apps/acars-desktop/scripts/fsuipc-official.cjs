@@ -79,6 +79,72 @@ function readString(payload, key) {
   return normalizedValue.length > 0 ? normalizedValue : null;
 }
 
+function looksLikeRegistration(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const normalized = value.trim().toUpperCase();
+  return /^[A-Z0-9-]{4,10}$/.test(normalized) && !normalized.includes(" ");
+}
+
+function normalizeAircraftIcao(title, model, registration) {
+  const haystack = [title, model, registration]
+    .filter((value) => typeof value === "string" && value.trim().length > 0)
+    .join(" ")
+    .toUpperCase();
+
+  if (haystack.includes("FENIX") && haystack.includes("A320")) {
+    return "A320";
+  }
+
+  if (haystack.includes("A21N") || haystack.includes("A321NEO")) {
+    return "A21N";
+  }
+
+  if (haystack.includes("A20N") || haystack.includes("A320NEO")) {
+    return "A20N";
+  }
+
+  if (haystack.includes("A319")) {
+    return "A319";
+  }
+
+  if (haystack.includes("A320")) {
+    return "A320";
+  }
+
+  return null;
+}
+
+function normalizeAircraftDisplayName(title, model, icaoCode) {
+  const normalizedTitle = typeof title === "string" ? title.trim() : "";
+  const normalizedModel = typeof model === "string" ? model.trim() : "";
+  const titleCandidate =
+    normalizedTitle.length > 0 && !looksLikeRegistration(normalizedTitle)
+      ? normalizedTitle
+      : null;
+  const modelCandidate =
+    normalizedModel.length > 0 && !looksLikeRegistration(normalizedModel)
+      ? normalizedModel
+      : null;
+  const haystack = `${titleCandidate ?? ""} ${modelCandidate ?? ""}`.toUpperCase();
+
+  if (haystack.includes("FENIX") && haystack.includes("A320")) {
+    return "Fenix A320";
+  }
+
+  if (titleCandidate) {
+    return titleCandidate;
+  }
+
+  if (modelCandidate) {
+    return modelCandidate;
+  }
+
+  return icaoCode;
+}
+
 function normalizeHeadingDegrees(radians) {
   if (typeof radians !== "number" || !Number.isFinite(radians)) {
     return null;
@@ -246,8 +312,18 @@ async function sampleClient(client, selectedMode) {
   const aircraftTitle = readString(payload, "aircraftTitle");
   const aircraftRegistration = readString(payload, "aircraftRegistration");
   const aircraftType = readString(payload, "aircraftType");
+  const aircraftIcao = normalizeAircraftIcao(
+    aircraftTitle,
+    aircraftType,
+    aircraftRegistration,
+  );
+  const aircraftDisplayName = normalizeAircraftDisplayName(
+    aircraftTitle,
+    aircraftType,
+    aircraftIcao,
+  );
   const aircraftDetected = Boolean(
-    aircraftTitle || aircraftRegistration || aircraftType || telemetry,
+    aircraftDisplayName || aircraftTitle || aircraftType || telemetry,
   );
 
   return {
@@ -262,7 +338,9 @@ async function sampleClient(client, selectedMode) {
       connected: true,
       aircraftDetected,
       aircraft: {
+        displayName: aircraftDisplayName,
         title: aircraftTitle,
+        icaoCode: aircraftIcao,
         registration: aircraftRegistration,
         transponder: null,
         model: aircraftType ?? aircraftTitle,
