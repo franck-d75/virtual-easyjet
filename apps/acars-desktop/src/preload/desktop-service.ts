@@ -1,5 +1,7 @@
 import {
+  buildRequestUrl,
   DEFAULT_DESKTOP_CONFIG,
+  normalizeAcarsBaseUrl,
   normalizeBaseUrl,
 } from "../shared/defaults.js";
 import { createMockTelemetrySequence } from "../shared/mock-telemetry.js";
@@ -760,14 +762,17 @@ export class DesktopService {
   }
 
   public async login(input: LoginInput): Promise<DesktopSnapshot> {
+    const normalizedApiBaseUrl =
+      normalizeBaseUrl(input.apiBaseUrl) ||
+      this.initialConfig.apiBaseUrl;
+
     this.config = {
       ...this.initialConfig,
-      apiBaseUrl:
-        normalizeBaseUrl(input.apiBaseUrl) ||
-        this.initialConfig.apiBaseUrl,
-      acarsBaseUrl:
-        normalizeBaseUrl(input.acarsBaseUrl) ||
-        this.initialConfig.acarsBaseUrl,
+      apiBaseUrl: normalizedApiBaseUrl,
+      acarsBaseUrl: normalizeAcarsBaseUrl(
+        input.acarsBaseUrl || this.initialConfig.acarsBaseUrl,
+        normalizedApiBaseUrl,
+      ),
       backendMode: input.backendMode,
     };
 
@@ -2131,7 +2136,10 @@ export class DesktopService {
     path: string,
     init: RequestInitWithJson = {},
   ): Promise<T> {
-    const primaryBaseUrl = this.config.acarsBaseUrl;
+    const primaryBaseUrl = normalizeAcarsBaseUrl(
+      this.config.acarsBaseUrl,
+      this.config.apiBaseUrl,
+    );
 
     try {
       return await this.authorizedRequestJson<T>(primaryBaseUrl, path, init);
@@ -2140,7 +2148,10 @@ export class DesktopService {
         throw error;
       }
 
-      const fallbackBaseUrl = normalizeBaseUrl(`${this.config.apiBaseUrl}/acars`);
+      const fallbackBaseUrl = normalizeAcarsBaseUrl(
+        this.config.apiBaseUrl,
+        this.config.apiBaseUrl,
+      );
 
       if (fallbackBaseUrl === primaryBaseUrl) {
         throw error;
@@ -2173,6 +2184,7 @@ export class DesktopService {
     init: RequestInitWithJson = {},
   ): Promise<T> {
     let response: Response;
+    const fullUrl = buildRequestUrl(baseUrl, path);
 
     try {
       const headers = {
@@ -2194,14 +2206,18 @@ export class DesktopService {
 
       this.log("request started", {
         method: requestInit.method ?? "GET",
-        url: `${baseUrl}${path}`,
+        url: fullUrl,
       });
-      response = await fetch(`${baseUrl}${path}`, {
+      if (/\/acars(\/|$)/iu.test(fullUrl)) {
+        console.log("ACARS request URL:", fullUrl);
+      }
+
+      response = await fetch(fullUrl, {
         ...requestInit,
       });
       this.log("request completed", {
         method: requestInit.method ?? "GET",
-        url: `${baseUrl}${path}`,
+        url: fullUrl,
         status: response.status,
       });
     } catch {

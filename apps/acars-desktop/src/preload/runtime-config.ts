@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   DEFAULT_DESKTOP_CONFIG,
+  normalizeAcarsBaseUrl,
   normalizeBaseUrl,
 } from "../shared/defaults.js";
 import type {
@@ -124,12 +125,12 @@ export function loadDesktopRuntimeConfig(): DesktopConfig {
         environment.NEXT_PUBLIC_API_BASE_URL ??
         DEFAULT_DESKTOP_CONFIG.apiBaseUrl,
     ) || DEFAULT_DESKTOP_CONFIG.apiBaseUrl;
-  const acarsBaseUrl =
-    normalizeBaseUrl(
-      environment.DESKTOP_ACARS_BASE_URL ??
-        environment.NEXT_PUBLIC_ACARS_BASE_URL ??
-        DEFAULT_DESKTOP_CONFIG.acarsBaseUrl,
-    ) || DEFAULT_DESKTOP_CONFIG.acarsBaseUrl;
+  const acarsBaseUrl = normalizeAcarsBaseUrl(
+    environment.DESKTOP_ACARS_BASE_URL ??
+      environment.NEXT_PUBLIC_ACARS_BASE_URL ??
+      DEFAULT_DESKTOP_CONFIG.acarsBaseUrl,
+    apiBaseUrl,
+  );
 
   const backendMode =
     normalizeBackendMode(environment.DESKTOP_BACKEND_MODE) ??
