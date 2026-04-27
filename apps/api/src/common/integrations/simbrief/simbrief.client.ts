@@ -41,8 +41,10 @@ export interface SimbriefLatestOfpPlanSummary {
   departureIcao: string | null;
   arrivalIcao: string | null;
   route: string | null;
+  distanceNm: number | null;
   cruiseAltitudeFt: number | null;
   estimatedTimeEnroute: string | null;
+  blockTimeMinutes: number | null;
   generatedAt: string | null;
   aircraft: SimbriefLatestOfpAircraftSummary | null;
   routePoints: SimbriefLatestOfpRoutePointSummary[];
@@ -387,6 +389,12 @@ export class SimbriefClient {
         ["atc", "route"],
         ["api_params", "route"],
       ]),
+      distanceNm: readRoundedNumber(payload, [
+        ["general", "route_distance"],
+        ["general", "distance"],
+        ["general", "air_distance"],
+        ["navlog", "distance"],
+      ]),
       cruiseAltitudeFt: readInteger(payload, [
         ["general", "initial_altitude"],
         ["api_params", "fl"],
@@ -394,6 +402,12 @@ export class SimbriefClient {
       estimatedTimeEnroute: readFirstString(payload, [
         ["times", "est_time_enroute"],
         ["times", "sched_time_enroute"],
+      ]),
+      blockTimeMinutes: readDurationMinutes(payload, [
+        ["times", "est_block"],
+        ["times", "sched_block"],
+        ["times", "est_time_block"],
+        ["times", "sched_time_block"],
       ]),
       generatedAt: readString(payload, ["params", "time_generated"]),
       aircraft,
@@ -865,6 +879,32 @@ function readInteger(root: unknown, paths: string[][]): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function readRoundedNumber(root: unknown, paths: string[][]): number | null {
+  for (const path of paths) {
+    const value = readPath(root, path);
+    const parsed = parseNumericValue(value);
+
+    if (parsed !== null) {
+      return Math.round(parsed);
+    }
+  }
+
+  return null;
+}
+
+function readDurationMinutes(root: unknown, paths: string[][]): number | null {
+  for (const path of paths) {
+    const value = readPath(root, path);
+    const parsed = parseDurationMinutes(value);
+
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
 function readCoordinate(root: unknown, paths: string[][]): number | null {
   for (const path of paths) {
     const value = readPath(root, path);
@@ -993,4 +1033,63 @@ function parseCoordinateValue(value: unknown): number | null {
   }
 
   return absoluteValue;
+}
+
+function parseNumericValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalizedValue = value.trim().replace(",", ".");
+
+  if (normalizedValue.length === 0) {
+    return null;
+  }
+
+  const parsed = Number(normalizedValue);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseDurationMinutes(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value >= 0 ? Math.round(value) : null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalizedValue = value.trim();
+
+  if (normalizedValue.length === 0) {
+    return null;
+  }
+
+  if (/^\d{1,2}:\d{2}$/.test(normalizedValue)) {
+    const [hoursLiteral, minutesLiteral] = normalizedValue.split(":");
+    const hours = Number.parseInt(hoursLiteral ?? "", 10);
+    const minutes = Number.parseInt(minutesLiteral ?? "", 10);
+
+    if (Number.isFinite(hours) && Number.isFinite(minutes)) {
+      return hours * 60 + minutes;
+    }
+  }
+
+  const compactMatch = normalizedValue.match(/^(\d{1,2})(\d{2})$/);
+
+  if (compactMatch) {
+    const hours = Number.parseInt(compactMatch[1] ?? "", 10);
+    const minutes = Number.parseInt(compactMatch[2] ?? "", 10);
+
+    if (Number.isFinite(hours) && Number.isFinite(minutes)) {
+      return hours * 60 + minutes;
+    }
+  }
+
+  const numericValue = parseNumericValue(normalizedValue);
+  return numericValue !== null ? Math.round(numericValue) : null;
 }

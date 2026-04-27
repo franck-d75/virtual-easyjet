@@ -102,8 +102,10 @@ export interface SimbriefLatestOfpPlanResponse {
   departureIcao: string | null;
   arrivalIcao: string | null;
   route: string | null;
+  distanceNm: number | null;
   cruiseAltitudeFt: number | null;
   estimatedTimeEnroute: string | null;
+  blockTimeMinutes: number | null;
   generatedAt: string | null;
   aircraft: SimbriefLatestOfpAircraftResponse | null;
   routePoints: SimbriefLatestOfpRoutePointResponse[];
@@ -186,6 +188,12 @@ export interface CreateSimbriefAirframePayload {
   registration: string;
   icao: string;
   engineType?: string | null;
+}
+
+export interface SimbriefImportedRouteResponse {
+  action: "created" | "updated";
+  message: string;
+  route: RouteResponse;
 }
 
 export interface PilotProfileResponse {

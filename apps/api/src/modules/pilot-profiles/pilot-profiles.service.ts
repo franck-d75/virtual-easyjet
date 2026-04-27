@@ -49,6 +49,22 @@ type SimbriefAirframeRecord = Prisma.SimbriefAirframeGetPayload<{
   include: typeof simbriefAirframeInclude;
 }>;
 
+const importedRouteInclude = {
+  departureAirport: true,
+  arrivalAirport: true,
+  departureHub: true,
+  arrivalHub: true,
+  aircraftType: {
+    include: {
+      minRank: true,
+    },
+  },
+} satisfies Prisma.RouteInclude;
+
+type ImportedRouteRecord = Prisma.RouteGetPayload<{
+  include: typeof importedRouteInclude;
+}>;
+
 function getAvatarUrl(value: unknown): string | null {
   if (
     value &&
@@ -327,6 +343,129 @@ export class PilotProfilesService {
 
       throw new BadRequestException("Invalid airframe data");
     }
+  }
+
+  public async importMySimbriefRoute(user: AuthenticatedUser) {
+    const profile = await this.getMySimbriefContext(user);
+
+    if (!profile) {
+      throw new NotFoundException("Pilot profile not found.");
+    }
+
+    if (!profile.simbriefPilotId) {
+      throw new BadRequestException(
+        "Configurez d'abord votre SimBrief Pilot ID dans votre profil.",
+      );
+    }
+
+    const latestOfp = await this.simbriefClient.getLatestOfp(
+      profile.simbriefPilotId,
+    );
+
+    if (
+      latestOfp.status !== "AVAILABLE" ||
+      !latestOfp.plan ||
+      !latestOfp.plan.departureIcao ||
+      !latestOfp.plan.arrivalIcao
+    ) {
+      throw new BadRequestException(
+        latestOfp.detail ??
+          "Aucun OFP SimBrief exploitable n'est disponible pour l'import de route.",
+      );
+    }
+
+    const departureIcao = latestOfp.plan.departureIcao.trim().toUpperCase();
+    const arrivalIcao = latestOfp.plan.arrivalIcao.trim().toUpperCase();
+    const normalizedFlightNumber =
+      latestOfp.plan.flightNumber?.trim().toUpperCase() ||
+      latestOfp.plan.callsign?.trim().toUpperCase() ||
+      `${departureIcao}${arrivalIcao}`;
+
+    const [departureAirport, arrivalAirport] = await Promise.all([
+      this.prisma.airport.findUnique({
+        where: { icao: departureIcao },
+        select: { id: true, icao: true },
+      }),
+      this.prisma.airport.findUnique({
+        where: { icao: arrivalIcao },
+        select: { id: true, icao: true },
+      }),
+    ]);
+
+    if (!departureAirport || !arrivalAirport) {
+      throw new BadRequestException(
+        "Le référentiel aéroports doit contenir les aéroports de départ et d'arrivée avant l'import SimBrief.",
+      );
+    }
+
+    const mappedTypeCode = this.simbriefClient.inferAircraftTypeCode(
+      latestOfp.plan.aircraft?.icaoCode,
+    );
+    const [aircraftType, departureHub, arrivalHub] = await Promise.all([
+      mappedTypeCode
+        ? this.prisma.aircraftType.findUnique({
+            where: { icaoCode: mappedTypeCode },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      this.prisma.hub.findFirst({
+        where: { airportId: departureAirport.id, isActive: true },
+        select: { id: true },
+      }),
+      this.prisma.hub.findFirst({
+        where: { airportId: arrivalAirport.id, isActive: true },
+        select: { id: true },
+      }),
+    ]);
+
+    const existingRoute = await this.prisma.route.findFirst({
+      where: {
+        flightNumber: normalizedFlightNumber,
+        departureAirportId: departureAirport.id,
+        arrivalAirportId: arrivalAirport.id,
+      },
+      include: importedRouteInclude,
+    });
+
+    const routeNotes = this.buildImportedRouteNotes(latestOfp.plan.route);
+    const routeData = {
+      flightNumber: normalizedFlightNumber,
+      departureAirportId: departureAirport.id,
+      arrivalAirportId: arrivalAirport.id,
+      departureHubId: departureHub?.id ?? null,
+      arrivalHubId: arrivalHub?.id ?? null,
+      aircraftTypeId: aircraftType?.id ?? null,
+      distanceNm: latestOfp.plan.distanceNm ?? null,
+      blockTimeMinutes: latestOfp.plan.blockTimeMinutes ?? null,
+      isActive: true,
+      notes: routeNotes,
+    } satisfies Omit<Prisma.RouteUncheckedCreateInput, "code">;
+
+    const route = existingRoute
+      ? await this.prisma.route.update({
+          where: { id: existingRoute.id },
+          data: routeData,
+          include: importedRouteInclude,
+        })
+      : await this.prisma.route.create({
+          data: {
+            code: await this.generateImportedRouteCode(
+              normalizedFlightNumber,
+              departureIcao,
+              arrivalIcao,
+            ),
+            ...routeData,
+          },
+          include: importedRouteInclude,
+        });
+
+    return {
+      action: existingRoute ? "updated" : "created",
+      message: existingRoute
+        ? "La route SimBrief existante a été mise à jour."
+        : "La route SimBrief a été créée avec succès.",
+      route: this.serializeImportedRoute(route),
+    };
   }
 
   public async updateMe(
@@ -743,6 +882,108 @@ export class PilotProfilesService {
       },
       airframe,
     );
+  }
+
+  private async generateImportedRouteCode(
+    flightNumber: string,
+    departureIcao: string,
+    arrivalIcao: string,
+  ): Promise<string> {
+    const normalizedFlightNumber = flightNumber.replace(/[^A-Z0-9]/g, "");
+    const baseCode =
+      normalizedFlightNumber.length > 0
+        ? normalizedFlightNumber.slice(0, 12)
+        : `${departureIcao}${arrivalIcao}`.slice(0, 12);
+
+    let candidateCode = baseCode;
+    let suffix = 1;
+
+    for (;;) {
+      const existingRoute = await this.prisma.route.findUnique({
+        where: {
+          code: candidateCode,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!existingRoute) {
+        return candidateCode;
+      }
+
+      candidateCode = `${baseCode.slice(0, 12)}-${String(suffix)}`.slice(0, 16);
+      suffix += 1;
+    }
+  }
+
+  private buildImportedRouteNotes(route: string | null): string | null {
+    const normalizedRoute = route?.trim();
+
+    if (!normalizedRoute) {
+      return "Importée depuis le dernier OFP SimBrief.";
+    }
+
+    return `Importée depuis le dernier OFP SimBrief. Route : ${normalizedRoute}`;
+  }
+
+  private serializeImportedRoute(route: ImportedRouteRecord) {
+    return {
+      id: route.id,
+      code: route.code,
+      flightNumber: route.flightNumber,
+      distanceNm: route.distanceNm,
+      blockTimeMinutes: route.blockTimeMinutes,
+      isActive: route.isActive,
+      notes: route.notes,
+      departureAirport: {
+        id: route.departureAirport.id,
+        icao: route.departureAirport.icao,
+        iata: route.departureAirport.iata,
+        name: route.departureAirport.name,
+        city: route.departureAirport.city,
+        countryCode: route.departureAirport.countryCode,
+      },
+      arrivalAirport: {
+        id: route.arrivalAirport.id,
+        icao: route.arrivalAirport.icao,
+        iata: route.arrivalAirport.iata,
+        name: route.arrivalAirport.name,
+        city: route.arrivalAirport.city,
+        countryCode: route.arrivalAirport.countryCode,
+      },
+      departureHub: route.departureHub
+        ? {
+            id: route.departureHub.id,
+            code: route.departureHub.code,
+            name: route.departureHub.name,
+          }
+        : null,
+      arrivalHub: route.arrivalHub
+        ? {
+            id: route.arrivalHub.id,
+            code: route.arrivalHub.code,
+            name: route.arrivalHub.name,
+          }
+        : null,
+      aircraftType: route.aircraftType
+        ? {
+            id: route.aircraftType.id,
+            icaoCode: route.aircraftType.icaoCode,
+            name: route.aircraftType.name,
+            manufacturer: route.aircraftType.manufacturer,
+            category: route.aircraftType.category,
+            minRank: route.aircraftType.minRank
+              ? {
+                  id: route.aircraftType.minRank.id,
+                  code: route.aircraftType.minRank.code,
+                  name: route.aircraftType.minRank.name,
+                  sortOrder: route.aircraftType.minRank.sortOrder,
+                }
+              : null,
+          }
+        : null,
+    };
   }
 
   private serializeProfile(profile: PilotProfileRecord) {

@@ -6,6 +6,7 @@ import type {
   PilotProfileResponse,
   SimbriefAirframeResponse,
   SimbriefAirframesResponse,
+  SimbriefImportedRouteResponse,
   SimbriefLatestOfpResponse,
   UserMeResponse,
 } from "./types";
@@ -80,6 +81,16 @@ export async function syncMySimbriefAirframes(
   accessToken: string,
 ): Promise<SimbriefAirframesResponse> {
   return apiRequest<SimbriefAirframesResponse>("/pilot/simbrief/airframes/sync", {
+    accessToken,
+    method: "POST",
+    cache: "no-store",
+  });
+}
+
+export async function importMySimbriefRoute(
+  accessToken: string,
+): Promise<SimbriefImportedRouteResponse> {
+  return apiRequest<SimbriefImportedRouteResponse>("/pilot/simbrief/import-route", {
     accessToken,
     method: "POST",
     cache: "no-store",

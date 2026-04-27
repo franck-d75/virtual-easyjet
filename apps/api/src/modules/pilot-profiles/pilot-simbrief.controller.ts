@@ -45,4 +45,13 @@ export class PilotSimbriefController {
   public syncAirframes(@CurrentUser() user: AuthenticatedUser) {
     return this.pilotProfilesService.syncMySimbriefAirframes(user);
   }
+
+  @Post("import-route")
+  @ApiOperation({
+    summary:
+      "Importe ou met a jour une route VA a partir du dernier OFP SimBrief du pilote connecte.",
+  })
+  public importRoute(@CurrentUser() user: AuthenticatedUser) {
+    return this.pilotProfilesService.importMySimbriefRoute(user);
+  }
 }
