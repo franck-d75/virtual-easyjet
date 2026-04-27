@@ -1,65 +1,124 @@
-const fsuipc = require("fsuipc");
+const { fork } = require("node:child_process");
+const path = require("node:path");
 
-const FEET_PER_METER = 3.280839895;
-const RADIANS_TO_DEGREES = 180 / Math.PI;
+const ATTEMPT_TIMEOUT_MS = 10_000;
+const attemptScriptPath = path.join(__dirname, "fsuipc-attempt.cjs");
 
-function round(value) {
-  return typeof value === "number" && Number.isFinite(value)
-    ? Math.round(value * 1000) / 1000
-    : null;
+function buildConnectionStrategies() {
+  return ["CURRENT_MSFS", "MSFS", "MSFS2020", "FSUIPC_ANY", "ANY", "NO_FILTER"];
+}
+
+function runAttempt(simVersion) {
+  return new Promise((resolve, reject) => {
+    const child = fork(attemptScriptPath, [simVersion], {
+      stdio: ["ignore", "ignore", "ignore", "ipc"],
+    });
+
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      child.kill();
+      reject(new Error(`FSUIPC attempt timed out for ${simVersion}.`));
+    }, ATTEMPT_TIMEOUT_MS);
+
+    child.on("message", (message) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      child.kill();
+      resolve(message);
+    });
+
+    child.on("exit", (code, signal) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      reject(
+        new Error(
+          `FSUIPC attempt exited unexpectedly for ${simVersion} (code=${code ?? "null"}, signal=${signal ?? "null"}).`,
+        ),
+      );
+    });
+
+    child.on("error", (error) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    });
+  });
 }
 
 async function main() {
-  const client = new fsuipc.FSUIPC();
+  let lastError = null;
 
-  console.log("FSUIPC connect attempt");
+  for (const simVersion of buildConnectionStrategies()) {
+    console.log(`FSUIPC connect attempt with simVersion=${simVersion}`);
 
-  try {
-    await client.open(fsuipc.Simulator.MSFS);
-    console.log("FSUIPC connection success");
-
-    client.add("latitudeDeg", 0x6010, fsuipc.Type.Double);
-    client.add("longitudeDeg", 0x6018, fsuipc.Type.Double);
-    client.add("altitudeMeters", 0x6020, fsuipc.Type.Double);
-    client.add("headingRadians", 0x6038, fsuipc.Type.Double);
-
-    const payload = await client.process();
-    const latitude = round(payload.latitudeDeg);
-    const longitude = round(payload.longitudeDeg);
-    const altitudeFt =
-      typeof payload.altitudeMeters === "number"
-        ? round(payload.altitudeMeters * FEET_PER_METER)
-        : null;
-    const headingDeg =
-      typeof payload.headingRadians === "number"
-        ? round(
-            ((payload.headingRadians * RADIANS_TO_DEGREES) % 360 + 360) % 360,
-          )
-        : null;
-
-    console.log("First telemetry received");
-    console.log(
-      JSON.stringify(
-        {
-          latitude,
-          longitude,
-          altitudeFt,
-          headingDeg,
-        },
-        null,
-        2,
-      ),
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`FSUIPC error: ${message}`);
-    process.exitCode = 1;
-  } finally {
     try {
-      await client.close();
-    } catch {
-      // Ignore cleanup errors in test mode.
+      const result = await runAttempt(simVersion);
+
+      if (!result || result.ok !== true) {
+        const message = result?.error ?? "Unknown FSUIPC error.";
+        console.error(`FSUIPC error: ${message}`);
+        lastError = new Error(message);
+        continue;
+      }
+
+      console.log(`FSUIPC connection success with simVersion=${simVersion}`);
+
+      if (result.telemetry) {
+        console.log("First telemetry received");
+        console.log(
+          JSON.stringify(
+            {
+              latitude: result.telemetry.latitude,
+              longitude: result.telemetry.longitude,
+              altitudeFt: result.telemetry.altitudeFt,
+              headingDeg: result.telemetry.headingDeg,
+            },
+            null,
+            2,
+          ),
+        );
+      } else {
+        console.log(
+          JSON.stringify(
+            {
+              connected: true,
+              telemetry: null,
+              message: result.snapshot?.message ?? null,
+            },
+            null,
+            2,
+          ),
+        );
+      }
+
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`FSUIPC error: ${message}`);
+      lastError = error;
     }
+  }
+
+  process.exitCode = 1;
+  if (lastError instanceof Error) {
+    console.error(`FSUIPC error: ${lastError.message}`);
   }
 }
 
