@@ -595,6 +595,7 @@ export class DesktopService {
     DEFAULT_TRACKING_STATE,
   );
   private trackingTimer: TrackingTimer | null = null;
+  private telemetryWarmupPromise: Promise<void> | null = null;
 
   public constructor() {
     this.log("desktop runtime config loaded", {
@@ -609,12 +610,12 @@ export class DesktopService {
   }
 
   public async getSnapshot(): Promise<DesktopSnapshot> {
-    await this.refreshTelemetrySnapshot();
+    this.startTelemetryWarmup();
     return cloneValue(this.buildSnapshot());
   }
 
   public async getSimulatorSnapshot(): Promise<SimulatorSnapshot> {
-    await this.refreshTelemetrySnapshot();
+    this.startTelemetryWarmup();
     const snapshot = this.getCurrentSimulatorSnapshot();
 
     if (snapshot.telemetry) {
@@ -670,7 +671,7 @@ export class DesktopService {
         userId: this.authSession.user.id,
         pilotProfileId: this.authSession.user.pilotProfileId ?? null,
       });
-      await this.refreshTelemetrySnapshot();
+      this.startTelemetryWarmup();
     }
 
     return cloneValue(this.buildSnapshot());
@@ -1142,6 +1143,33 @@ export class DesktopService {
     }
 
     await this.refreshTelemetryConnections();
+  }
+
+  private startTelemetryWarmup(): void {
+    if (this.isMockBackend() || this.config.telemetryMode === "mock") {
+      return;
+    }
+
+    if (
+      this.config.telemetryMode === "fsuipc" ||
+      this.config.telemetryFallbackMode === "fsuipc"
+    ) {
+      this.fsuipcBridge.start();
+    }
+
+    if (this.telemetryWarmupPromise) {
+      return;
+    }
+
+    this.telemetryWarmupPromise = this.refreshTelemetrySnapshot()
+      .catch((error) => {
+        this.log("telemetry warmup failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      })
+      .finally(() => {
+        this.telemetryWarmupPromise = null;
+      });
   }
 
   private async refreshTelemetryConnections(): Promise<void> {

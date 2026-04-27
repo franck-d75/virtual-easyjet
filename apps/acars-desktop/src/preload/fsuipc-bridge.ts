@@ -91,6 +91,10 @@ export class FsuipcBridge {
     });
   }
 
+  public start(): void {
+    this.ensureWorker();
+  }
+
   public async connect(): Promise<SimulatorSnapshot> {
     this.ensureWorker();
 
