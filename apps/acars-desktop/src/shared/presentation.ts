@@ -44,7 +44,7 @@ export function getBookingStatusPresentation(status: string): Presentation {
 export function getFlightStatusPresentation(status: string): Presentation {
   switch (status) {
     case "PLANNED":
-      return { label: "Planifié", tone: "info" };
+      return { label: "Prêt", tone: "info" };
     case "IN_PROGRESS":
       return { label: "En cours", tone: "warning" };
     case "COMPLETED":

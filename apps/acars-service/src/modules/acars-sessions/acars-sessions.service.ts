@@ -126,6 +126,25 @@ export class AcarsSessionsService {
           },
         });
 
+        if (
+          flight.status === FlightStatus.PLANNED ||
+          flight.booking.status === BookingStatus.RESERVED
+        ) {
+          await transaction.flight.update({
+            where: { id: flight.id },
+            data: {
+              status: FlightStatus.IN_PROGRESS,
+            },
+          });
+
+          await transaction.booking.update({
+            where: { id: flight.bookingId },
+            data: {
+              status: BookingStatus.IN_PROGRESS,
+            },
+          });
+        }
+
         await transaction.flightEvent.create({
           data: {
             sessionId: createdSession.id,
@@ -561,13 +580,21 @@ export class AcarsSessionsService {
       throw new BadRequestException("Aborted flights cannot start a new ACARS session.");
     }
 
-    if (flightStatus !== FlightStatus.IN_PROGRESS) {
-      throw new BadRequestException("Only in-progress flights can start an ACARS session.");
+    if (
+      flightStatus !== FlightStatus.IN_PROGRESS &&
+      flightStatus !== FlightStatus.PLANNED
+    ) {
+      throw new BadRequestException(
+        "Only ready or in-progress flights can start an ACARS session.",
+      );
     }
 
-    if (bookingStatus !== BookingStatus.IN_PROGRESS) {
+    if (
+      bookingStatus !== BookingStatus.IN_PROGRESS &&
+      bookingStatus !== BookingStatus.RESERVED
+    ) {
       throw new BadRequestException(
-        "The linked booking is not in a valid in-progress state.",
+        "The linked booking is not in a valid ready or in-progress state.",
       );
     }
   }

@@ -5,6 +5,7 @@ import type { AuthenticatedUser } from "@va/shared";
 
 import { CurrentUser } from "../../common/decorators/current-user.decorator.js";
 import { CreateMySimbriefAirframeDto } from "./dto/create-my-simbrief-airframe.dto.js";
+import { PrepareMySimbriefFlightDto } from "./dto/prepare-my-simbrief-flight.dto.js";
 import { PilotProfilesService } from "./pilot-profiles.service.js";
 
 @ApiTags("pilot-simbrief")
@@ -53,5 +54,17 @@ export class PilotSimbriefController {
   })
   public importRoute(@CurrentUser() user: AuthenticatedUser) {
     return this.pilotProfilesService.importMySimbriefRoute(user);
+  }
+
+  @Post("prepare-flight")
+  @ApiOperation({
+    summary:
+      "Prepare un vol exploitable ACARS a partir du dernier OFP SimBrief du pilote connecte, meme sans reservation VA manuelle.",
+  })
+  public prepareFlight(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() payload: PrepareMySimbriefFlightDto,
+  ) {
+    return this.pilotProfilesService.prepareMySimbriefFlight(user, payload);
   }
 }

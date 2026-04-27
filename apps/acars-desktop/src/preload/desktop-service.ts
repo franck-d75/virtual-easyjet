@@ -88,6 +88,14 @@ type SimbriefAirframesApiResponse = {
   airframes?: unknown;
 };
 
+type PrepareSimbriefFlightApiResponse = {
+  action?: "created" | "updated" | "reused";
+  message?: string;
+  status?: string;
+  flightId?: string;
+  bookingId?: string;
+};
+
 type DesktopSimbriefAirframeSummary = {
   id: string | null;
   simbriefAirframeId: string | null;
@@ -840,6 +848,67 @@ export class DesktopService {
       };
     }
 
+    return this.loadLiveDispatchData(true);
+  }
+
+  public async createFlightFromBooking(bookingId: string): Promise<FlightSummary> {
+    if (this.isMockBackend()) {
+      throw new Error(
+        "La creation de vol depuis une reservation n'est disponible qu'en mode reel.",
+      );
+    }
+
+    return this.authorizedRequestJson<FlightSummary>(
+      this.config.apiBaseUrl,
+      "/flights",
+      {
+        method: "POST",
+        body: {
+          bookingId,
+        },
+      },
+    );
+  }
+
+  public async createSession(flightId: string): Promise<SessionSummary> {
+    if (this.isMockBackend()) {
+      return this.createMockSession(flightId);
+    }
+
+    const session = await this.authorizedRequestJson<SessionSummary>(
+      this.config.acarsBaseUrl,
+      "/sessions",
+      {
+        method: "POST",
+        body: {
+          flightId,
+          clientVersion: this.config.clientVersion,
+          simulatorProvider: this.getCurrentSimulatorProvider(),
+        },
+      },
+    );
+
+    if (this.config.telemetryMode !== "mock") {
+      await this.startSessionTracking(session.id);
+    }
+
+    return session;
+  }
+
+  public async getSession(sessionId: string): Promise<SessionSummary> {
+    if (this.isMockBackend()) {
+      return cloneValue(this.ensureMockSessionState(sessionId).session);
+    }
+
+    return this.authorizedRequestJson<SessionSummary>(
+      this.config.acarsBaseUrl,
+      `/sessions/${encodeURIComponent(sessionId)}`,
+    );
+  }
+
+  private async loadLiveDispatchData(
+    allowSimbriefBootstrap: boolean,
+  ): Promise<LoadOperationsResult> {
     const [
       bookingsResult,
       flightsResult,
@@ -896,77 +965,58 @@ export class DesktopService {
       simbriefAirframes: normalizedSimbriefAirframes,
     };
 
+    const usableBookings = bookings.filter(
+      (booking) => booking.status === "RESERVED" && booking.flight === null,
+    );
+    const usableFlights = flights.filter(
+      (flight) =>
+        (flight.status === "PLANNED" || flight.status === "IN_PROGRESS") &&
+        flight.acarsSession === null,
+    );
+
+    if (
+      allowSimbriefBootstrap &&
+      normalizedLatestOfp?.status === "AVAILABLE" &&
+      usableBookings.length === 0 &&
+      usableFlights.length === 0
+    ) {
+      const simulatorSnapshot = this.getCurrentSimulatorSnapshot();
+
+      try {
+        const preparedFlight = await this.prepareFlightFromLatestOfp({
+          detectedRegistration:
+            simulatorSnapshot.aircraft?.registration ?? null,
+          detectedAircraftIcao:
+            simulatorSnapshot.aircraft?.icaoCode ??
+            normalizedLatestOfp.aircraft?.icaoCode ??
+            null,
+        });
+
+        this.log("simbrief OFP prepared an ACARS-ready flight", {
+          action: preparedFlight.action ?? null,
+          flightId: preparedFlight.flightId ?? null,
+          status: preparedFlight.status ?? null,
+        });
+
+        return this.loadLiveDispatchData(false);
+      } catch (error) {
+        this.log("simbrief OFP bootstrap skipped", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     return {
       bookings,
-      usableBookings: bookings.filter(
-        (booking) => booking.status === "RESERVED" && booking.flight === null,
-      ),
+      usableBookings,
       flights,
-      usableFlights: flights.filter(
-        (flight) =>
-          flight.status === "IN_PROGRESS" && flight.acarsSession === null,
-      ),
+      usableFlights,
       pilotProfile:
         pilotProfileResult.status === "fulfilled"
           ? this.extractPilotProfileFromApi(pilotProfileResult.value)
           : this.serializePilotProfile(this.authSession?.user.pilotProfile),
       latestOfp: normalizedLatestOfp,
     };
-  }
-
-  public async createFlightFromBooking(bookingId: string): Promise<FlightSummary> {
-    if (this.isMockBackend()) {
-      throw new Error(
-        "La creation de vol depuis une reservation n'est disponible qu'en mode reel.",
-      );
-    }
-
-    return this.authorizedRequestJson<FlightSummary>(
-      this.config.apiBaseUrl,
-      "/flights",
-      {
-        method: "POST",
-        body: {
-          bookingId,
-        },
-      },
-    );
-  }
-
-  public async createSession(flightId: string): Promise<SessionSummary> {
-    if (this.isMockBackend()) {
-      return this.createMockSession(flightId);
-    }
-
-    const session = await this.authorizedRequestJson<SessionSummary>(
-      this.config.acarsBaseUrl,
-      "/sessions",
-      {
-        method: "POST",
-        body: {
-          flightId,
-          clientVersion: this.config.clientVersion,
-          simulatorProvider: this.getCurrentSimulatorProvider(),
-        },
-      },
-    );
-
-    if (this.config.telemetryMode !== "mock") {
-      await this.startSessionTracking(session.id);
-    }
-
-    return session;
-  }
-
-  public async getSession(sessionId: string): Promise<SessionSummary> {
-    if (this.isMockBackend()) {
-      return cloneValue(this.ensureMockSessionState(sessionId).session);
-    }
-
-    return this.authorizedRequestJson<SessionSummary>(
-      this.config.acarsBaseUrl,
-      `/sessions/${encodeURIComponent(sessionId)}`,
-    );
   }
 
   public async startSessionTracking(
@@ -1387,6 +1437,20 @@ export class DesktopService {
 
     await fallbackBridge.connect();
     return fallbackBridge.sampleTelemetry();
+  }
+
+  private async prepareFlightFromLatestOfp(payload: {
+    detectedRegistration: string | null;
+    detectedAircraftIcao: string | null;
+  }): Promise<PrepareSimbriefFlightApiResponse> {
+    return this.authorizedRequestJson<PrepareSimbriefFlightApiResponse>(
+      this.config.apiBaseUrl,
+      "/pilot/simbrief/prepare-flight",
+      {
+        method: "POST",
+        body: payload,
+      },
+    );
   }
 
   private stopTracking(clearSessionId = true): void {

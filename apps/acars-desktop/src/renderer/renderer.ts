@@ -492,7 +492,7 @@ function renderBookings(bookings: BookingSummary[]): void {
 
 function renderFlights(flights: FlightSummary[]): void {
   if (flights.length === 0) {
-    flightsList.innerHTML = `<div class="empty-state">Aucun vol exploitable n'est charge.</div>`;
+    flightsList.innerHTML = `<div class="empty-state">Aucun vol exploitable n'est charge. Si un OFP SimBrief valide est disponible, ACARS preparera automatiquement un vol pret au prochain chargement.</div>`;
     return;
   }
 
@@ -622,7 +622,7 @@ function renderSession(): void {
   if (!session) {
     sessionSummary.innerHTML = `
       <div class="empty-state">
-        Aucun vol actif. Chargez une reservation, creez un vol, puis ouvrez une session ACARS.
+        Aucun vol actif. Chargez vos operations pilote: un OFP SimBrief valide peut maintenant preparer un vol ACARS meme sans reservation VA.
       </div>
     `;
     pirepResult.innerHTML = "Aucun PIREP disponible.";

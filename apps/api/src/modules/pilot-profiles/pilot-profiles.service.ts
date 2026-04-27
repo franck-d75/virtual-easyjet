@@ -7,7 +7,12 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { Prisma } from "@va/database";
+import {
+  AircraftStatus,
+  BookingStatus,
+  FlightStatus,
+  Prisma,
+} from "@va/database";
 import type { AuthenticatedUser } from "@va/shared";
 
 import {
@@ -23,6 +28,7 @@ import {
 import { decimalToNumber } from "../../common/utils/decimal.utils.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { CreateMySimbriefAirframeDto } from "./dto/create-my-simbrief-airframe.dto.js";
+import type { PrepareMySimbriefFlightDto } from "./dto/prepare-my-simbrief-flight.dto.js";
 import type { UpdateMyPilotProfileDto } from "./dto/update-my-pilot-profile.dto.js";
 
 const pilotProfileInclude = {
@@ -468,6 +474,259 @@ export class PilotProfilesService {
     };
   }
 
+  public async prepareMySimbriefFlight(
+    user: AuthenticatedUser,
+    payload: PrepareMySimbriefFlightDto,
+  ) {
+    const profile = await this.getMySimbriefContext(user);
+
+    if (!profile) {
+      throw new NotFoundException("Pilot profile not found.");
+    }
+
+    if (!profile.simbriefPilotId) {
+      throw new BadRequestException(
+        "Configurez d'abord votre SimBrief Pilot ID dans votre profil.",
+      );
+    }
+
+    const latestOfp = await this.simbriefClient.getLatestOfp(
+      profile.simbriefPilotId,
+    );
+
+    if (
+      latestOfp.status !== "AVAILABLE" ||
+      !latestOfp.plan ||
+      !latestOfp.plan.departureIcao ||
+      !latestOfp.plan.arrivalIcao
+    ) {
+      throw new BadRequestException(
+        latestOfp.detail ??
+          "Aucun OFP SimBrief exploitable n'est disponible pour preparer un vol ACARS.",
+      );
+    }
+
+    const departureIcao = latestOfp.plan.departureIcao.trim().toUpperCase();
+    const arrivalIcao = latestOfp.plan.arrivalIcao.trim().toUpperCase();
+    const normalizedFlightNumber =
+      latestOfp.plan.flightNumber?.trim().toUpperCase() ||
+      latestOfp.plan.callsign?.trim().toUpperCase() ||
+      `${departureIcao}${arrivalIcao}`;
+    const normalizedDetectedRegistration =
+      payload.detectedRegistration?.trim().toUpperCase() || null;
+    const normalizedDetectedAircraftIcao =
+      payload.detectedAircraftIcao?.trim().toUpperCase() || null;
+
+    const [departureAirport, arrivalAirport] = await Promise.all([
+      this.prisma.airport.findUnique({
+        where: { icao: departureIcao },
+        select: { id: true, icao: true },
+      }),
+      this.prisma.airport.findUnique({
+        where: { icao: arrivalIcao },
+        select: { id: true, icao: true },
+      }),
+    ]);
+
+    if (!departureAirport || !arrivalAirport) {
+      throw new BadRequestException(
+        "Le referentiel aeroports doit contenir les aeroports de depart et d'arrivee avant la preparation ACARS.",
+      );
+    }
+
+    const matchedAirframe = await this.findMatchingAirframeForLatestOfp(
+      profile.userId,
+      latestOfp.plan.aircraft?.simbriefAirframeId ?? null,
+      normalizedDetectedRegistration ??
+        latestOfp.plan.aircraft?.registration ??
+        null,
+      normalizedDetectedAircraftIcao ??
+        latestOfp.plan.aircraft?.icaoCode ??
+        null,
+    );
+
+    const selectedAircraft =
+      await this.resolveAircraftForPreparedSimbriefFlight(
+        profile.userId,
+        matchedAirframe,
+        normalizedDetectedRegistration,
+        normalizedDetectedAircraftIcao ??
+          latestOfp.plan.aircraft?.icaoCode ??
+          null,
+        latestOfp.plan.aircraft?.registration ?? null,
+      );
+
+    if (!selectedAircraft) {
+      throw new BadRequestException(
+        "Aucun appareil flotte actif ne correspond a cet OFP SimBrief. Liez d'abord l'airframe SimBrief ou creez l'appareil reel dans Admin > Flotte.",
+      );
+    }
+
+    const route = await this.upsertSimbriefRouteFromLatestOfp(
+      latestOfp,
+      departureAirport.id,
+      arrivalAirport.id,
+      departureIcao,
+      arrivalIcao,
+      normalizedFlightNumber,
+      selectedAircraft.aircraftTypeId,
+    );
+
+    const bookingNotes = this.buildPreparedSimbriefBookingNotes(
+      normalizedFlightNumber,
+      departureIcao,
+      arrivalIcao,
+      latestOfp.plan.route ?? null,
+      selectedAircraft.registration,
+    );
+
+    const preparedFlight = await this.prisma.$transaction(async (transaction) => {
+      const existingFlight = await transaction.flight.findFirst({
+        where: {
+          pilotProfileId: profile.id,
+          flightNumber: normalizedFlightNumber,
+          departureAirportId: departureAirport.id,
+          arrivalAirportId: arrivalAirport.id,
+          aircraftId: selectedAircraft.id,
+          status: {
+            in: [FlightStatus.PLANNED, FlightStatus.IN_PROGRESS],
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          bookingId: true,
+          status: true,
+        },
+      });
+
+      if (existingFlight) {
+        return {
+          action: "reused" as const,
+          flightId: existingFlight.id,
+          bookingId: existingFlight.bookingId,
+          persistedStatus: existingFlight.status,
+        };
+      }
+
+      const existingBooking = await transaction.booking.findFirst({
+        where: {
+          pilotProfileId: profile.id,
+          reservedFlightNumber: normalizedFlightNumber,
+          departureAirportId: departureAirport.id,
+          arrivalAirportId: arrivalAirport.id,
+          aircraftId: selectedAircraft.id,
+          status: {
+            in: [BookingStatus.RESERVED, BookingStatus.IN_PROGRESS],
+          },
+          notes: bookingNotes,
+        },
+        include: {
+          flight: {
+            select: {
+              id: true,
+              bookingId: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (existingBooking?.flight) {
+        return {
+          action: "reused" as const,
+          flightId: existingBooking.flight.id,
+          bookingId: existingBooking.flight.bookingId,
+          persistedStatus: existingBooking.flight.status,
+        };
+      }
+
+      const booking =
+        existingBooking ??
+        (await transaction.booking.create({
+          data: {
+            pilotProfileId: profile.id,
+            routeId: route?.id ?? null,
+            aircraftId: selectedAircraft.id,
+            departureAirportId: departureAirport.id,
+            arrivalAirportId: arrivalAirport.id,
+            reservedFlightNumber: normalizedFlightNumber,
+            bookedFor: new Date(),
+            status: BookingStatus.RESERVED,
+            notes: bookingNotes,
+          },
+          select: {
+            id: true,
+            bookedFor: true,
+          },
+        }));
+
+      if (existingBooking) {
+        await transaction.booking.update({
+          where: { id: existingBooking.id },
+          data: {
+            routeId: route?.id ?? null,
+            notes: bookingNotes,
+          },
+        });
+      }
+
+      const createdFlight = await transaction.flight.create({
+        data: {
+          bookingId: booking.id,
+          pilotProfileId: profile.id,
+          routeId: route?.id ?? null,
+          aircraftId: selectedAircraft.id,
+          departureAirportId: departureAirport.id,
+          arrivalAirportId: arrivalAirport.id,
+          flightNumber: normalizedFlightNumber,
+          status: FlightStatus.PLANNED,
+          plannedOffBlockAt: booking.bookedFor,
+        },
+        select: {
+          id: true,
+          bookingId: true,
+          status: true,
+        },
+      });
+
+      return {
+        action: existingBooking ? ("updated" as const) : ("created" as const),
+        flightId: createdFlight.id,
+        bookingId: createdFlight.bookingId,
+        persistedStatus: createdFlight.status,
+      };
+    });
+
+    return {
+      action: preparedFlight.action,
+      message:
+        preparedFlight.action === "reused"
+          ? "Le vol SimBrief etait deja exploitable dans ACARS."
+          : "Le vol SimBrief est pret pour ACARS.",
+      status: "READY" as const,
+      flightId: preparedFlight.flightId,
+      bookingId: preparedFlight.bookingId,
+      persistedStatus: preparedFlight.persistedStatus,
+      flightNumber: normalizedFlightNumber,
+      departureIcao,
+      arrivalIcao,
+      route: latestOfp.plan.route ?? null,
+      distanceNm: latestOfp.plan.distanceNm ?? null,
+      blockTimeMinutes: latestOfp.plan.blockTimeMinutes ?? null,
+      aircraft: {
+        id: selectedAircraft.id,
+        registration: selectedAircraft.registration,
+        label: selectedAircraft.label,
+        aircraftType: {
+          icaoCode: selectedAircraft.aircraftType.icaoCode,
+          name: selectedAircraft.aircraftType.name,
+        },
+      },
+    };
+  }
+
   public async updateMe(
     user: AuthenticatedUser,
     payload: UpdateMyPilotProfileDto,
@@ -780,6 +1039,166 @@ export class PilotProfilesService {
       },
       include: simbriefAirframeInclude,
     });
+  }
+
+  private async resolveAircraftForPreparedSimbriefFlight(
+    userId: string,
+    matchedAirframe: SimbriefAirframeRecord | null,
+    detectedRegistration: string | null,
+    detectedAircraftIcao: string | null,
+    latestOfpRegistration: string | null,
+  ) {
+    if (matchedAirframe?.linkedAircraft) {
+      return {
+        id: matchedAirframe.linkedAircraft.id,
+        registration: matchedAirframe.linkedAircraft.registration,
+        label: matchedAirframe.linkedAircraft.label,
+        aircraftTypeId: matchedAirframe.linkedAircraft.aircraftTypeId,
+        aircraftType: {
+          icaoCode: matchedAirframe.linkedAircraft.aircraftType.icaoCode,
+          name: matchedAirframe.linkedAircraft.aircraftType.name,
+        },
+      };
+    }
+
+    const registrationCandidates = [
+      detectedRegistration,
+      latestOfpRegistration,
+      matchedAirframe?.registration ?? null,
+    ]
+      .map((value) => value?.trim().toUpperCase() ?? null)
+      .filter((value, index, array): value is string =>
+        Boolean(value) && array.indexOf(value) === index,
+      );
+
+    if (registrationCandidates.length === 0) {
+      return null;
+    }
+
+    const effectiveIcao =
+      detectedAircraftIcao?.trim().toUpperCase() ??
+      matchedAirframe?.aircraftIcao ??
+      matchedAirframe?.linkedAircraftType?.icaoCode ??
+      null;
+
+    return this.prisma.aircraft.findFirst({
+      where: {
+        registration: {
+          in: registrationCandidates,
+        },
+        status: AircraftStatus.ACTIVE,
+        ...(effectiveIcao
+          ? {
+              aircraftType: {
+                icaoCode: effectiveIcao,
+              },
+            }
+          : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        registration: true,
+        label: true,
+        aircraftTypeId: true,
+        aircraftType: {
+          select: {
+            icaoCode: true,
+            name: true,
+          },
+        },
+      },
+    });
+  }
+
+  private async upsertSimbriefRouteFromLatestOfp(
+    latestOfp: SimbriefLatestOfpResult,
+    departureAirportId: string,
+    arrivalAirportId: string,
+    departureIcao: string,
+    arrivalIcao: string,
+    normalizedFlightNumber: string,
+    fallbackAircraftTypeId: string | null,
+  ) {
+    if (latestOfp.status !== "AVAILABLE" || !latestOfp.plan) {
+      return null;
+    }
+
+    const mappedTypeCode = this.simbriefClient.inferAircraftTypeCode(
+      latestOfp.plan.aircraft?.icaoCode,
+    );
+    const [aircraftType, departureHub, arrivalHub] = await Promise.all([
+      mappedTypeCode
+        ? this.prisma.aircraftType.findUnique({
+            where: { icaoCode: mappedTypeCode },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      this.prisma.hub.findFirst({
+        where: { airportId: departureAirportId, isActive: true },
+        select: { id: true },
+      }),
+      this.prisma.hub.findFirst({
+        where: { airportId: arrivalAirportId, isActive: true },
+        select: { id: true },
+      }),
+    ]);
+
+    const existingRoute = await this.prisma.route.findFirst({
+      where: {
+        flightNumber: normalizedFlightNumber,
+        departureAirportId,
+        arrivalAirportId,
+      },
+      include: importedRouteInclude,
+    });
+
+    const routeData = {
+      flightNumber: normalizedFlightNumber,
+      departureAirportId,
+      arrivalAirportId,
+      departureHubId: departureHub?.id ?? null,
+      arrivalHubId: arrivalHub?.id ?? null,
+      aircraftTypeId: aircraftType?.id ?? fallbackAircraftTypeId ?? null,
+      distanceNm: latestOfp.plan.distanceNm ?? null,
+      blockTimeMinutes: latestOfp.plan.blockTimeMinutes ?? null,
+      isActive: true,
+      notes: this.buildImportedRouteNotes(latestOfp.plan.route ?? null),
+    } satisfies Omit<Prisma.RouteUncheckedCreateInput, "code">;
+
+    return existingRoute
+      ? this.prisma.route.update({
+          where: { id: existingRoute.id },
+          data: routeData,
+          include: importedRouteInclude,
+        })
+      : this.prisma.route.create({
+          data: {
+            code: await this.generateImportedRouteCode(
+              normalizedFlightNumber,
+              departureIcao,
+              arrivalIcao,
+            ),
+            ...routeData,
+          },
+          include: importedRouteInclude,
+        });
+  }
+
+  private buildPreparedSimbriefBookingNotes(
+    flightNumber: string,
+    departureIcao: string,
+    arrivalIcao: string,
+    route: string | null,
+    registration: string,
+  ) {
+    const normalizedRoute = route?.trim();
+    const routeSuffix =
+      normalizedRoute && normalizedRoute.length > 0
+        ? ` Route: ${normalizedRoute}`
+        : "";
+
+    return `AUTO_SIMBRIEF_OFP ${flightNumber} ${departureIcao}-${arrivalIcao} ${registration}.${routeSuffix}`;
   }
 
   private attachLatestOfpAirframeMatch(
