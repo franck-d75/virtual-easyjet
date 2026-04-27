@@ -4,11 +4,14 @@ const path = require("node:path");
 const ATTEMPT_TIMEOUT_MS = 10_000;
 const SAMPLE_INTERVAL_MS = 3_000;
 const attemptScriptPath = path.join(__dirname, "fsuipc-attempt.cjs");
+const DISCOVERY_STRATEGIES = ["MSFS2020", "MSFS", "CURRENT_MSFS", "ANY"];
 
 let firstTelemetryLogged = false;
 let preferredSimVersion = null;
 let sampleInterval = null;
 let sampleInProgress = false;
+let lastLiveSnapshot = null;
+let lastLiveTelemetry = null;
 
 function emit(payload) {
   process.stdout.write(`${JSON.stringify(payload)}\n`);
@@ -49,17 +52,11 @@ function buildSnapshot(overrides = {}) {
 }
 
 function buildConnectionStrategies() {
-  const candidates = [
-    preferredSimVersion,
-    "CURRENT_MSFS",
-    "MSFS",
-    "MSFS2020",
-    "FSUIPC_ANY",
-    "ANY",
-    "NO_FILTER",
-  ].filter(Boolean);
+  if (preferredSimVersion) {
+    return [preferredSimVersion];
+  }
 
-  return [...new Set(candidates)];
+  return [...DISCOVERY_STRATEGIES];
 }
 
 function runAttempt(simVersion) {
@@ -132,8 +129,17 @@ async function executeSequence() {
         continue;
       }
 
+      const selectedNewVersion = preferredSimVersion !== simVersion;
       preferredSimVersion = simVersion;
       log("info", `FSUIPC connection success with simVersion=${simVersion}`);
+
+      if (selectedNewVersion) {
+        log(
+          "info",
+          `FSUIPC selected simVersion=${simVersion} for MSFS2024/FSUIPC7`,
+        );
+      }
+
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -154,6 +160,32 @@ async function sampleOnce() {
 
   try {
     const result = await executeSequence();
+    const telemetry = result.telemetry ?? lastLiveTelemetry ?? null;
+    const snapshot = buildSnapshot({
+      ...(lastLiveSnapshot ?? {}),
+      ...(result.snapshot ?? {}),
+      status:
+        result.snapshot?.aircraftDetected || telemetry
+          ? "AIRCRAFT_DETECTED"
+          : "CONNECTED",
+      telemetryMode: "fsuipc",
+      dataSource: "fsuipc",
+      message:
+        result.snapshot?.message ??
+        "FSUIPC7 connecte a MSFS2024. Telemetrie live recue.",
+      connected: true,
+      aircraftDetected: Boolean(result.snapshot?.aircraftDetected || telemetry),
+      lastSampleAt:
+        result.snapshot?.lastSampleAt ??
+        lastLiveSnapshot?.lastSampleAt ??
+        null,
+      telemetry,
+      indicatedAirspeedKts:
+        result.snapshot?.indicatedAirspeedKts ??
+        lastLiveSnapshot?.indicatedAirspeedKts ??
+        null,
+      error: null,
+    });
 
     if (result.telemetry && !firstTelemetryLogged) {
       firstTelemetryLogged = true;
@@ -162,27 +194,42 @@ async function sampleOnce() {
       });
     }
 
-    emitSnapshot(
-      buildSnapshot({
-        ...(result.snapshot ?? {}),
-        telemetryMode: "fsuipc",
-      }),
-      result.telemetry ?? null,
-    );
+    lastLiveSnapshot = snapshot;
+    lastLiveTelemetry = telemetry;
+    emitSnapshot(snapshot, telemetry);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    emitSnapshot(
-      buildSnapshot({
-        status: "UNAVAILABLE",
-        dataSource: "none",
-        message: "FSUIPC7 est indisponible. Lancez FSUIPC7 avant ACARS.",
-        connected: false,
-        aircraftDetected: false,
-        error: message,
-      }),
-      null,
-    );
+    if (lastLiveSnapshot) {
+      emitSnapshot(
+        buildSnapshot({
+          ...lastLiveSnapshot,
+          status: lastLiveSnapshot.aircraftDetected ? "AIRCRAFT_DETECTED" : "CONNECTED",
+          telemetryMode: "fsuipc",
+          dataSource: "fsuipc",
+          message:
+            "FSUIPC7 reste la source active. Derniere telemetrie conservee pendant la reconnexion.",
+          connected: true,
+          aircraftDetected: Boolean(
+            lastLiveSnapshot.aircraftDetected || lastLiveTelemetry,
+          ),
+          error: message,
+        }),
+        lastLiveTelemetry,
+      );
+    } else {
+      emitSnapshot(
+        buildSnapshot({
+          status: "UNAVAILABLE",
+          dataSource: "none",
+          message: "FSUIPC7 est indisponible. Lancez FSUIPC7 avant ACARS.",
+          connected: false,
+          aircraftDetected: false,
+          error: message,
+        }),
+        null,
+      );
+    }
   } finally {
     sampleInProgress = false;
   }

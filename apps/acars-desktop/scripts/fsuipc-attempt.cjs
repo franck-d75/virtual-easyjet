@@ -130,28 +130,20 @@ function resolveSimulatorArgument(label) {
       return fsuipc.Simulator.MSFS;
     case "MSFS2020":
       return fsuipc.Simulator.MSFS2020;
-    case "FSUIPC_ANY":
-      return fsuipc.Simulator.FSUIPC_ANY;
     case "ANY":
       return fsuipc.Simulator.ANY;
-    case "NO_FILTER":
-      return undefined;
     default:
-      return undefined;
+      return fsuipc.Simulator.MSFS2020;
   }
 }
 
 async function main() {
-  const label = process.argv[2] ?? "NO_FILTER";
+  const label = process.argv[2] ?? "MSFS2020";
   const simulatorArgument = resolveSimulatorArgument(label);
   const client = new fsuipc.FSUIPC();
 
   try {
-    if (simulatorArgument === undefined) {
-      await client.open();
-    } else {
-      await client.open(simulatorArgument);
-    }
+    await client.open(simulatorArgument);
 
     registerOffsets(client);
     const payload = await client.process();

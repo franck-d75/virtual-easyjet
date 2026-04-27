@@ -3,9 +3,10 @@ const path = require("node:path");
 
 const ATTEMPT_TIMEOUT_MS = 10_000;
 const attemptScriptPath = path.join(__dirname, "fsuipc-attempt.cjs");
+const DISCOVERY_STRATEGIES = ["MSFS2020", "MSFS", "CURRENT_MSFS", "ANY"];
 
 function buildConnectionStrategies() {
-  return ["CURRENT_MSFS", "MSFS", "MSFS2020", "FSUIPC_ANY", "ANY", "NO_FILTER"];
+  return [...DISCOVERY_STRATEGIES];
 }
 
 function runAttempt(simVersion) {
@@ -64,6 +65,7 @@ function runAttempt(simVersion) {
 
 async function main() {
   let lastError = null;
+  let selectedSimVersion = null;
 
   for (const simVersion of buildConnectionStrategies()) {
     console.log(`FSUIPC connect attempt with simVersion=${simVersion}`);
@@ -79,6 +81,10 @@ async function main() {
       }
 
       console.log(`FSUIPC connection success with simVersion=${simVersion}`);
+      selectedSimVersion = simVersion;
+      console.log(
+        `FSUIPC selected simVersion=${selectedSimVersion} for MSFS2024/FSUIPC7`,
+      );
 
       if (result.telemetry) {
         console.log("First telemetry received");
