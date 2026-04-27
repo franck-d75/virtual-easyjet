@@ -12,6 +12,7 @@ let selectedMode = null;
 let firstTelemetryLogged = false;
 let lastLiveSnapshot = null;
 let lastLiveTelemetry = null;
+let lastAircraftDebugSignature = null;
 let sampleInterval = null;
 let sampleInProgress = false;
 
@@ -35,6 +36,35 @@ function emitSnapshot(snapshot, telemetry) {
       snapshot,
       telemetry,
     },
+  });
+}
+
+function logAircraftResolution(snapshot) {
+  const aircraft = snapshot?.aircraft;
+
+  if (!aircraft) {
+    return;
+  }
+
+  const signature = JSON.stringify({
+    title: aircraft.title ?? null,
+    atcId: aircraft.atcId ?? null,
+    liveryName: aircraft.liveryName ?? null,
+    registration: aircraft.registration ?? null,
+    registrationSource: aircraft.registrationSource ?? null,
+  });
+
+  if (signature === lastAircraftDebugSignature) {
+    return;
+  }
+
+  lastAircraftDebugSignature = signature;
+  log("info", "Aircraft registration resolution", {
+    aircraftTitleRaw: aircraft.title ?? null,
+    atcIdRaw: aircraft.atcId ?? null,
+    liveryRaw: aircraft.liveryName ?? null,
+    resolvedRegistration: aircraft.registration ?? null,
+    registrationSource: aircraft.registrationSource ?? null,
   });
 }
 
@@ -120,6 +150,7 @@ async function sampleOnce() {
 
     lastLiveSnapshot = snapshot;
     lastLiveTelemetry = telemetry;
+    logAircraftResolution(snapshot);
     emitSnapshot(snapshot, telemetry);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

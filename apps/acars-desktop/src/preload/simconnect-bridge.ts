@@ -108,6 +108,31 @@ function looksLikeRegistration(value: string | null): boolean {
   return /^[A-Z]{1,2}-[A-Z0-9]{2,5}$/.test(normalizedValue) || /^JA\d{3,4}$/.test(normalizedValue);
 }
 
+function isPlaceholderAtcId(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const normalizedValue = value.trim().toUpperCase();
+  return /^JA32\d{2}$/u.test(normalizedValue) || /^JA320\d$/u.test(normalizedValue);
+}
+
+function extractRegistrationFromText(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const match = value
+    .toUpperCase()
+    .match(/\b([A-Z]{1,2}-[A-Z0-9]{2,5}|N\d{1,5}[A-Z]{0,2}|C-[FGI][A-Z]{3}|JA\d{3,4}[A-Z]?)\b/u);
+
+  if (!match?.[1] || !looksLikeRegistration(match[1])) {
+    return null;
+  }
+
+  return match[1];
+}
+
 function detectAircraftIcao(title: string | null, model: string | null): string | null {
   const haystack = `${title ?? ""} ${model ?? ""}`.toUpperCase();
 
@@ -265,6 +290,16 @@ export class SimConnectBridge {
       const model = readString(payload, "ATC MODEL");
       const icaoCode = detectAircraftIcao(aircraftTitle, model);
       const displayName = detectAircraftDisplayName(aircraftTitle, model, icaoCode);
+      const resolvedRegistration =
+        extractRegistrationFromText(aircraftTitle) ??
+        (!isPlaceholderAtcId(registration) && looksLikeRegistration(registration)
+          ? registration?.trim().toUpperCase() ?? null
+          : null);
+      const registrationSource = extractRegistrationFromText(aircraftTitle)
+        ? "title"
+        : resolvedRegistration
+          ? "atc_id"
+          : null;
       const indicatedAirspeedKts = roundInteger(
         readNumber(payload, "AIRSPEED INDICATED"),
       );
@@ -283,7 +318,10 @@ export class SimConnectBridge {
           displayName,
           title: aircraftTitle,
           icaoCode,
-          registration,
+          registration: resolvedRegistration,
+          registrationSource,
+          atcId: registration,
+          liveryName: null,
           transponder,
           model,
         },

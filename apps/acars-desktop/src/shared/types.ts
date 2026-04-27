@@ -66,11 +66,23 @@ export type SimulatorDataSource =
   | "fsuipc"
   | "none";
 
+export type AircraftRegistrationSource =
+  | "title"
+  | "livery"
+  | "aircraft_cfg"
+  | "latest_ofp"
+  | "simbrief_airframe"
+  | "atc_id"
+  | null;
+
 export interface SimulatorAircraftState {
   displayName: string | null;
   title: string | null;
   icaoCode: string | null;
   registration: string | null;
+  registrationSource: AircraftRegistrationSource;
+  atcId: string | null;
+  liveryName: string | null;
   transponder: string | null;
   model: string | null;
 }

@@ -84,6 +84,25 @@ type LatestOfpApiResponse = {
   } | null;
 };
 
+type SimbriefAirframesApiResponse = {
+  airframes?: unknown;
+};
+
+type DesktopSimbriefAirframeSummary = {
+  id: string | null;
+  simbriefAirframeId: string | null;
+  name: string | null;
+  aircraftIcao: string | null;
+  registration: string | null;
+  linkedAircraftRegistration: string | null;
+  linkedAircraftTypeIcao: string | null;
+};
+
+type TelemetryResolutionContext = {
+  latestOfp: LatestOfpSummary | null;
+  simbriefAirframes: DesktopSimbriefAirframeSummary[];
+};
+
 const DEFAULT_TRACKING_STATE: TelemetryTrackingState = {
   status: "IDLE",
   activeSessionId: null,
@@ -138,6 +157,56 @@ const AIRBORNE_PHASES = [
   "DESCENT",
   "APPROACH",
 ];
+
+const EMPTY_TELEMETRY_RESOLUTION_CONTEXT: TelemetryResolutionContext = {
+  latestOfp: null,
+  simbriefAirframes: [],
+};
+
+function normalizeOptionalString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalizedValue = value.trim();
+  return normalizedValue.length > 0 ? normalizedValue : null;
+}
+
+function normalizeAircraftIcaoCode(value: string | null | undefined): string | null {
+  const normalizedValue = normalizeOptionalString(value)?.toUpperCase() ?? null;
+  return normalizedValue && normalizedValue.length > 0 ? normalizedValue : null;
+}
+
+function looksLikeAircraftRegistration(value: string | null | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const normalizedValue = value.trim().toUpperCase();
+  return (
+    /^[A-Z]{1,2}-[A-Z0-9]{2,5}$/.test(normalizedValue) ||
+    /^N\d{1,5}[A-Z]{0,2}$/.test(normalizedValue) ||
+    /^C-[FGI][A-Z]{3}$/.test(normalizedValue) ||
+    /^JA\d{3,4}[A-Z]?$/.test(normalizedValue)
+  );
+}
+
+function isPlaceholderAtcId(value: string | null | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const normalizedValue = value.trim().toUpperCase();
+  return /^JA32\d{2}$/u.test(normalizedValue) || /^JA320\d$/u.test(normalizedValue);
+}
+
+function normalizeRegistration(value: string | null | undefined): string | null {
+  if (!looksLikeAircraftRegistration(value)) {
+    return null;
+  }
+
+  return value!.trim().toUpperCase();
+}
 
 function buildMockAuthSession(input: LoginInput): AuthSession {
   const identifier = input.identifier.trim();
@@ -586,6 +655,10 @@ export class DesktopService {
   private mockDispatchState: MockDispatchState | null = null;
   private mockSessionCounter = 1;
   private readonly simulatorUpdateListeners = new Set<SimulatorUpdateListener>();
+  private telemetryResolutionContext: TelemetryResolutionContext = structuredClone(
+    EMPTY_TELEMETRY_RESOLUTION_CONTEXT,
+  );
+  private lastAircraftResolutionSignature: string | null = null;
   private readonly fsuipcBridge = new FsuipcBridge(
     () => this.config,
     (message, details) => this.log(message, details),
@@ -656,6 +729,9 @@ export class DesktopService {
     };
 
     this.resetMockState();
+    this.telemetryResolutionContext = structuredClone(
+      EMPTY_TELEMETRY_RESOLUTION_CONTEXT,
+    );
     this.stopTracking();
 
     if (this.isMockBackend()) {
@@ -709,6 +785,9 @@ export class DesktopService {
 
     this.authSession = null;
     this.resetMockState();
+    this.telemetryResolutionContext = structuredClone(
+      EMPTY_TELEMETRY_RESOLUTION_CONTEXT,
+    );
     this.stopTracking();
 
     return cloneValue(this.buildSnapshot());
@@ -716,6 +795,9 @@ export class DesktopService {
 
   public async loadDispatchData(): Promise<LoadOperationsResult> {
     if (this.isMockBackend()) {
+      this.telemetryResolutionContext = structuredClone(
+        EMPTY_TELEMETRY_RESOLUTION_CONTEXT,
+      );
       return {
         ...buildLoadOperationsResult(this.ensureMockDispatchState()),
         pilotProfile: this.serializePilotProfile(this.authSession?.user.pilotProfile),
@@ -723,7 +805,13 @@ export class DesktopService {
       };
     }
 
-    const [bookingsResult, flightsResult, pilotProfileResult, latestOfpResult] =
+    const [
+      bookingsResult,
+      flightsResult,
+      pilotProfileResult,
+      latestOfpResult,
+      simbriefAirframesResult,
+    ] =
       await Promise.allSettled([
         this.authorizedRequestJson<BookingSummary[]>(
           this.config.apiBaseUrl,
@@ -741,6 +829,10 @@ export class DesktopService {
           this.config.apiBaseUrl,
           "/pilot-profiles/me/simbrief/latest-ofp",
         ),
+        this.authorizedRequestJson<SimbriefAirframesApiResponse>(
+          this.config.apiBaseUrl,
+          "/pilot/simbrief/airframes",
+        ),
       ]);
 
     const bookings =
@@ -754,6 +846,20 @@ export class DesktopService {
     if (flightsResult.status !== "fulfilled") {
       throw flightsResult.reason;
     }
+
+    const normalizedLatestOfp =
+      latestOfpResult.status === "fulfilled"
+        ? this.normalizeLatestOfp(latestOfpResult.value)
+        : null;
+    const normalizedSimbriefAirframes =
+      simbriefAirframesResult.status === "fulfilled"
+        ? this.normalizeSimbriefAirframes(simbriefAirframesResult.value)
+        : [];
+
+    this.telemetryResolutionContext = {
+      latestOfp: normalizedLatestOfp,
+      simbriefAirframes: normalizedSimbriefAirframes,
+    };
 
     return {
       bookings,
@@ -769,10 +875,7 @@ export class DesktopService {
         pilotProfileResult.status === "fulfilled"
           ? this.extractPilotProfileFromApi(pilotProfileResult.value)
           : this.serializePilotProfile(this.authSession?.user.pilotProfile),
-      latestOfp:
-        latestOfpResult.status === "fulfilled"
-          ? this.normalizeLatestOfp(latestOfpResult.value)
-          : null,
+      latestOfp: normalizedLatestOfp,
     };
   }
 
@@ -1127,23 +1230,27 @@ export class DesktopService {
     const primarySnapshot = this.getPrimaryTelemetryBridge()?.getSnapshot() ?? null;
     const fallbackSnapshot = this.getFallbackTelemetryBridge()?.getSnapshot() ?? null;
 
-    return this.selectTelemetrySnapshot(primarySnapshot, fallbackSnapshot);
+    return this.enrichSimulatorSnapshot(
+      this.selectTelemetrySnapshot(primarySnapshot, fallbackSnapshot),
+    );
   }
 
   private handleSimulatorUpdate(snapshot: SimulatorSnapshot): void {
+    const enrichedSnapshot = this.enrichSimulatorSnapshot(snapshot);
+
     this.log("Telemetry forwarded to renderer", {
-      dataSource: snapshot.dataSource,
-      connected: snapshot.connected,
-      aircraftDetected: snapshot.aircraftDetected,
-      lastSampleAt: snapshot.lastSampleAt,
-      altitudeFt: snapshot.telemetry?.altitudeFt ?? null,
-      groundspeedKts: snapshot.telemetry?.groundspeedKts ?? null,
-      headingDeg: snapshot.telemetry?.headingDeg ?? null,
+      dataSource: enrichedSnapshot.dataSource,
+      connected: enrichedSnapshot.connected,
+      aircraftDetected: enrichedSnapshot.aircraftDetected,
+      lastSampleAt: enrichedSnapshot.lastSampleAt,
+      altitudeFt: enrichedSnapshot.telemetry?.altitudeFt ?? null,
+      groundspeedKts: enrichedSnapshot.telemetry?.groundspeedKts ?? null,
+      headingDeg: enrichedSnapshot.telemetry?.headingDeg ?? null,
     });
 
     for (const listener of [...this.simulatorUpdateListeners]) {
       try {
-        listener(cloneValue(snapshot));
+        listener(cloneValue(enrichedSnapshot));
       } catch (error) {
         this.log("simulator update listener failed", {
           error: error instanceof Error ? error.message : String(error),
@@ -1343,6 +1450,196 @@ export class DesktopService {
     };
   }
 
+  private normalizeSimbriefAirframes(
+    payload: SimbriefAirframesApiResponse,
+  ): DesktopSimbriefAirframeSummary[] {
+    if (!payload || !Array.isArray(payload.airframes)) {
+      return [];
+    }
+
+    return payload.airframes.flatMap((rawAirframe) => {
+      if (!isRecord(rawAirframe)) {
+        return [];
+      }
+
+      const linkedAircraft = isRecord(rawAirframe.linkedAircraft)
+        ? rawAirframe.linkedAircraft
+        : null;
+      const linkedAircraftType = linkedAircraft && isRecord(linkedAircraft.aircraftType)
+        ? linkedAircraft.aircraftType
+        : null;
+
+      return [
+        {
+          id: normalizeOptionalString(rawAirframe.id),
+          simbriefAirframeId: normalizeOptionalString(rawAirframe.simbriefAirframeId),
+          name: normalizeOptionalString(rawAirframe.name),
+          aircraftIcao:
+            normalizeAircraftIcaoCode(normalizeOptionalString(rawAirframe.aircraftIcao)) ??
+            normalizeAircraftIcaoCode(
+              normalizeOptionalString(linkedAircraftType?.icaoCode),
+            ),
+          registration:
+            normalizeRegistration(normalizeOptionalString(rawAirframe.registration)) ??
+            normalizeRegistration(
+              normalizeOptionalString(linkedAircraft?.registration),
+            ),
+          linkedAircraftRegistration: normalizeRegistration(
+            normalizeOptionalString(linkedAircraft?.registration),
+          ),
+          linkedAircraftTypeIcao: normalizeAircraftIcaoCode(
+            normalizeOptionalString(linkedAircraftType?.icaoCode),
+          ),
+        },
+      ];
+    });
+  }
+
+  private resolveRegistrationFromSimbriefAirframes(
+    icaoCode: string | null,
+    latestOfpRegistration: string | null,
+  ): DesktopSimbriefAirframeSummary | null {
+    const normalizedIcao = normalizeAircraftIcaoCode(icaoCode);
+    const candidates = this.telemetryResolutionContext.simbriefAirframes.filter(
+      (airframe) =>
+        airframe.registration &&
+        (!normalizedIcao ||
+          airframe.aircraftIcao === normalizedIcao ||
+          airframe.linkedAircraftTypeIcao === normalizedIcao),
+    );
+
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    if (latestOfpRegistration) {
+      const exactLatestOfpMatch =
+        candidates.find((airframe) => airframe.registration === latestOfpRegistration) ??
+        candidates.find(
+          (airframe) => airframe.linkedAircraftRegistration === latestOfpRegistration,
+        );
+
+      if (exactLatestOfpMatch) {
+        return exactLatestOfpMatch;
+      }
+    }
+
+    if (candidates.length === 1) {
+      return candidates[0] ?? null;
+    }
+
+    const linkedCandidates = candidates.filter(
+      (airframe) => airframe.linkedAircraftRegistration !== null,
+    );
+
+    if (linkedCandidates.length === 1) {
+      return linkedCandidates[0] ?? null;
+    }
+
+    return null;
+  }
+
+  private logAircraftResolutionIfChanged(snapshot: SimulatorSnapshot): void {
+    const aircraft = snapshot.aircraft;
+
+    if (!aircraft) {
+      this.lastAircraftResolutionSignature = null;
+      return;
+    }
+
+    const signature = JSON.stringify({
+      title: aircraft.title ?? null,
+      atcId: aircraft.atcId ?? null,
+      liveryName: aircraft.liveryName ?? null,
+      registration: aircraft.registration ?? null,
+      registrationSource: aircraft.registrationSource ?? null,
+      icaoCode: aircraft.icaoCode ?? null,
+    });
+
+    if (signature === this.lastAircraftResolutionSignature) {
+      return;
+    }
+
+    this.lastAircraftResolutionSignature = signature;
+    this.log("aircraft resolution updated", {
+      aircraftTitleRaw: aircraft.title ?? null,
+      atcIdRaw: aircraft.atcId ?? null,
+      liveryRaw: aircraft.liveryName ?? null,
+      resolvedRegistration: aircraft.registration ?? null,
+      registrationSource: aircraft.registrationSource ?? null,
+      aircraftIcao: aircraft.icaoCode ?? null,
+    });
+  }
+
+  private enrichSimulatorSnapshot(snapshot: SimulatorSnapshot): SimulatorSnapshot {
+    if (!snapshot.aircraft) {
+      return cloneValue(snapshot);
+    }
+
+    const latestOfp = this.telemetryResolutionContext.latestOfp;
+    const rawAircraft = snapshot.aircraft;
+    const icaoCode =
+      normalizeAircraftIcaoCode(rawAircraft.icaoCode) ??
+      normalizeAircraftIcaoCode(latestOfp?.aircraft?.icaoCode) ??
+      null;
+    const latestOfpRegistration = normalizeRegistration(
+      latestOfp?.aircraft?.registration ?? null,
+    );
+
+    let resolvedRegistration = normalizeRegistration(rawAircraft.registration);
+    let registrationSource = rawAircraft.registrationSource ?? null;
+    let liveryName = normalizeOptionalString(rawAircraft.liveryName);
+
+    if (!resolvedRegistration && latestOfpRegistration) {
+      resolvedRegistration = latestOfpRegistration;
+      registrationSource = "latest_ofp";
+    }
+
+    if (!resolvedRegistration) {
+      const matchedAirframe = this.resolveRegistrationFromSimbriefAirframes(
+        icaoCode,
+        latestOfpRegistration,
+      );
+
+      if (matchedAirframe?.registration) {
+        resolvedRegistration = matchedAirframe.registration;
+        registrationSource = "simbrief_airframe";
+        liveryName = liveryName ?? matchedAirframe.name ?? null;
+      }
+    }
+
+    const trustedAtcId = normalizeRegistration(rawAircraft.atcId);
+
+    if (
+      !resolvedRegistration &&
+      trustedAtcId &&
+      !isPlaceholderAtcId(trustedAtcId)
+    ) {
+      resolvedRegistration = trustedAtcId;
+      registrationSource = "atc_id";
+    }
+
+    const enrichedSnapshot: SimulatorSnapshot = {
+      ...snapshot,
+      aircraft: {
+        ...rawAircraft,
+        displayName:
+          rawAircraft.displayName ??
+          rawAircraft.title ??
+          rawAircraft.model ??
+          icaoCode,
+        icaoCode,
+        registration: resolvedRegistration,
+        registrationSource,
+        atcId: normalizeOptionalString(rawAircraft.atcId),
+        liveryName,
+      },
+    };
+
+    this.logAircraftResolutionIfChanged(enrichedSnapshot);
+    return cloneValue(enrichedSnapshot);
+  }
+
   private buildSnapshot(): DesktopSnapshot {
     return {
       config: this.config,
@@ -1358,6 +1655,7 @@ export class DesktopService {
     this.mockSessionStates.clear();
     this.mockDispatchState = null;
     this.mockSessionCounter = 1;
+    this.lastAircraftResolutionSignature = null;
   }
 
   private ensureMockDispatchState(): MockDispatchState {

@@ -1,4 +1,5 @@
 const path = require("node:path");
+const { findAircraftConfigByTitle } = require("./msfs-aircraft-registry.cjs");
 
 let fsuipcModule = null;
 
@@ -85,7 +86,65 @@ function looksLikeRegistration(value) {
   }
 
   const normalized = value.trim().toUpperCase();
-  return /^[A-Z0-9-]{4,10}$/.test(normalized) && !normalized.includes(" ");
+  return (
+    /^[A-Z]{1,2}-[A-Z0-9]{2,5}$/.test(normalized) ||
+    /^N\d{1,5}[A-Z]{0,2}$/.test(normalized) ||
+    /^C-[FGI][A-Z]{3}$/.test(normalized) ||
+    /^JA\d{3,4}[A-Z]?$/.test(normalized)
+  );
+}
+
+function isPlaceholderAtcId(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const normalized = value.trim().toUpperCase();
+  return /^JA32\d{2}$/u.test(normalized) || /^JA320\d$/u.test(normalized);
+}
+
+function extractRegistrationsFromText(value) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return [];
+  }
+
+  const matches = value
+    .toUpperCase()
+    .match(/\b([A-Z]{1,2}-[A-Z0-9]{2,5}|N\d{1,5}[A-Z]{0,2}|C-[FGI][A-Z]{3}|JA\d{3,4}[A-Z]?)\b/gu);
+
+  if (!matches) {
+    return [];
+  }
+
+  return [...new Set(matches.filter(looksLikeRegistration))];
+}
+
+function chooseResolvedRegistration(options) {
+  for (const option of options) {
+    if (!option || typeof option.value !== "string") {
+      continue;
+    }
+
+    const normalizedValue = option.value.trim().toUpperCase();
+
+    if (!looksLikeRegistration(normalizedValue)) {
+      continue;
+    }
+
+    if (option.source === "atc_id" && isPlaceholderAtcId(normalizedValue)) {
+      continue;
+    }
+
+    return {
+      registration: normalizedValue,
+      registrationSource: option.source,
+    };
+  }
+
+  return {
+    registration: null,
+    registrationSource: null,
+  };
 }
 
 function normalizeAircraftIcao(title, model, registration) {
@@ -143,6 +202,11 @@ function normalizeAircraftDisplayName(title, model, icaoCode) {
   }
 
   return icaoCode;
+}
+
+function normalizeUiVariation(value) {
+  const normalizedValue = typeof value === "string" ? value.trim() : "";
+  return normalizedValue.length > 0 ? normalizedValue : null;
 }
 
 function normalizeHeadingDegrees(radians) {
@@ -310,12 +374,35 @@ async function sampleClient(client, selectedMode) {
   const payload = await client.process();
   const { telemetry, indicatedAirspeedKts } = buildTelemetrySample(payload);
   const aircraftTitle = readString(payload, "aircraftTitle");
-  const aircraftRegistration = readString(payload, "aircraftRegistration");
+  const aircraftAtcId = readString(payload, "aircraftRegistration");
   const aircraftType = readString(payload, "aircraftType");
-  const aircraftIcao = normalizeAircraftIcao(
+  const aircraftConfig = aircraftTitle
+    ? await findAircraftConfigByTitle(aircraftTitle)
+    : null;
+  const uiVariation = normalizeUiVariation(aircraftConfig?.uiVariation ?? null);
+  const explicitTitleRegistration = extractRegistrationsFromText(aircraftTitle)[0] ?? null;
+  const explicitLiveryRegistration =
+    extractRegistrationsFromText(uiVariation)[0] ??
+    extractRegistrationsFromText(aircraftConfig?.atcId ?? null)[0] ??
+    null;
+  const { registration, registrationSource } = chooseResolvedRegistration([
+    {
+      source: "title",
+      value: explicitTitleRegistration,
+    },
+    {
+      source: "livery",
+      value: explicitLiveryRegistration,
+    },
+    {
+      source: "atc_id",
+      value: aircraftAtcId,
+    },
+  ]);
+  const aircraftIcao = aircraftConfig?.icaoCode ?? normalizeAircraftIcao(
     aircraftTitle,
     aircraftType,
-    aircraftRegistration,
+    aircraftAtcId,
   );
   const aircraftDisplayName = normalizeAircraftDisplayName(
     aircraftTitle,
@@ -341,7 +428,10 @@ async function sampleClient(client, selectedMode) {
         displayName: aircraftDisplayName,
         title: aircraftTitle,
         icaoCode: aircraftIcao,
-        registration: aircraftRegistration,
+        registration,
+        registrationSource,
+        atcId: aircraftAtcId,
+        liveryName: uiVariation,
         transponder: null,
         model: aircraftType ?? aircraftTitle,
       },

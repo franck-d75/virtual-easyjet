@@ -572,8 +572,16 @@ function renderSimulator(): void {
         <span class="metric-value">${escapeHtml(simulator.aircraft?.icaoCode ?? "n/d")}</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Immatriculation</span>
+        <span class="metric-label">Immatriculation reelle</span>
         <span class="metric-value">${escapeHtml(simulator.aircraft?.registration ?? "n/d")}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">ATC ID simulateur</span>
+        <span class="metric-value">${escapeHtml(simulator.aircraft?.atcId ?? "n/d")}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Livree / variation</span>
+        <span class="metric-value">${escapeHtml(simulator.aircraft?.liveryName ?? "n/d")}</span>
       </div>
       <div class="metric">
         <span class="metric-label">Cap</span>
@@ -735,7 +743,10 @@ function applySimulatorUpdate(simulator: SimulatorSnapshot): void {
       headingDeg: simulator.telemetry.headingDeg,
       aircraftDisplayName: simulator.aircraft?.displayName ?? null,
       aircraftIcao: simulator.aircraft?.icaoCode ?? null,
+      aircraftLivery: simulator.aircraft?.liveryName ?? null,
       registration: simulator.aircraft?.registration ?? null,
+      atcId: simulator.aircraft?.atcId ?? null,
+      registrationSource: simulator.aircraft?.registrationSource ?? null,
     });
   }
 
