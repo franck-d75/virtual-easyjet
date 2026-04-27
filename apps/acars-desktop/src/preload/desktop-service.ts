@@ -208,6 +208,41 @@ function normalizeRegistration(value: string | null | undefined): string | null 
   return value!.trim().toUpperCase();
 }
 
+function extractRegistrationFromDebugText(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalizedValue = value.toUpperCase();
+  const match = normalizedValue.match(
+    /\b([A-Z]{1,2}-[A-Z0-9]{2,5}|N\d{1,5}[A-Z]{0,2}|C-[FGI][A-Z]{3}|JA\d{3,4}[A-Z]?)\b/u,
+  );
+
+  if (!match?.[1]) {
+    return null;
+  }
+
+  return normalizeRegistration(match[1]);
+}
+
+function getRegistrationSourceLabel(
+  source: string | null | undefined,
+): "FSUIPC" | "SimBrief" | "fallback" | null {
+  switch (source) {
+    case "title":
+    case "livery":
+    case "aircraft_cfg":
+      return "FSUIPC";
+    case "latest_ofp":
+    case "simbrief_airframe":
+      return "SimBrief";
+    case "atc_id":
+      return "fallback";
+    default:
+      return null;
+  }
+}
+
 function buildMockAuthSession(input: LoginInput): AuthSession {
   const identifier = input.identifier.trim();
   const username =
@@ -1539,6 +1574,43 @@ export class DesktopService {
     return null;
   }
 
+  private findSimbriefAirframeByRegistration(
+    registration: string | null,
+    icaoCode: string | null,
+  ): DesktopSimbriefAirframeSummary | null {
+    if (!registration) {
+      return null;
+    }
+
+    const normalizedRegistration = normalizeRegistration(registration);
+    const normalizedIcao = normalizeAircraftIcaoCode(icaoCode);
+
+    if (!normalizedRegistration) {
+      return null;
+    }
+
+    return (
+      this.telemetryResolutionContext.simbriefAirframes.find((airframe) => {
+        const sameRegistration =
+          airframe.registration === normalizedRegistration ||
+          airframe.linkedAircraftRegistration === normalizedRegistration;
+
+        if (!sameRegistration) {
+          return false;
+        }
+
+        if (!normalizedIcao) {
+          return true;
+        }
+
+        return (
+          airframe.aircraftIcao === normalizedIcao ||
+          airframe.linkedAircraftTypeIcao === normalizedIcao
+        );
+      }) ?? null
+    );
+  }
+
   private logAircraftResolutionIfChanged(snapshot: SimulatorSnapshot): void {
     const aircraft = snapshot.aircraft;
 
@@ -1561,12 +1633,20 @@ export class DesktopService {
     }
 
     this.lastAircraftResolutionSignature = signature;
+    const parsedRegistration =
+      extractRegistrationFromDebugText(aircraft.title) ??
+      extractRegistrationFromDebugText(aircraft.liveryName) ??
+      null;
     this.log("aircraft resolution updated", {
       aircraftTitleRaw: aircraft.title ?? null,
       atcIdRaw: aircraft.atcId ?? null,
       liveryRaw: aircraft.liveryName ?? null,
+      parsedRegistration,
       resolvedRegistration: aircraft.registration ?? null,
-      registrationSource: aircraft.registrationSource ?? null,
+      registrationSource:
+        getRegistrationSourceLabel(aircraft.registrationSource) ??
+        aircraft.registrationSource ??
+        null,
       aircraftIcao: aircraft.icaoCode ?? null,
     });
   }
@@ -1578,7 +1658,7 @@ export class DesktopService {
 
     const latestOfp = this.telemetryResolutionContext.latestOfp;
     const rawAircraft = snapshot.aircraft;
-    const icaoCode =
+    let icaoCode =
       normalizeAircraftIcaoCode(rawAircraft.icaoCode) ??
       normalizeAircraftIcaoCode(latestOfp?.aircraft?.icaoCode) ??
       null;
@@ -1589,6 +1669,19 @@ export class DesktopService {
     let resolvedRegistration = normalizeRegistration(rawAircraft.registration);
     let registrationSource = rawAircraft.registrationSource ?? null;
     let liveryName = normalizeOptionalString(rawAircraft.liveryName);
+    let matchedAirframe = this.findSimbriefAirframeByRegistration(
+      resolvedRegistration,
+      icaoCode,
+    );
+
+    if (matchedAirframe) {
+      icaoCode =
+        icaoCode ??
+        matchedAirframe.aircraftIcao ??
+        matchedAirframe.linkedAircraftTypeIcao ??
+        null;
+      liveryName = liveryName ?? matchedAirframe.name ?? null;
+    }
 
     if (!resolvedRegistration && latestOfpRegistration) {
       resolvedRegistration = latestOfpRegistration;
@@ -1596,7 +1689,7 @@ export class DesktopService {
     }
 
     if (!resolvedRegistration) {
-      const matchedAirframe = this.resolveRegistrationFromSimbriefAirframes(
+      matchedAirframe = this.resolveRegistrationFromSimbriefAirframes(
         icaoCode,
         latestOfpRegistration,
       );
@@ -1605,6 +1698,11 @@ export class DesktopService {
         resolvedRegistration = matchedAirframe.registration;
         registrationSource = "simbrief_airframe";
         liveryName = liveryName ?? matchedAirframe.name ?? null;
+        icaoCode =
+          icaoCode ??
+          matchedAirframe.aircraftIcao ??
+          matchedAirframe.linkedAircraftTypeIcao ??
+          null;
       }
     }
 

@@ -59,12 +59,30 @@ function logAircraftResolution(snapshot) {
   }
 
   lastAircraftDebugSignature = signature;
+  const parsedRegistration =
+    aircraft.registrationSource === "title" ||
+    aircraft.registrationSource === "livery" ||
+    aircraft.registrationSource === "aircraft_cfg"
+      ? aircraft.registration ?? null
+      : null;
+  const registrationSource =
+    aircraft.registrationSource === "title" ||
+    aircraft.registrationSource === "livery" ||
+    aircraft.registrationSource === "aircraft_cfg"
+      ? "FSUIPC"
+      : aircraft.registrationSource === "latest_ofp" ||
+          aircraft.registrationSource === "simbrief_airframe"
+        ? "SimBrief"
+        : aircraft.registrationSource === "atc_id"
+          ? "fallback"
+          : null;
   log("info", "Aircraft registration resolution", {
     aircraftTitleRaw: aircraft.title ?? null,
     atcIdRaw: aircraft.atcId ?? null,
     liveryRaw: aircraft.liveryName ?? null,
+    parsedRegistration,
     resolvedRegistration: aircraft.registration ?? null,
-    registrationSource: aircraft.registrationSource ?? null,
+    registrationSource,
   });
 }
 

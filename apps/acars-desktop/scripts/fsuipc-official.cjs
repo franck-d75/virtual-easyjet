@@ -381,10 +381,9 @@ async function sampleClient(client, selectedMode) {
     : null;
   const uiVariation = normalizeUiVariation(aircraftConfig?.uiVariation ?? null);
   const explicitTitleRegistration = extractRegistrationsFromText(aircraftTitle)[0] ?? null;
-  const explicitLiveryRegistration =
-    extractRegistrationsFromText(uiVariation)[0] ??
-    extractRegistrationsFromText(aircraftConfig?.atcId ?? null)[0] ??
-    null;
+  const explicitLiveryRegistration = extractRegistrationsFromText(uiVariation)[0] ?? null;
+  const explicitAircraftConfigRegistration =
+    extractRegistrationsFromText(aircraftConfig?.atcId ?? null)[0] ?? null;
   const { registration, registrationSource } = chooseResolvedRegistration([
     {
       source: "title",
@@ -393,6 +392,10 @@ async function sampleClient(client, selectedMode) {
     {
       source: "livery",
       value: explicitLiveryRegistration,
+    },
+    {
+      source: "aircraft_cfg",
+      value: explicitAircraftConfigRegistration,
     },
     {
       source: "atc_id",
