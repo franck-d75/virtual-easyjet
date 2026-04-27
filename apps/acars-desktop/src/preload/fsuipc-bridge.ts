@@ -30,9 +30,11 @@ type WorkerLogLine = {
 };
 
 type WorkerSnapshotLine = {
-  type: "snapshot";
-  snapshot: SimulatorSnapshot;
-  telemetry: TelemetryInput | null;
+  type: "telemetry";
+  data: {
+    snapshot: SimulatorSnapshot;
+    telemetry: TelemetryInput | null;
+  };
 };
 
 type SnapshotWaiter = {
@@ -56,7 +58,7 @@ function isWorkerSnapshotLine(value: unknown): value is WorkerSnapshotLine {
     typeof value === "object" &&
     value !== null &&
     "type" in value &&
-    (value as { type?: unknown }).type === "snapshot"
+    (value as { type?: unknown }).type === "telemetry"
   );
 }
 
@@ -83,6 +85,7 @@ export class FsuipcBridge {
   public constructor(
     private readonly getConfig: () => DesktopConfig,
     private readonly log: (message: string, details?: Record<string, unknown>) => void,
+    private readonly onSnapshotUpdate?: (snapshot: SimulatorSnapshot) => void,
   ) {}
 
   public getSnapshot(): SimulatorSnapshot {
@@ -301,11 +304,26 @@ export class FsuipcBridge {
 
         if (isWorkerSnapshotLine(parsedLine)) {
           this.snapshot = structuredClone({
-            ...parsedLine.snapshot,
+            ...parsedLine.data.snapshot,
             telemetryMode: this.getConfig().telemetryMode,
           });
 
+          this.log("Telemetry parsed", {
+            dataSource: this.snapshot.dataSource,
+            connected: this.snapshot.connected,
+            aircraftDetected: this.snapshot.aircraftDetected,
+            lastSampleAt: this.snapshot.lastSampleAt,
+            altitudeFt: parsedLine.data.telemetry?.altitudeFt ?? null,
+            groundspeedKts: parsedLine.data.telemetry?.groundspeedKts ?? null,
+            headingDeg: parsedLine.data.telemetry?.headingDeg ?? null,
+          });
+
           this.resolveSnapshotWaiters(this.snapshot);
+          this.onSnapshotUpdate?.(structuredClone(this.snapshot));
+          this.log("Telemetry forwarded to renderer", {
+            dataSource: this.snapshot.dataSource,
+            lastSampleAt: this.snapshot.lastSampleAt,
+          });
           continue;
         }
 

@@ -29,9 +29,11 @@ function log(level, message, details) {
 
 function emitSnapshot(snapshot, telemetry) {
   emit({
-    type: "snapshot",
-    snapshot,
-    telemetry,
+    type: "telemetry",
+    data: {
+      snapshot,
+      telemetry,
+    },
   });
 }
 

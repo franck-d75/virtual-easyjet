@@ -22,6 +22,11 @@ try {
     getSnapshot: () => ipcRenderer.invoke("acarsDesktop:getSnapshot"),
     getSimulatorSnapshot: () =>
       ipcRenderer.invoke("acarsDesktop:getSimulatorSnapshot"),
+    onSimulatorUpdate: (callback: (snapshot: unknown) => void) => {
+      ipcRenderer.on("acarsDesktop:simulator-update", (_event, snapshot) => {
+        callback(snapshot);
+      });
+    },
     login: (input: unknown) => ipcRenderer.invoke("acarsDesktop:login", input),
     logout: () => ipcRenderer.invoke("acarsDesktop:logout"),
     loadDispatchData: () => ipcRenderer.invoke("acarsDesktop:loadDispatchData"),

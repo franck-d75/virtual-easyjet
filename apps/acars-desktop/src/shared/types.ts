@@ -299,6 +299,7 @@ export interface MockResetResult {
 export interface DesktopBridge {
   getSnapshot: () => Promise<DesktopSnapshot>;
   getSimulatorSnapshot: () => Promise<SimulatorSnapshot>;
+  onSimulatorUpdate: (callback: (snapshot: SimulatorSnapshot) => void) => void;
   login: (input: LoginInput) => Promise<DesktopSnapshot>;
   logout: () => Promise<DesktopSnapshot>;
   loadDispatchData: () => Promise<LoadOperationsResult>;

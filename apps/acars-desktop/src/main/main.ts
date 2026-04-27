@@ -6,6 +6,7 @@ import { DesktopService } from "../preload/desktop-service.js";
 
 const desktopService = new DesktopService();
 let bridgeHandlersRegistered = false;
+let simulatorBroadcastRegistered = false;
 
 function registerDesktopBridgeHandlers(): void {
   if (bridgeHandlersRegistered) {
@@ -178,6 +179,15 @@ function createWindow(): void {
 app.whenReady().then(() => {
   registerDesktopBridgeHandlers();
   createWindow();
+
+  if (!simulatorBroadcastRegistered) {
+    desktopService.subscribeSimulatorUpdates((snapshot) => {
+      for (const windowInstance of BrowserWindow.getAllWindows()) {
+        windowInstance.webContents.send("acarsDesktop:simulator-update", snapshot);
+      }
+    });
+    simulatorBroadcastRegistered = true;
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

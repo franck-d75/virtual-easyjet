@@ -705,27 +705,34 @@ function updateActionState(): void {
   });
 }
 
+function applySimulatorUpdate(simulator: SimulatorSnapshot): void {
+  state.simulator = simulator;
+
+  if (
+    simulator.telemetry &&
+    simulator.lastSampleAt &&
+    simulator.lastSampleAt !== lastRendererTelemetryTimestamp
+  ) {
+    lastRendererTelemetryTimestamp = simulator.lastSampleAt;
+    console.info("[renderer] Renderer received telemetry", {
+      dataSource: simulator.dataSource,
+      lastSampleAt: simulator.lastSampleAt,
+      altitudeFt: simulator.telemetry.altitudeFt,
+      groundspeedKts: simulator.telemetry.groundspeedKts,
+      headingDeg: simulator.telemetry.headingDeg,
+      registration: simulator.aircraft?.registration ?? null,
+    });
+  }
+
+  renderSnapshot();
+  renderSimulator();
+}
+
 async function refreshRuntimeState(): Promise<void> {
   const bridge = getDesktopBridge();
   state.snapshot = await bridge.getSnapshot();
-  state.simulator = await bridge.getSimulatorSnapshot();
+  applySimulatorUpdate(await bridge.getSimulatorSnapshot());
   state.tracking = await bridge.getTrackingState();
-
-  if (
-    state.simulator?.telemetry &&
-    state.simulator.lastSampleAt &&
-    state.simulator.lastSampleAt !== lastRendererTelemetryTimestamp
-  ) {
-    lastRendererTelemetryTimestamp = state.simulator.lastSampleAt;
-    console.info("[renderer] Renderer received telemetry", {
-      dataSource: state.simulator.dataSource,
-      lastSampleAt: state.simulator.lastSampleAt,
-      altitudeFt: state.simulator.telemetry.altitudeFt,
-      groundspeedKts: state.simulator.telemetry.groundspeedKts,
-      headingDeg: state.simulator.telemetry.headingDeg,
-      registration: state.simulator.aircraft?.registration ?? null,
-    });
-  }
 
   const sessionId =
     state.tracking.activeSessionId ?? state.activeSession?.id ?? null;
@@ -738,8 +745,6 @@ async function refreshRuntimeState(): Promise<void> {
     }
   }
 
-  renderSnapshot();
-  renderSimulator();
   renderSession();
 }
 
@@ -950,6 +955,9 @@ async function bootstrap(): Promise<void> {
   applySnapshotDefaults(null);
   restoreLoginPreferences();
   bindEvents();
+  getDesktopBridge().onSimulatorUpdate((simulator) => {
+    applySimulatorUpdate(simulator);
+  });
   await refreshRuntimeState();
   renderOperations();
   updateActionState();

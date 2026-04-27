@@ -36,6 +36,8 @@ type LiveTelemetryBridge = {
   sampleTelemetry: () => Promise<TelemetryInput | null>;
 };
 
+type SimulatorUpdateListener = (snapshot: SimulatorSnapshot) => void;
+
 type RequestInitWithJson = {
   method?: "GET" | "POST";
   headers?: Record<string, string>;
@@ -583,9 +585,11 @@ export class DesktopService {
   private readonly mockSessionStates = new Map<string, MockSessionState>();
   private mockDispatchState: MockDispatchState | null = null;
   private mockSessionCounter = 1;
+  private readonly simulatorUpdateListeners = new Set<SimulatorUpdateListener>();
   private readonly fsuipcBridge = new FsuipcBridge(
     () => this.config,
     (message, details) => this.log(message, details),
+    (snapshot) => this.handleSimulatorUpdate(snapshot),
   );
   private readonly simConnectBridge = new SimConnectBridge(
     () => this.config,
@@ -612,6 +616,14 @@ export class DesktopService {
   public async getSnapshot(): Promise<DesktopSnapshot> {
     this.startTelemetryWarmup();
     return cloneValue(this.buildSnapshot());
+  }
+
+  public subscribeSimulatorUpdates(listener: SimulatorUpdateListener): () => void {
+    this.simulatorUpdateListeners.add(listener);
+
+    return () => {
+      this.simulatorUpdateListeners.delete(listener);
+    };
   }
 
   public async getSimulatorSnapshot(): Promise<SimulatorSnapshot> {
@@ -1116,6 +1128,28 @@ export class DesktopService {
     const fallbackSnapshot = this.getFallbackTelemetryBridge()?.getSnapshot() ?? null;
 
     return this.selectTelemetrySnapshot(primarySnapshot, fallbackSnapshot);
+  }
+
+  private handleSimulatorUpdate(snapshot: SimulatorSnapshot): void {
+    this.log("Telemetry forwarded to renderer", {
+      dataSource: snapshot.dataSource,
+      connected: snapshot.connected,
+      aircraftDetected: snapshot.aircraftDetected,
+      lastSampleAt: snapshot.lastSampleAt,
+      altitudeFt: snapshot.telemetry?.altitudeFt ?? null,
+      groundspeedKts: snapshot.telemetry?.groundspeedKts ?? null,
+      headingDeg: snapshot.telemetry?.headingDeg ?? null,
+    });
+
+    for (const listener of [...this.simulatorUpdateListeners]) {
+      try {
+        listener(cloneValue(snapshot));
+      } catch (error) {
+        this.log("simulator update listener failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   private getCurrentSimulatorProvider(): string {
