@@ -48,7 +48,7 @@ function logAircraftResolution(snapshot) {
 
   const signature = JSON.stringify({
     title: aircraft.title ?? null,
-    atcId: aircraft.atcId ?? null,
+    rawAtcId: aircraft.rawAtcId ?? null,
     liveryName: aircraft.liveryName ?? null,
     registration: aircraft.registration ?? null,
     registrationSource: aircraft.registrationSource ?? null,
@@ -78,7 +78,6 @@ function logAircraftResolution(snapshot) {
           : null;
   log("info", "Aircraft registration resolution", {
     aircraftTitleRaw: aircraft.title ?? null,
-    atcIdRaw: aircraft.atcId ?? null,
     liveryRaw: aircraft.liveryName ?? null,
     parsedRegistration,
     resolvedRegistration: aircraft.registration ?? null,

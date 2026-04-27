@@ -576,7 +576,7 @@ function renderSimulator(): void {
         <span class="metric-value">${escapeHtml(simulator.aircraft?.registration ?? "n/d")}</span>
       </div>
       <div class="metric">
-        <span class="metric-label">ATC ID simulateur (debug)</span>
+        <span class="metric-label">ATC ID</span>
         <span class="metric-value">${escapeHtml(simulator.aircraft?.atcId ?? "n/d")}</span>
       </div>
       <div class="metric">

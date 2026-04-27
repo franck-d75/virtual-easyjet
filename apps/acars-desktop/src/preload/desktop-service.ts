@@ -1621,7 +1621,7 @@ export class DesktopService {
 
     const signature = JSON.stringify({
       title: aircraft.title ?? null,
-      atcId: aircraft.atcId ?? null,
+      rawAtcId: aircraft.rawAtcId ?? null,
       liveryName: aircraft.liveryName ?? null,
       registration: aircraft.registration ?? null,
       registrationSource: aircraft.registrationSource ?? null,
@@ -1639,10 +1639,9 @@ export class DesktopService {
       null;
     this.log("aircraft resolution updated", {
       aircraftTitleRaw: aircraft.title ?? null,
-      atcIdRaw: aircraft.atcId ?? null,
       liveryRaw: aircraft.liveryName ?? null,
       parsedRegistration,
-      resolvedRegistration: aircraft.registration ?? null,
+      resolvedRegistration: aircraft.registration ?? aircraft.atcId ?? null,
       registrationSource:
         getRegistrationSourceLabel(aircraft.registrationSource) ??
         aircraft.registrationSource ??
@@ -1706,7 +1705,7 @@ export class DesktopService {
       }
     }
 
-    const trustedAtcId = normalizeRegistration(rawAircraft.atcId);
+    const trustedAtcId = normalizeRegistration(rawAircraft.rawAtcId);
 
     if (
       !resolvedRegistration &&
@@ -1729,7 +1728,8 @@ export class DesktopService {
         icaoCode,
         registration: resolvedRegistration,
         registrationSource,
-        atcId: normalizeOptionalString(rawAircraft.atcId),
+        atcId: resolvedRegistration,
+        rawAtcId: normalizeOptionalString(rawAircraft.rawAtcId),
         liveryName,
       },
     };
