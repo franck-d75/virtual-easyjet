@@ -2,19 +2,33 @@ const { fork } = require("node:child_process");
 const path = require("node:path");
 
 const ATTEMPT_TIMEOUT_MS = 10_000;
+const SAMPLE_INTERVAL_MS = 3_000;
 const attemptScriptPath = path.join(__dirname, "fsuipc-attempt.cjs");
 
 let firstTelemetryLogged = false;
+let preferredSimVersion = null;
+let sampleInterval = null;
+let sampleInProgress = false;
+
+function emit(payload) {
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
 
 function log(level, message, details) {
-  if (typeof process.send === "function") {
-    process.send({
-      type: "log",
-      level,
-      message,
-      details,
-    });
-  }
+  emit({
+    type: "log",
+    level,
+    message,
+    details,
+  });
+}
+
+function emitSnapshot(snapshot, telemetry) {
+  emit({
+    type: "snapshot",
+    snapshot,
+    telemetry,
+  });
 }
 
 function buildSnapshot(overrides = {}) {
@@ -35,7 +49,17 @@ function buildSnapshot(overrides = {}) {
 }
 
 function buildConnectionStrategies() {
-  return ["CURRENT_MSFS", "MSFS", "MSFS2020", "FSUIPC_ANY", "ANY", "NO_FILTER"];
+  const candidates = [
+    preferredSimVersion,
+    "CURRENT_MSFS",
+    "MSFS",
+    "MSFS2020",
+    "FSUIPC_ANY",
+    "ANY",
+    "NO_FILTER",
+  ].filter(Boolean);
+
+  return [...new Set(candidates)];
 }
 
 function runAttempt(simVersion) {
@@ -108,6 +132,7 @@ async function executeSequence() {
         continue;
       }
 
+      preferredSimVersion = simVersion;
       log("info", `FSUIPC connection success with simVersion=${simVersion}`);
       return result;
     } catch (error) {
@@ -120,7 +145,13 @@ async function executeSequence() {
   throw lastError ?? new Error("FSUIPC connection failed.");
 }
 
-async function ensureConnected() {
+async function sampleOnce() {
+  if (sampleInProgress) {
+    return;
+  }
+
+  sampleInProgress = true;
+
   try {
     const result = await executeSequence();
 
@@ -131,18 +162,18 @@ async function ensureConnected() {
       });
     }
 
-    return {
-      snapshot: buildSnapshot({
+    emitSnapshot(
+      buildSnapshot({
         ...(result.snapshot ?? {}),
         telemetryMode: "fsuipc",
       }),
-      telemetry: result.telemetry ?? null,
-    };
+      result.telemetry ?? null,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    return {
-      snapshot: buildSnapshot({
+    emitSnapshot(
+      buildSnapshot({
         status: "UNAVAILABLE",
         dataSource: "none",
         message: "FSUIPC7 est indisponible. Lancez FSUIPC7 avant ACARS.",
@@ -150,40 +181,28 @@ async function ensureConnected() {
         aircraftDetected: false,
         error: message,
       }),
-      telemetry: null,
-    };
+      null,
+    );
+  } finally {
+    sampleInProgress = false;
   }
 }
 
-async function handleRequest(request) {
-  if (!request || typeof request !== "object") {
-    return;
-  }
-
-  if (request.type === "connect" || request.type === "sample") {
-    const result = await ensureConnected();
-    process.send?.({
-      type: "response",
-      id: request.id,
-      ok: true,
-      snapshot: result.snapshot,
-      telemetry: request.type === "sample" ? result.telemetry : null,
-    });
-  }
+async function bootstrap() {
+  log("info", "FSUIPC worker started");
+  await sampleOnce();
+  sampleInterval = setInterval(() => {
+    void sampleOnce();
+  }, SAMPLE_INTERVAL_MS);
 }
 
-process.on("message", (request) => {
-  void handleRequest(request).catch((error) => {
-    const message = error instanceof Error ? error.message : String(error);
-    log("error", `FSUIPC error: ${message}`);
+void bootstrap();
 
-    if (request && typeof request === "object" && "id" in request) {
-      process.send?.({
-        type: "response",
-        id: request.id,
-        ok: false,
-        error: message,
-      });
-    }
-  });
+process.on("SIGTERM", () => {
+  if (sampleInterval) {
+    clearInterval(sampleInterval);
+    sampleInterval = null;
+  }
+
+  process.exit(0);
 });

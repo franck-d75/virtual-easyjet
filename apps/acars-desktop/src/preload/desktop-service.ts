@@ -615,7 +615,19 @@ export class DesktopService {
 
   public async getSimulatorSnapshot(): Promise<SimulatorSnapshot> {
     await this.refreshTelemetrySnapshot();
-    return this.getCurrentSimulatorSnapshot();
+    const snapshot = this.getCurrentSimulatorSnapshot();
+
+    if (snapshot.telemetry) {
+      this.log("Telemetry forwarded to renderer", {
+        dataSource: snapshot.dataSource,
+        capturedAt: snapshot.telemetry.capturedAt ?? null,
+        altitudeFt: snapshot.telemetry.altitudeFt,
+        groundspeedKts: snapshot.telemetry.groundspeedKts,
+        headingDeg: snapshot.telemetry.headingDeg,
+      });
+    }
+
+    return snapshot;
   }
 
   public async login(input: LoginInput): Promise<DesktopSnapshot> {

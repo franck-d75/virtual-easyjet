@@ -48,6 +48,8 @@ const state: UiState = {
   logs: [],
 };
 
+let lastRendererTelemetryTimestamp: string | null = null;
+
 const loginForm = requireElement<HTMLFormElement>("login-form");
 const backendModeInput = requireElement<HTMLSelectElement>("backend-mode");
 const apiBaseUrlInput = requireElement<HTMLInputElement>("api-base-url");
@@ -708,6 +710,22 @@ async function refreshRuntimeState(): Promise<void> {
   state.snapshot = await bridge.getSnapshot();
   state.simulator = await bridge.getSimulatorSnapshot();
   state.tracking = await bridge.getTrackingState();
+
+  if (
+    state.simulator?.telemetry &&
+    state.simulator.lastSampleAt &&
+    state.simulator.lastSampleAt !== lastRendererTelemetryTimestamp
+  ) {
+    lastRendererTelemetryTimestamp = state.simulator.lastSampleAt;
+    console.info("[renderer] Renderer received telemetry", {
+      dataSource: state.simulator.dataSource,
+      lastSampleAt: state.simulator.lastSampleAt,
+      altitudeFt: state.simulator.telemetry.altitudeFt,
+      groundspeedKts: state.simulator.telemetry.groundspeedKts,
+      headingDeg: state.simulator.telemetry.headingDeg,
+      registration: state.simulator.aircraft?.registration ?? null,
+    });
+  }
 
   const sessionId =
     state.tracking.activeSessionId ?? state.activeSession?.id ?? null;

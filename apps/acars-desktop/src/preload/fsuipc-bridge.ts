@@ -1,11 +1,11 @@
 import { existsSync } from "node:fs";
-import { fork, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import type { DesktopConfig, SimulatorSnapshot, TelemetryInput } from "../shared/types.js";
 
 const REQUEST_TIMEOUT_MS = 8_000;
-const CONNECT_RETRY_INTERVAL_MS = 5_000;
+const STALE_TELEMETRY_MS = 6_500;
 
 const DEFAULT_SIMULATOR_SNAPSHOT: SimulatorSnapshot = {
   status: "UNAVAILABLE",
@@ -21,36 +21,27 @@ const DEFAULT_SIMULATOR_SNAPSHOT: SimulatorSnapshot = {
   error: null,
 };
 
-type WorkerRequestType = "connect" | "sample";
-
-type WorkerRequest = {
-  id: number;
-  type: WorkerRequestType;
-};
-
-type WorkerLogMessage = {
+type WorkerLogLine = {
   type: "log";
   level: "info" | "error";
   message: string;
   details?: Record<string, unknown>;
 };
 
-type WorkerResponse = {
-  type: "response";
-  id: number;
-  ok: boolean;
-  snapshot?: SimulatorSnapshot;
-  telemetry?: TelemetryInput | null;
-  error?: string;
+type WorkerSnapshotLine = {
+  type: "snapshot";
+  snapshot: SimulatorSnapshot;
+  telemetry: TelemetryInput | null;
 };
 
-type PendingRequest = {
+type SnapshotWaiter = {
   reject: (reason?: unknown) => void;
-  resolve: (value: WorkerResponse) => void;
+  resolve: (value: SimulatorSnapshot) => void;
   timeout: ReturnType<typeof setTimeout>;
+  telemetryOnly: boolean;
 };
 
-function isWorkerLogMessage(value: unknown): value is WorkerLogMessage {
+function isWorkerLogLine(value: unknown): value is WorkerLogLine {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -59,22 +50,34 @@ function isWorkerLogMessage(value: unknown): value is WorkerLogMessage {
   );
 }
 
-function isWorkerResponse(value: unknown): value is WorkerResponse {
+function isWorkerSnapshotLine(value: unknown): value is WorkerSnapshotLine {
   return (
     typeof value === "object" &&
     value !== null &&
     "type" in value &&
-    (value as { type?: unknown }).type === "response"
+    (value as { type?: unknown }).type === "snapshot"
   );
+}
+
+function isFreshTimestamp(value: string | null | undefined, maxAgeMs: number): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const timestamp = Date.parse(value);
+
+  if (!Number.isFinite(timestamp)) {
+    return false;
+  }
+
+  return Date.now() - timestamp <= maxAgeMs;
 }
 
 export class FsuipcBridge {
   private worker: ChildProcess | null = null;
-  private requestIdCounter = 1;
-  private lastConnectAttemptAt = 0;
-  private firstTelemetryLogged = false;
+  private stdoutBuffer = "";
   private snapshot: SimulatorSnapshot = structuredClone(DEFAULT_SIMULATOR_SNAPSHOT);
-  private readonly pendingRequests = new Map<number, PendingRequest>();
+  private readonly snapshotWaiters = new Set<SnapshotWaiter>();
 
   public constructor(
     private readonly getConfig: () => DesktopConfig,
@@ -89,110 +92,54 @@ export class FsuipcBridge {
   }
 
   public async connect(): Promise<SimulatorSnapshot> {
+    this.ensureWorker();
+
     if (
-      Date.now() - this.lastConnectAttemptAt < CONNECT_RETRY_INTERVAL_MS &&
-      this.snapshot.status === "UNAVAILABLE"
+      this.snapshot.connected ||
+      this.snapshot.aircraftDetected ||
+      isFreshTimestamp(this.snapshot.lastSampleAt, REQUEST_TIMEOUT_MS)
     ) {
       return this.getSnapshot();
     }
 
-    this.lastConnectAttemptAt = Date.now();
-    this.snapshot = {
-      ...this.snapshot,
-      status: "CONNECTING",
-      telemetryMode: this.getConfig().telemetryMode,
-      dataSource: "none",
-      message: "Connexion a FSUIPC7 en cours...",
-      connected: false,
-      aircraftDetected: false,
-      error: null,
-    };
-
-    try {
-      const response = await this.sendRequest("connect");
-      this.applyWorkerResponse(response);
-    } catch (error) {
-      this.snapshot = {
-        ...this.snapshot,
-        status: "UNAVAILABLE",
-        telemetryMode: this.getConfig().telemetryMode,
-        dataSource: "none",
-        message: "FSUIPC7 est indisponible. Lancez FSUIPC7 avant ACARS.",
-        connected: false,
-        aircraftDetected: false,
-        error: error instanceof Error ? error.message : "Connexion FSUIPC7 impossible.",
-      };
-    }
-
-    return this.getSnapshot();
+    return this.waitForSnapshot(false);
   }
 
   public async sampleTelemetry(): Promise<TelemetryInput | null> {
-    try {
-      const response = await this.sendRequest("sample");
-      this.applyWorkerResponse(response);
+    this.ensureWorker();
 
-      if (response.telemetry && !this.firstTelemetryLogged) {
-        this.firstTelemetryLogged = true;
-        this.log("fsuipc first telemetry received", {
-          capturedAt: response.telemetry.capturedAt ?? null,
-        });
-      }
-
-      return response.telemetry ?? null;
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Lecture FSUIPC7 impossible.";
-
-      this.snapshot = {
-        ...this.snapshot,
-        status: "ERROR",
-        telemetryMode: this.getConfig().telemetryMode,
-        dataSource: "none",
-        message: "La lecture de la telemetrie FSUIPC7 a echoue.",
-        connected: false,
-        aircraftDetected: false,
-        error: message,
-      };
-      this.log("fsuipc error", {
-        error: message,
-      });
-      this.disposeWorker();
-
-      return null;
+    if (
+      this.snapshot.telemetry &&
+      isFreshTimestamp(this.snapshot.lastSampleAt, STALE_TELEMETRY_MS)
+    ) {
+      return structuredClone(this.snapshot.telemetry);
     }
+
+    const nextSnapshot = await this.waitForSnapshot(true);
+    return nextSnapshot.telemetry ? structuredClone(nextSnapshot.telemetry) : null;
   }
 
-  private applyWorkerResponse(response: WorkerResponse): void {
-    this.snapshot = structuredClone({
-      ...(response.snapshot ?? DEFAULT_SIMULATOR_SNAPSHOT),
-      telemetryMode: this.getConfig().telemetryMode,
-    });
-  }
-
-  private sendRequest(type: WorkerRequestType): Promise<WorkerResponse> {
-    const worker = this.ensureWorker();
-    const id = this.requestIdCounter;
-    this.requestIdCounter += 1;
-
-    return new Promise<WorkerResponse>((resolve, reject) => {
+  private waitForSnapshot(telemetryOnly: boolean): Promise<SimulatorSnapshot> {
+    return new Promise<SimulatorSnapshot>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        reject(new Error(`FSUIPC ${type} timed out after ${REQUEST_TIMEOUT_MS} ms.`));
+        this.snapshotWaiters.delete(waiter);
+        reject(
+          new Error(
+            telemetryOnly
+              ? `FSUIPC sample timed out after ${REQUEST_TIMEOUT_MS} ms.`
+              : `FSUIPC connect timed out after ${REQUEST_TIMEOUT_MS} ms.`,
+          ),
+        );
       }, REQUEST_TIMEOUT_MS);
 
-      this.pendingRequests.set(id, {
+      const waiter: SnapshotWaiter = {
         resolve,
         reject,
         timeout,
-      });
-
-      const payload: WorkerRequest = {
-        id,
-        type,
+        telemetryOnly,
       };
 
-      worker.send(payload);
+      this.snapshotWaiters.add(waiter);
     });
   }
 
@@ -209,37 +156,42 @@ export class FsuipcBridge {
       throw new Error(`FSUIPC worker introuvable: ${workerPath}`);
     }
 
-    const worker = fork(workerPath, [], {
+    const worker = spawn(process.execPath, [workerPath], {
       cwd: fileURLToPath(new URL("../../", import.meta.url)),
-      silent: true,
-      stdio: ["ignore", "pipe", "pipe", "ipc"],
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: "1",
+      },
     });
 
-    worker.on("message", (message: unknown) => {
-      if (isWorkerLogMessage(message)) {
-        this.log(message.message, message.details);
-        return;
+    this.log("FSUIPC worker started", {
+      pid: worker.pid ?? null,
+      workerPath,
+    });
+
+    worker.stdout?.on("data", (chunk) => {
+      this.handleStdout(chunk.toString("utf8"));
+    });
+
+    worker.stderr?.on("data", (chunk) => {
+      const message = chunk.toString("utf8").trim();
+
+      if (message.length > 0) {
+        this.log("FSUIPC worker stderr", {
+          message,
+        });
       }
+    });
 
-      if (!isWorkerResponse(message)) {
-        return;
-      }
-
-      const pendingRequest = this.pendingRequests.get(message.id);
-
-      if (!pendingRequest) {
-        return;
-      }
-
-      clearTimeout(pendingRequest.timeout);
-      this.pendingRequests.delete(message.id);
-
-      if (!message.ok) {
-        pendingRequest.reject(new Error(message.error ?? "FSUIPC worker failed."));
-        return;
-      }
-
-      pendingRequest.resolve(message);
+    worker.on("error", (error) => {
+      this.log("fsuipc worker process error", {
+        error: error.message,
+      });
+      this.rejectSnapshotWaiters(
+        new Error(`FSUIPC worker process error: ${error.message}`),
+      );
     });
 
     worker.on("exit", (code, signal) => {
@@ -247,58 +199,92 @@ export class FsuipcBridge {
         code,
         signal,
       });
-      this.rejectPendingRequests(
+      this.rejectSnapshotWaiters(
         new Error(
           `FSUIPC worker stopped unexpectedly (code=${code ?? "null"}, signal=${signal ?? "null"}).`,
         ),
       );
       this.worker = null;
-    });
-
-    worker.on("error", (error) => {
-      this.log("fsuipc worker process error", {
-        error: error.message,
-      });
-    });
-
-    worker.stdout?.on("data", (chunk) => {
-      const message = chunk.toString("utf8").trim();
-
-      if (message.length > 0) {
-        this.log("fsuipc worker stdout", {
-          message,
-        });
-      }
-    });
-
-    worker.stderr?.on("data", (chunk) => {
-      const message = chunk.toString("utf8").trim();
-
-      if (message.length > 0) {
-        this.log("fsuipc worker stderr", {
-          message,
-        });
-      }
+      this.stdoutBuffer = "";
     });
 
     this.worker = worker;
     return worker;
   }
 
-  private rejectPendingRequests(error: Error): void {
-    for (const [id, pendingRequest] of this.pendingRequests.entries()) {
-      clearTimeout(pendingRequest.timeout);
-      pendingRequest.reject(error);
-      this.pendingRequests.delete(id);
+  private handleStdout(chunk: string): void {
+    this.stdoutBuffer += chunk;
+
+    while (true) {
+      const newlineIndex = this.stdoutBuffer.indexOf("\n");
+
+      if (newlineIndex === -1) {
+        return;
+      }
+
+      const rawLine = this.stdoutBuffer.slice(0, newlineIndex).trim();
+      this.stdoutBuffer = this.stdoutBuffer.slice(newlineIndex + 1);
+
+      if (rawLine.length === 0) {
+        continue;
+      }
+
+      this.log("Worker stdout received", {
+        line: rawLine,
+      });
+
+      try {
+        const parsedLine = JSON.parse(rawLine) as unknown;
+
+        if (isWorkerLogLine(parsedLine)) {
+          this.log(parsedLine.message, parsedLine.details);
+          continue;
+        }
+
+        if (isWorkerSnapshotLine(parsedLine)) {
+          this.snapshot = structuredClone({
+            ...parsedLine.snapshot,
+            telemetryMode: this.getConfig().telemetryMode,
+          });
+
+          this.resolveSnapshotWaiters(this.snapshot);
+          continue;
+        }
+
+        this.log("fsuipc worker line ignored", {
+          line: rawLine,
+        });
+      } catch (error) {
+        this.log("fsuipc worker line parse failed", {
+          line: rawLine,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
 
-  private disposeWorker(): void {
-    if (!this.worker) {
-      return;
-    }
+  private resolveSnapshotWaiters(snapshot: SimulatorSnapshot): void {
+    for (const waiter of [...this.snapshotWaiters]) {
+      const hasTelemetry = Boolean(
+        snapshot.telemetry &&
+          isFreshTimestamp(snapshot.lastSampleAt, REQUEST_TIMEOUT_MS),
+      );
 
-    this.worker.kill();
-    this.worker = null;
+      if (waiter.telemetryOnly && !hasTelemetry) {
+        continue;
+      }
+
+      clearTimeout(waiter.timeout);
+      this.snapshotWaiters.delete(waiter);
+      waiter.resolve(structuredClone(snapshot));
+    }
+  }
+
+  private rejectSnapshotWaiters(error: Error): void {
+    for (const waiter of [...this.snapshotWaiters]) {
+      clearTimeout(waiter.timeout);
+      this.snapshotWaiters.delete(waiter);
+      waiter.reject(error);
+    }
   }
 }
