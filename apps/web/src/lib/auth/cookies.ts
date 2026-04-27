@@ -59,6 +59,14 @@ function getCookieDomain(): string | undefined {
     const hostname = new URL(getAppBaseUrl()).hostname.toLowerCase();
 
     if (
+      hostname === "virtual-easyjet.fr" ||
+      hostname === "www.virtual-easyjet.fr" ||
+      hostname.endsWith(".virtual-easyjet.fr")
+    ) {
+      return ".virtual-easyjet.fr";
+    }
+
+    if (
       hostname === "localhost" ||
       hostname.endsWith(".vercel.app") ||
       !hostname.includes(".")

@@ -16,6 +16,7 @@ export function LogoutButton(): JSX.Element {
     try {
       await fetch("/api/session/logout", {
         method: "POST",
+        credentials: "include",
       });
       router.replace("/connexion");
       router.refresh();

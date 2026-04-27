@@ -100,12 +100,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/admin/:path*",
-    "/dashboard/:path*",
-    "/profil/:path*",
-    "/bookings/:path*",
-    "/vols/:path*",
-    "/pireps/:path*",
-    "/connexion",
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)",
   ],
 };

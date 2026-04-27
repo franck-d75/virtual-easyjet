@@ -48,6 +48,7 @@ export function RegisterForm(): JSX.Element {
     try {
       const response = await fetch("/api/session/register", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },

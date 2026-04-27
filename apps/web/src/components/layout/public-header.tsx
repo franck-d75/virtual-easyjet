@@ -3,9 +3,13 @@
 import type { JSX } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
+import { LogoutButton } from "@/components/auth/logout-button";
 import { BrandBadge } from "@/components/layout/brand-badge";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { APP_NAME } from "@/lib/config/env";
+import type { UserMeResponse } from "@/lib/api/types";
 import { cn } from "@/lib/utils/cn";
 
 const publicLinks = [
@@ -17,12 +21,106 @@ const publicLinks = [
   { href: "/live-map", label: "Carte en direct" },
   { href: "/acars", label: "ACARS" },
   { href: "/recrutement", label: "Recrutement" },
-  { href: "/reglement", label: "Règlement" },
+  { href: "/reglement", label: "Reglement" },
 ];
+
+type SessionState =
+  | { status: "loading"; user: null }
+  | { status: "guest"; user: null }
+  | { status: "authenticated"; user: UserMeResponse };
+
+function getDisplayName(user: UserMeResponse): string {
+  if (user.pilotProfile) {
+    const firstName = user.pilotProfile.firstName.trim();
+    const lastName = user.pilotProfile.lastName.trim();
+    const fullName = `${firstName} ${lastName}`.trim();
+
+    if (fullName.length > 0) {
+      return fullName;
+    }
+  }
+
+  return user.username;
+}
+
+function getSecondaryLabel(user: UserMeResponse): string {
+  if (user.role === "ADMIN") {
+    return "Acces administrateur";
+  }
+
+  if (user.pilotProfile?.pilotNumber) {
+    return user.pilotProfile.pilotNumber;
+  }
+
+  return "Compte pilote";
+}
 
 export function PublicHeader(): JSX.Element {
   const pathname = usePathname();
   const isLiveMap = pathname.startsWith("/live-map");
+  const [sessionState, setSessionState] = useState<SessionState>({
+    status: "loading",
+    user: null,
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadSession(): Promise<void> {
+      try {
+        const response = await fetch("/api/session/me", {
+          method: "GET",
+          cache: "no-store",
+          credentials: "include",
+        });
+
+        if (!active) {
+          return;
+        }
+
+        if (!response.ok) {
+          setSessionState({
+            status: "guest",
+            user: null,
+          });
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          authenticated?: boolean;
+          user?: UserMeResponse;
+        };
+
+        if (payload.authenticated && payload.user) {
+          setSessionState({
+            status: "authenticated",
+            user: payload.user,
+          });
+          return;
+        }
+
+        setSessionState({
+          status: "guest",
+          user: null,
+        });
+      } catch {
+        if (!active) {
+          return;
+        }
+
+        setSessionState({
+          status: "guest",
+          user: null,
+        });
+      }
+    }
+
+    void loadSession();
+
+    return () => {
+      active = false;
+    };
+  }, [pathname]);
 
   return (
     <header className={cn("site-header", isLiveMap && "site-header--compact")}>
@@ -36,7 +134,7 @@ export function PublicHeader(): JSX.Element {
           <BrandBadge />
           <span className="brand-mark__text">
             <strong>{APP_NAME}</strong>
-            <small>{isLiveMap ? "Suivi ACARS" : "Compagnie aérienne virtuelle"}</small>
+            <small>{isLiveMap ? "Suivi ACARS" : "Compagnie aerienne virtuelle"}</small>
           </span>
         </Link>
 
@@ -57,12 +155,40 @@ export function PublicHeader(): JSX.Element {
           })}
         </nav>
 
-        <Link
-          className={cn("site-header__login", isLiveMap && "site-header__login--compact")}
-          href="/connexion"
-        >
-          Se connecter
-        </Link>
+        {sessionState.status === "authenticated" ? (
+          <div className="pilot-chip">
+            <div className="pilot-chip__identity">
+              <UserAvatar
+                avatarUrl={sessionState.user.avatarUrl}
+                name={getDisplayName(sessionState.user)}
+                size="sm"
+              />
+              <div>
+                <strong>{getDisplayName(sessionState.user)}</strong>
+                <small>{getSecondaryLabel(sessionState.user)}</small>
+              </div>
+            </div>
+            <div className="button-row">
+              <Link
+                className={cn(
+                  "site-header__login",
+                  isLiveMap && "site-header__login--compact",
+                )}
+                href={sessionState.user.role === "ADMIN" ? "/admin" : "/dashboard"}
+              >
+                {sessionState.user.role === "ADMIN" ? "Administration" : "Dashboard"}
+              </Link>
+              <LogoutButton />
+            </div>
+          </div>
+        ) : (
+          <Link
+            className={cn("site-header__login", isLiveMap && "site-header__login--compact")}
+            href="/connexion"
+          >
+            {sessionState.status === "loading" ? "Connexion..." : "Se connecter"}
+          </Link>
+        )}
       </div>
     </header>
   );

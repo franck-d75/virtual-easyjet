@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Footer } from "@/components/layout/footer";
 import { PageShell } from "@/components/layout/page-shell";
 import { PublicHeader } from "@/components/layout/public-header";
+import { SessionKeepAlive } from "@/components/auth/session-keepalive";
 import { UnofficialDisclaimer } from "@/components/legal/unofficial-disclaimer";
 import { cn } from "@/lib/utils/cn";
 
@@ -26,6 +27,7 @@ export function PublicLayoutShell({
         isLiveMap && "site-frame--live-map",
       )}
     >
+      <SessionKeepAlive />
       <PublicHeader />
 
       {isLiveMap ? (

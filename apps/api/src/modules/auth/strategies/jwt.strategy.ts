@@ -10,6 +10,10 @@ import { UserStatus } from "@va/database";
 import type { AccessTokenPayload, AuthenticatedUser, RoleCode } from "@va/shared";
 
 import { PrismaService } from "../../prisma/prisma.service.js";
+import {
+  API_ACCESS_COOKIE_NAME,
+  readRequestCookie,
+} from "../auth-cookie.utils.js";
 
 @Injectable()
 @Dependencies(PrismaService)
@@ -22,7 +26,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        (request: { headers?: Record<string, string | string[] | undefined> }) =>
+          readRequestCookie(request, API_ACCESS_COOKIE_NAME),
+      ]),
       ignoreExpiration: false,
       secretOrKey: secret,
     });
