@@ -183,11 +183,9 @@ export interface SimbriefAirframesResponse {
 
 export interface CreateSimbriefAirframePayload {
   name: string;
-  simbriefAirframeId?: string | null;
   registration: string;
   icao: string;
   engineType?: string | null;
-  notes?: string | null;
 }
 
 export interface PilotProfileResponse {

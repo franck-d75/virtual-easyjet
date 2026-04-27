@@ -236,7 +236,7 @@ export class PilotProfilesService {
 
   public async createMySimbriefAirframe(
     user: AuthenticatedUser,
-    payload: CreateMySimbriefAirframeDto,
+    dto: CreateMySimbriefAirframeDto,
   ) {
     const profile = await this.getMySimbriefContext(user);
 
@@ -244,16 +244,19 @@ export class PilotProfilesService {
       throw new NotFoundException("Pilot profile not found.");
     }
 
+    console.log("payload:", dto);
+
     try {
-      const normalizedName = payload.name?.trim();
-      const normalizedRegistration = payload.registration
-        ?.trim()
-        .toUpperCase();
+      const normalizedName = dto.name?.trim();
+      const normalizedRegistration = dto.registration?.trim().toUpperCase();
       const normalizedIcao =
-        payload.icao?.trim().toUpperCase() ||
-        payload.aircraftIcao?.trim().toUpperCase() ||
+        dto.icao?.trim().toUpperCase() ??
+        dto.aircraftIcao?.trim().toUpperCase() ??
         "A320";
-      const normalizedEngineType = payload.engineType?.trim() || "CFM56";
+      const normalizedEngineType = dto.engineType?.trim() || "CFM56";
+      const normalizedNotes = dto.notes?.trim() || null;
+      const normalizedSimbriefAirframeId =
+        dto.simbriefAirframeId?.trim() || null;
 
       if (!normalizedName || !normalizedRegistration || !normalizedIcao) {
         throw new BadRequestException("Invalid airframe data");
@@ -275,9 +278,8 @@ export class PilotProfilesService {
         },
       });
 
-      const externalAirframeId = payload.simbriefAirframeId?.trim() || null;
       const persistedAirframeId =
-        externalAirframeId ?? `manual-${randomUUID()}`;
+        normalizedSimbriefAirframeId ?? `manual-${randomUUID()}`;
 
       const airframe = await this.prisma.simbriefAirframe.create({
         data: {
@@ -291,8 +293,8 @@ export class PilotProfilesService {
           wakeCategory: null,
           rawJson: {
             source: "MANUAL",
-            externalAirframeId,
-            notes: payload.notes?.trim() || null,
+            externalAirframeId: normalizedSimbriefAirframeId,
+            notes: normalizedNotes,
           } satisfies Prisma.InputJsonValue,
           linkedAircraftTypeId: linkedAircraftType?.id ?? null,
           ownerUserId: profile.userId,
@@ -319,6 +321,7 @@ export class PilotProfilesService {
       console.error("[api][simbrief] create airframe failed", {
         userId: profile.userId,
         pilotProfileId: profile.id,
+        payload: dto,
         error: error instanceof Error ? error.message : String(error),
       });
 

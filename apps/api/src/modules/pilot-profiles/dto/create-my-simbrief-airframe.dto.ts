@@ -49,6 +49,7 @@ export class CreateMySimbriefAirframeDto {
   )
   public registration!: string;
 
+  @IsOptional()
   @IsString()
   @Length(3, 8, {
     message: "Le type ICAO doit contenir entre 3 et 8 caracteres.",
@@ -68,14 +69,21 @@ export class CreateMySimbriefAirframeDto {
 
     return value;
   })
-  public icao!: string;
+  public icao?: string;
 
   @IsOptional()
   @IsString()
+  @Length(3, 8, {
+    message: "Le type ICAO doit contenir entre 3 et 8 caracteres.",
+  })
+  @Matches(/^[A-Z0-9]+$/, {
+    message:
+      "Le type ICAO ne peut contenir que des lettres et des chiffres.",
+  })
   @Transform(({ value }) =>
-    typeof value === "string" ? value.trim().toUpperCase() : value,
+    typeof value === "string" ? value.trim().toUpperCase() || null : value,
   )
-  public aircraftIcao?: string;
+  public aircraftIcao?: string | null;
 
   @IsOptional()
   @IsString()

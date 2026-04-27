@@ -182,11 +182,13 @@ export function SimbriefAirframesCard({
     try {
       const payload: CreateSimbriefAirframePayload = {
         name: formState.name.trim(),
-        simbriefAirframeId: formState.simbriefAirframeId.trim() || null,
         registration: formState.registration.trim().toUpperCase(),
         icao: formState.icao.trim().toUpperCase(),
-        engineType: formState.engineType.trim() || null,
-        notes: formState.notes.trim() || null,
+        ...(formState.engineType.trim().length > 0
+          ? {
+              engineType: formState.engineType.trim(),
+            }
+          : {}),
       };
 
       const response = await fetch("/api/pilot/simbrief/airframes", {
@@ -201,7 +203,15 @@ export function SimbriefAirframesCard({
       const responsePayload = rawPayload.length > 0 ? parsePayload(rawPayload) : null;
 
       if (!response.ok) {
-        console.error("[web][simbrief-airframes] create failed", responsePayload);
+        console.error("[web][simbrief-airframes] create failed", {
+          payload,
+          error:
+            responsePayload &&
+            typeof responsePayload === "object" &&
+            "error" in responsePayload
+              ? responsePayload.error
+              : responsePayload,
+        });
         setFeedback({
           tone: "danger",
           message: extractMessage(
