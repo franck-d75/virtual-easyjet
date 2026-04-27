@@ -1,17 +1,18 @@
-const { fork } = require("node:child_process");
-const path = require("node:path");
+const {
+  closeQuietly,
+  connectOfficial,
+  sampleClient,
+} = require("./fsuipc-official.cjs");
 
-const ATTEMPT_TIMEOUT_MS = 10_000;
 const SAMPLE_INTERVAL_MS = 3_000;
-const attemptScriptPath = path.join(__dirname, "fsuipc-attempt.cjs");
-const DISCOVERY_STRATEGIES = ["MSFS2020", "MSFS", "CURRENT_MSFS", "ANY"];
 
+let client = null;
+let selectedMode = null;
 let firstTelemetryLogged = false;
-let preferredSimVersion = null;
-let sampleInterval = null;
-let sampleInProgress = false;
 let lastLiveSnapshot = null;
 let lastLiveTelemetry = null;
+let sampleInterval = null;
+let sampleInProgress = false;
 
 function emit(payload) {
   process.stdout.write(`${JSON.stringify(payload)}\n`);
@@ -51,104 +52,23 @@ function buildSnapshot(overrides = {}) {
   };
 }
 
-function buildConnectionStrategies() {
-  if (preferredSimVersion) {
-    return [preferredSimVersion];
+async function ensureClient() {
+  if (client) {
+    return;
   }
 
-  return [...DISCOVERY_STRATEGIES];
-}
-
-function runAttempt(simVersion) {
-  return new Promise((resolve, reject) => {
-    const child = fork(attemptScriptPath, [simVersion], {
-      stdio: ["ignore", "ignore", "ignore", "ipc"],
-    });
-
-    let settled = false;
-    const timeout = setTimeout(() => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      child.kill();
-      reject(new Error(`FSUIPC attempt timed out for ${simVersion}.`));
-    }, ATTEMPT_TIMEOUT_MS);
-
-    child.on("message", (message) => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      clearTimeout(timeout);
-      child.kill();
-      resolve(message);
-    });
-
-    child.on("exit", (code, signal) => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      clearTimeout(timeout);
-      reject(
-        new Error(
-          `FSUIPC attempt exited unexpectedly for ${simVersion} (code=${code ?? "null"}, signal=${signal ?? "null"}).`,
-        ),
-      );
-    });
-
-    child.on("error", (error) => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      clearTimeout(timeout);
-      reject(error);
-    });
+  const connected = await connectOfficial((message, details) => {
+    log("info", message, details);
   });
+
+  client = connected.client;
+  selectedMode = connected.selectedMode;
 }
 
-async function executeSequence() {
-  let lastError = null;
-
-  for (const simVersion of buildConnectionStrategies()) {
-    log("info", `FSUIPC connect attempt with simVersion=${simVersion}`);
-
-    try {
-      const result = await runAttempt(simVersion);
-
-      if (!result || result.ok !== true) {
-        const message = result?.error ?? "Unknown FSUIPC error.";
-        log("error", `FSUIPC error: ${message}`);
-        lastError = new Error(message);
-        continue;
-      }
-
-      const selectedNewVersion = preferredSimVersion !== simVersion;
-      preferredSimVersion = simVersion;
-      log("info", `FSUIPC connection success with simVersion=${simVersion}`);
-
-      if (selectedNewVersion) {
-        log(
-          "info",
-          `FSUIPC selected simVersion=${simVersion} for MSFS2024/FSUIPC7`,
-        );
-      }
-
-      return result;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      log("error", `FSUIPC error: ${message}`);
-      lastError = error;
-    }
-  }
-
-  throw lastError ?? new Error("FSUIPC connection failed.");
+async function resetClient() {
+  await closeQuietly(client);
+  client = null;
+  selectedMode = null;
 }
 
 async function sampleOnce() {
@@ -159,7 +79,8 @@ async function sampleOnce() {
   sampleInProgress = true;
 
   try {
-    const result = await executeSequence();
+    await ensureClient();
+    const result = await sampleClient(client, selectedMode);
     const telemetry = result.telemetry ?? lastLiveTelemetry ?? null;
     const snapshot = buildSnapshot({
       ...(lastLiveSnapshot ?? {}),
@@ -187,10 +108,10 @@ async function sampleOnce() {
       error: null,
     });
 
-    if (result.telemetry && !firstTelemetryLogged) {
+    if (telemetry && !firstTelemetryLogged) {
       firstTelemetryLogged = true;
       log("info", "First telemetry received", {
-        capturedAt: result.telemetry.capturedAt ?? null,
+        capturedAt: telemetry.capturedAt ?? null,
       });
     }
 
@@ -199,6 +120,7 @@ async function sampleOnce() {
     emitSnapshot(snapshot, telemetry);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    await resetClient();
 
     if (lastLiveSnapshot) {
       emitSnapshot(
@@ -218,6 +140,7 @@ async function sampleOnce() {
         lastLiveTelemetry,
       );
     } else {
+      log("error", `FSUIPC error: ${message}`);
       emitSnapshot(
         buildSnapshot({
           status: "UNAVAILABLE",
@@ -245,11 +168,12 @@ async function bootstrap() {
 
 void bootstrap();
 
-process.on("SIGTERM", () => {
+process.on("SIGTERM", async () => {
   if (sampleInterval) {
     clearInterval(sampleInterval);
     sampleInterval = null;
   }
 
+  await resetClient();
   process.exit(0);
 });
