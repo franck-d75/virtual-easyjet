@@ -23,6 +23,9 @@ export interface DesktopPilotProfile {
   pilotNumber: string;
   firstName: string;
   lastName: string;
+  callsign?: string | null;
+  simbriefPilotId?: string | null;
+  countryCode?: string | null;
   status: string;
   rankId: string | null;
   hubId: string | null;
@@ -49,10 +52,48 @@ export interface AuthSession {
   tokens: AuthTokens;
 }
 
+export type SimulatorConnectionStatus =
+  | "UNAVAILABLE"
+  | "CONNECTING"
+  | "CONNECTED"
+  | "AIRCRAFT_DETECTED"
+  | "ERROR";
+
+export interface SimulatorAircraftState {
+  title: string | null;
+  registration: string | null;
+  transponder: string | null;
+  model: string | null;
+}
+
+export interface SimulatorSnapshot {
+  status: SimulatorConnectionStatus;
+  telemetryMode: TelemetryMode;
+  message: string;
+  connected: boolean;
+  aircraftDetected: boolean;
+  aircraft: SimulatorAircraftState | null;
+  lastSampleAt: string | null;
+  telemetry: TelemetryInput | null;
+  error: string | null;
+}
+
+export type TrackingStatus = "IDLE" | "RUNNING" | "PAUSED" | "ERROR";
+
+export interface TelemetryTrackingState {
+  status: TrackingStatus;
+  activeSessionId: string | null;
+  pollingIntervalSeconds: number;
+  lastSentAt: string | null;
+  lastError: string | null;
+}
+
 export interface DesktopSnapshot {
   config: DesktopConfig;
   isAuthenticated: boolean;
   user: DesktopUser | null;
+  simulator: SimulatorSnapshot;
+  tracking: TelemetryTrackingState;
 }
 
 export interface AirportSummary {
@@ -110,11 +151,34 @@ export interface FlightSummary {
   } | null;
 }
 
+export interface LatestOfpAircraftSummary {
+  icaoCode: string | null;
+  registration: string | null;
+  callsign: string | null;
+}
+
+export interface LatestOfpSummary {
+  status: string;
+  detail: string | null;
+  sourceUrl: string | null;
+  flightNumber: string | null;
+  callsign: string | null;
+  departureIcao: string | null;
+  arrivalIcao: string | null;
+  route: string | null;
+  distanceNm: number | null;
+  blockTimeMinutes: number | null;
+  estimatedTimeEnroute: string | null;
+  aircraft: LatestOfpAircraftSummary | null;
+}
+
 export interface LoadOperationsResult {
   bookings: BookingSummary[];
   usableBookings: BookingSummary[];
   flights: FlightSummary[];
   usableFlights: FlightSummary[];
+  pilotProfile: DesktopPilotProfile | null;
+  latestOfp: LatestOfpSummary | null;
 }
 
 export interface TelemetryInput {
@@ -225,11 +289,17 @@ export interface MockResetResult {
 
 export interface DesktopBridge {
   getSnapshot: () => Promise<DesktopSnapshot>;
+  getSimulatorSnapshot: () => Promise<SimulatorSnapshot>;
   login: (input: LoginInput) => Promise<DesktopSnapshot>;
   logout: () => Promise<DesktopSnapshot>;
   loadDispatchData: () => Promise<LoadOperationsResult>;
+  createFlightFromBooking: (bookingId: string) => Promise<FlightSummary>;
   createSession: (flightId: string) => Promise<SessionSummary>;
   getSession: (sessionId: string) => Promise<SessionSummary>;
+  startSessionTracking: (sessionId: string) => Promise<TelemetryTrackingState>;
+  pauseSessionTracking: () => Promise<TelemetryTrackingState>;
+  resumeSessionTracking: () => Promise<TelemetryTrackingState>;
+  getTrackingState: () => Promise<TelemetryTrackingState>;
   sendManualTelemetry: (
     sessionId: string,
     payload: TelemetryInput,

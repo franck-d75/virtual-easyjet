@@ -3,6 +3,7 @@ import {
   normalizeBaseUrl,
 } from "../shared/defaults.js";
 import { createMockTelemetrySequence } from "../shared/mock-telemetry.js";
+import { SimConnectBridge } from "./simconnect-bridge.js";
 import { loadDesktopRuntimeConfig } from "./runtime-config.js";
 import type {
   AircraftSummary,
@@ -11,17 +12,21 @@ import type {
   BookingSummary,
   CurrentPosition,
   DesktopConfig,
+  DesktopPilotProfile,
   DesktopSnapshot,
   FlightSummary,
   FuelState,
   LatestTelemetry,
+  LatestOfpSummary,
   LoadOperationsResult,
   LoginInput,
   MockProgress,
   MockResetResult,
   MockTelemetryStep,
   SessionSummary,
+  SimulatorSnapshot,
   TelemetryInput,
+  TelemetryTrackingState,
 } from "../shared/types.js";
 
 type RequestInitWithJson = {
@@ -43,6 +48,39 @@ type MockDispatchState = {
 type MockSessionState = {
   session: SessionSummary;
   telemetryCount: number;
+};
+
+type TrackingTimer = ReturnType<typeof setInterval>;
+
+type LatestOfpApiResponse = {
+  status?: string;
+  detail?: string | null;
+  source?: {
+    url?: string | null;
+  } | null;
+  plan?: {
+    callsign?: string | null;
+    flightNumber?: string | null;
+    departureIcao?: string | null;
+    arrivalIcao?: string | null;
+    route?: string | null;
+    distanceNm?: number | null;
+    blockTimeMinutes?: number | null;
+    estimatedTimeEnroute?: string | null;
+    aircraft?: {
+      icaoCode?: string | null;
+      registration?: string | null;
+      callsign?: string | null;
+    } | null;
+  } | null;
+};
+
+const DEFAULT_TRACKING_STATE: TelemetryTrackingState = {
+  status: "IDLE",
+  activeSessionId: null,
+  pollingIntervalSeconds: 5,
+  lastSentAt: null,
+  lastError: null,
 };
 
 const MOCK_PHASE_SEQUENCE = [
@@ -318,6 +356,8 @@ function buildLoadOperationsResult(
       (flight) =>
         flight.status === "IN_PROGRESS" && flight.acarsSession === null,
     ),
+    pilotProfile: null,
+    latestOfp: null,
   };
 }
 
@@ -536,6 +576,14 @@ export class DesktopService {
   private readonly mockSessionStates = new Map<string, MockSessionState>();
   private mockDispatchState: MockDispatchState | null = null;
   private mockSessionCounter = 1;
+  private readonly simConnectBridge = new SimConnectBridge(
+    () => this.config,
+    (message, details) => this.log(message, details),
+  );
+  private trackingState: TelemetryTrackingState = structuredClone(
+    DEFAULT_TRACKING_STATE,
+  );
+  private trackingTimer: TrackingTimer | null = null;
 
   public constructor() {
     this.log("desktop runtime config loaded", {
@@ -544,11 +592,18 @@ export class DesktopService {
       acarsBaseUrl: this.config.acarsBaseUrl,
       clientVersion: this.config.clientVersion,
       simulatorProvider: this.config.simulatorProvider,
+      telemetryMode: this.config.telemetryMode,
     });
   }
 
   public async getSnapshot(): Promise<DesktopSnapshot> {
+    await this.simConnectBridge.connect();
     return cloneValue(this.buildSnapshot());
+  }
+
+  public async getSimulatorSnapshot(): Promise<SimulatorSnapshot> {
+    await this.simConnectBridge.connect();
+    return this.simConnectBridge.getSnapshot();
   }
 
   public async login(input: LoginInput): Promise<DesktopSnapshot> {
@@ -564,6 +619,7 @@ export class DesktopService {
     };
 
     this.resetMockState();
+    this.stopTracking();
 
     if (this.isMockBackend()) {
       this.log("mock desktop login requested", {
@@ -590,6 +646,7 @@ export class DesktopService {
         userId: this.authSession.user.id,
         pilotProfileId: this.authSession.user.pilotProfileId ?? null,
       });
+      await this.simConnectBridge.connect();
     }
 
     return cloneValue(this.buildSnapshot());
@@ -615,25 +672,51 @@ export class DesktopService {
 
     this.authSession = null;
     this.resetMockState();
+    this.stopTracking();
 
     return cloneValue(this.buildSnapshot());
   }
 
   public async loadDispatchData(): Promise<LoadOperationsResult> {
     if (this.isMockBackend()) {
-      return buildLoadOperationsResult(this.ensureMockDispatchState());
+      return {
+        ...buildLoadOperationsResult(this.ensureMockDispatchState()),
+        pilotProfile: this.serializePilotProfile(this.authSession?.user.pilotProfile),
+        latestOfp: null,
+      };
     }
 
-    const [bookings, flights] = await Promise.all([
-      this.authorizedRequestJson<BookingSummary[]>(
-        this.config.apiBaseUrl,
-        "/bookings/me",
-      ),
-      this.authorizedRequestJson<FlightSummary[]>(
-        this.config.apiBaseUrl,
-        "/flights/me",
-      ),
-    ]);
+    const [bookingsResult, flightsResult, pilotProfileResult, latestOfpResult] =
+      await Promise.allSettled([
+        this.authorizedRequestJson<BookingSummary[]>(
+          this.config.apiBaseUrl,
+          "/bookings/me",
+        ),
+        this.authorizedRequestJson<FlightSummary[]>(
+          this.config.apiBaseUrl,
+          "/flights/me",
+        ),
+        this.authorizedRequestJson<Record<string, unknown>>(
+          this.config.apiBaseUrl,
+          "/pilot-profiles/me",
+        ),
+        this.authorizedRequestJson<LatestOfpApiResponse>(
+          this.config.apiBaseUrl,
+          "/pilot-profiles/me/simbrief/latest-ofp",
+        ),
+      ]);
+
+    const bookings =
+      bookingsResult.status === "fulfilled" ? bookingsResult.value : [];
+    const flights = flightsResult.status === "fulfilled" ? flightsResult.value : [];
+
+    if (bookingsResult.status !== "fulfilled") {
+      throw bookingsResult.reason;
+    }
+
+    if (flightsResult.status !== "fulfilled") {
+      throw flightsResult.reason;
+    }
 
     return {
       bookings,
@@ -645,7 +728,34 @@ export class DesktopService {
         (flight) =>
           flight.status === "IN_PROGRESS" && flight.acarsSession === null,
       ),
+      pilotProfile:
+        pilotProfileResult.status === "fulfilled"
+          ? this.extractPilotProfileFromApi(pilotProfileResult.value)
+          : this.serializePilotProfile(this.authSession?.user.pilotProfile),
+      latestOfp:
+        latestOfpResult.status === "fulfilled"
+          ? this.normalizeLatestOfp(latestOfpResult.value)
+          : null,
     };
+  }
+
+  public async createFlightFromBooking(bookingId: string): Promise<FlightSummary> {
+    if (this.isMockBackend()) {
+      throw new Error(
+        "La creation de vol depuis une reservation n'est disponible qu'en mode reel.",
+      );
+    }
+
+    return this.authorizedRequestJson<FlightSummary>(
+      this.config.apiBaseUrl,
+      "/flights",
+      {
+        method: "POST",
+        body: {
+          bookingId,
+        },
+      },
+    );
   }
 
   public async createSession(flightId: string): Promise<SessionSummary> {
@@ -653,7 +763,7 @@ export class DesktopService {
       return this.createMockSession(flightId);
     }
 
-    return this.authorizedRequestJson<SessionSummary>(
+    const session = await this.authorizedRequestJson<SessionSummary>(
       this.config.acarsBaseUrl,
       "/sessions",
       {
@@ -665,6 +775,12 @@ export class DesktopService {
         },
       },
     );
+
+    if (this.config.telemetryMode === "simconnect") {
+      await this.startSessionTracking(session.id);
+    }
+
+    return session;
   }
 
   public async getSession(sessionId: string): Promise<SessionSummary> {
@@ -678,6 +794,61 @@ export class DesktopService {
     );
   }
 
+  public async startSessionTracking(
+    sessionId: string,
+  ): Promise<TelemetryTrackingState> {
+    if (this.isMockBackend()) {
+      throw new Error(
+        "Le suivi automatique SimConnect n'est pas disponible en mode mock.",
+      );
+    }
+
+    await this.simConnectBridge.connect();
+    this.stopTracking(false);
+
+    this.trackingState = {
+      ...this.trackingState,
+      status: "RUNNING",
+      activeSessionId: sessionId,
+      lastError: null,
+    };
+
+    await this.pushLiveTelemetryTick();
+    this.trackingTimer = setInterval(() => {
+      void this.pushLiveTelemetryTick();
+    }, this.trackingState.pollingIntervalSeconds * 1000);
+
+    return cloneValue(this.trackingState);
+  }
+
+  public async pauseSessionTracking(): Promise<TelemetryTrackingState> {
+    if (this.trackingTimer) {
+      clearInterval(this.trackingTimer);
+      this.trackingTimer = null;
+    }
+
+    this.trackingState = {
+      ...this.trackingState,
+      status: this.trackingState.activeSessionId ? "PAUSED" : "IDLE",
+    };
+
+    return cloneValue(this.trackingState);
+  }
+
+  public async resumeSessionTracking(): Promise<TelemetryTrackingState> {
+    const sessionId = this.trackingState.activeSessionId;
+
+    if (!sessionId) {
+      return cloneValue(this.trackingState);
+    }
+
+    return this.startSessionTracking(sessionId);
+  }
+
+  public async getTrackingState(): Promise<TelemetryTrackingState> {
+    return cloneValue(this.trackingState);
+  }
+
   public async sendManualTelemetry(
     sessionId: string,
     payload: TelemetryInput,
@@ -686,7 +857,7 @@ export class DesktopService {
       return this.sendMockTelemetry(sessionId, payload);
     }
 
-    return this.authorizedRequestJson<SessionSummary>(
+    const session = await this.authorizedRequestJson<SessionSummary>(
       this.config.acarsBaseUrl,
       `/sessions/${encodeURIComponent(sessionId)}/telemetry`,
       {
@@ -694,6 +865,14 @@ export class DesktopService {
         body: payload,
       },
     );
+
+    this.trackingState = {
+      ...this.trackingState,
+      lastSentAt: payload.capturedAt ?? new Date().toISOString(),
+      lastError: null,
+    };
+
+    return session;
   }
 
   public async sendNextMockTelemetry(
@@ -766,7 +945,7 @@ export class DesktopService {
       return this.completeMockSession(sessionId, pilotComment);
     }
 
-    return this.authorizedRequestJson<SessionSummary>(
+    const session = await this.authorizedRequestJson<SessionSummary>(
       this.config.acarsBaseUrl,
       `/sessions/${encodeURIComponent(sessionId)}/complete`,
       {
@@ -776,10 +955,155 @@ export class DesktopService {
         },
       },
     );
+
+    this.stopTracking();
+    return session;
+  }
+
+  private async pushLiveTelemetryTick(): Promise<void> {
+    const sessionId = this.trackingState.activeSessionId;
+
+    if (!sessionId || this.trackingState.status !== "RUNNING") {
+      return;
+    }
+
+    const telemetry = await this.simConnectBridge.sampleTelemetry();
+
+    if (!telemetry) {
+      this.trackingState = {
+        ...this.trackingState,
+        lastError: this.simConnectBridge.getSnapshot().message,
+      };
+      return;
+    }
+
+    try {
+      await this.authorizedRequestJson<SessionSummary>(
+        this.config.acarsBaseUrl,
+        `/sessions/${encodeURIComponent(sessionId)}/telemetry`,
+        {
+          method: "POST",
+          body: telemetry,
+        },
+      );
+
+      this.trackingState = {
+        ...this.trackingState,
+        lastSentAt: telemetry.capturedAt ?? new Date().toISOString(),
+        lastError: null,
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Envoi telemetrie impossible.";
+
+      this.trackingState = {
+        ...this.trackingState,
+        status: "ERROR",
+        lastError: message,
+      };
+      this.log("live telemetry tick failed", {
+        sessionId,
+        error: message,
+      });
+    }
+  }
+
+  private stopTracking(clearSessionId = true): void {
+    if (this.trackingTimer) {
+      clearInterval(this.trackingTimer);
+      this.trackingTimer = null;
+    }
+
+    this.trackingState = {
+      ...this.trackingState,
+      status: clearSessionId ? "IDLE" : this.trackingState.status,
+      activeSessionId: clearSessionId ? null : this.trackingState.activeSessionId,
+      lastError: clearSessionId ? null : this.trackingState.lastError,
+    };
   }
 
   private isMockBackend(): boolean {
     return this.config.backendMode === "mock";
+  }
+
+  private extractPilotProfileFromApi(
+    payload: Record<string, unknown>,
+  ): DesktopPilotProfile | null {
+    const simbrief = payload.simbriefPilotId;
+
+    if (
+      typeof payload.id !== "string" ||
+      typeof payload.pilotNumber !== "string" ||
+      typeof payload.firstName !== "string" ||
+      typeof payload.lastName !== "string" ||
+      typeof payload.status !== "string"
+    ) {
+      return null;
+    }
+
+    return {
+      id: payload.id,
+      pilotNumber: payload.pilotNumber,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      callsign: typeof payload.callsign === "string" ? payload.callsign : null,
+      simbriefPilotId: typeof simbrief === "string" ? simbrief : null,
+      countryCode:
+        typeof payload.countryCode === "string" ? payload.countryCode : null,
+      status: payload.status,
+      rankId: typeof payload.rankId === "string" ? payload.rankId : null,
+      hubId: typeof payload.hubId === "string" ? payload.hubId : null,
+    };
+  }
+
+  private serializePilotProfile(
+    profile: AuthSession["user"]["pilotProfile"] | null | undefined,
+  ): DesktopPilotProfile | null {
+    if (!profile) {
+      return null;
+    }
+
+    return {
+      id: profile.id,
+      pilotNumber: profile.pilotNumber,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      callsign: profile.callsign ?? null,
+      simbriefPilotId: profile.simbriefPilotId ?? null,
+      countryCode: profile.countryCode ?? null,
+      status: profile.status,
+      rankId: profile.rankId,
+      hubId: profile.hubId,
+    };
+  }
+
+  private normalizeLatestOfp(payload: LatestOfpApiResponse): LatestOfpSummary | null {
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+
+    return {
+      status: payload.status ?? "UNKNOWN",
+      detail: payload.detail ?? null,
+      sourceUrl: payload.source?.url ?? null,
+      flightNumber: payload.plan?.flightNumber ?? null,
+      callsign: payload.plan?.callsign ?? null,
+      departureIcao: payload.plan?.departureIcao ?? null,
+      arrivalIcao: payload.plan?.arrivalIcao ?? null,
+      route: payload.plan?.route ?? null,
+      distanceNm: payload.plan?.distanceNm ?? null,
+      blockTimeMinutes: payload.plan?.blockTimeMinutes ?? null,
+      estimatedTimeEnroute: payload.plan?.estimatedTimeEnroute ?? null,
+      aircraft: payload.plan?.aircraft
+        ? {
+            icaoCode: payload.plan.aircraft.icaoCode ?? null,
+            registration: payload.plan.aircraft.registration ?? null,
+            callsign: payload.plan.aircraft.callsign ?? null,
+          }
+        : null,
+    };
   }
 
   private buildSnapshot(): DesktopSnapshot {
@@ -787,6 +1111,8 @@ export class DesktopService {
       config: this.config,
       isAuthenticated: this.authSession !== null,
       user: this.authSession?.user ?? null,
+      simulator: this.simConnectBridge.getSnapshot(),
+      tracking: cloneValue(this.trackingState),
     };
   }
 

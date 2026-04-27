@@ -5,6 +5,7 @@ import { HeroSection } from "@/components/marketing/hero-section";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { resolveAcarsDownloadTarget } from "@/lib/acars/download";
 import { getBackendAcarsLiveTraffic } from "@/lib/api/public";
 import {
   ACARS_DOWNLOAD_PROXY_PATH,
@@ -26,6 +27,7 @@ export default async function AcarsPage({
   await searchParams;
 
   const version = getAcarsCurrentVersion();
+  const downloadTarget = resolveAcarsDownloadTarget();
 
   let availability: AcarsAvailabilityState = "IDLE";
   let activeFlightsCount = 0;
@@ -43,62 +45,76 @@ export default async function AcarsPage({
       <HeroSection
         eyebrow="ACARS"
         title="Virtual Easyjet ACARS"
-        subtitle="Le module ACARS relie l’espace pilote, le suivi live et le futur client desktop MSFS2024. La plateforme reste pleinement exploitable même sans trafic actif."
+        subtitle="Client desktop Windows pour charger les operations Virtual Easyjet, suivre un vol reel via SimConnect et alimenter la live map sans aucune donnee mock."
         actions={
           <>
             <Button href="/live-map">Ouvrir la carte en direct</Button>
-            <Button href={ACARS_DOWNLOAD_PROXY_PATH} variant="secondary">
-              Télécharger ACARS
-            </Button>
+            {downloadTarget.status === "missing" ? (
+              <Button href="/profil" variant="secondary">
+                Build Windows indisponible
+              </Button>
+            ) : (
+              <Button href={ACARS_DOWNLOAD_PROXY_PATH} variant="secondary">
+                Telecharger ACARS
+              </Button>
+            )}
             <Button href="/connexion" variant="ghost">
-              Accéder à l’espace pilote
+              Acceder a l'espace pilote
             </Button>
           </>
         }
         aside={
           <div className="hero-aside-content">
             <span className="section-eyebrow">Module ACARS</span>
-            <h2>Prêt pour le client réel MSFS2024 / SimConnect</h2>
+            <h2>Pret pour le client reel MSFS2024 / SimConnect</h2>
             <div className="hero-summary-grid">
               <div className="hero-summary-card">
                 <span>Version</span>
                 <strong>{version}</strong>
-                <small>distribution actuelle</small>
+                <small>distribution Windows</small>
               </div>
               <div className="hero-summary-card">
-                <span>État live</span>
+                <span>Etat live</span>
                 <strong>
                   {availability === "ONLINE"
                     ? "En ligne"
                     : availability === "IDLE"
                       ? "Disponible"
-                      : "À vérifier"}
+                      : "A verifier"}
                 </strong>
                 <small>
                   {availability === "ONLINE"
                     ? `${activeFlightsCount} vol(s) suivi(s)`
                     : availability === "IDLE"
                       ? "aucun trafic actif"
-                      : "service live à recontrôler"}
+                      : "service live a recontroler"}
                 </small>
               </div>
               <div className="hero-summary-card">
-                <span>Carte live</span>
-                <strong>/live-map</strong>
-                <small>suivi public en temps réel</small>
+                <span>Package Windows</span>
+                <strong>
+                  {downloadTarget.status === "missing"
+                    ? "Non publie"
+                    : downloadTarget.fileName}
+                </strong>
+                <small>
+                  {downloadTarget.status === "redirect"
+                    ? "telecharge depuis une release"
+                    : downloadTarget.status === "local"
+                      ? "installeur local detecte"
+                      : "generez un build ou configurez ACARS_DOWNLOAD_URL"}
+                </small>
               </div>
               <div className="hero-summary-card">
                 <span>Simulateur cible</span>
                 <strong>MSFS2024</strong>
-                <small>intégration SimConnect prévue pour la production</small>
+                <small>integration SimConnect cote desktop</small>
               </div>
             </div>
             <p className="hero-aside-note">
-              {ACARS_PRODUCT_NAME} reste téléchargeable et la plateforme de
-              production ne crée aucune session fictive. Le client desktop réel
-              devra se connecter au compte pilote, charger une rotation,
-              transmettre la télémétrie SimConnect et préparer un PIREP sans
-              données mock.
+              {downloadTarget.status === "missing"
+                ? `Aucun build Windows n'est publie pour ${ACARS_PRODUCT_NAME} sur cet environnement. Générez un package avec pnpm --filter @va/acars package ou configurez ACARS_DOWNLOAD_URL.`
+                : `${ACARS_PRODUCT_NAME} est distribue comme un vrai client Windows. Il se connecte au compte pilote, charge les operations reelles, transmet la telemetrie SimConnect et prepare le PIREP sans trafic fictif.`}
             </p>
           </div>
         }
@@ -107,48 +123,52 @@ export default async function AcarsPage({
       <section className="section-band">
         <div className="section-band__header">
           <div>
-            <span className="section-eyebrow">État ACARS</span>
-            <h2>Disponibilité du module en temps réel</h2>
+            <span className="section-eyebrow">Etat ACARS</span>
+            <h2>Disponibilite du module en temps reel</h2>
           </div>
           <p>
-            Cette page reste accessible même quand aucun avion n’est en ligne.
-            La compagnie peut démarrer vierge, sans trafic, sans erreur et sans
-            donnée simulée.
+            Cette page reste accessible meme quand aucun avion n'est en ligne.
+            La compagnie peut demarrer vierge, sans trafic, sans erreur et sans
+            donnee simulee.
           </p>
         </div>
 
         <section className="panel-grid">
           <Card className="ops-card">
-            <span className="section-eyebrow">Synthèse</span>
+            <span className="section-eyebrow">Synthese</span>
             <h2>
               {availability === "ONLINE"
                 ? "Trafic ACARS actif"
                 : availability === "IDLE"
                   ? "Aucun trafic en direct"
-                  : "État live temporairement indisponible"}
+                  : "Etat live temporairement indisponible"}
             </h2>
             <p>
               {availability === "ONLINE"
                 ? `${activeFlightsCount} avion(s) sont actuellement visibles sur la carte live.`
                 : availability === "IDLE"
-                  ? "Aucune session ACARS active n’est détectée pour le moment."
-                  : "Le service live n’a pas répondu pendant le chargement initial. La page reste disponible et la carte peut être rechargée séparément."}
+                  ? "Aucune session ACARS active n'est detectee pour le moment."
+                  : "Le service live n'a pas repondu pendant le chargement initial. La page reste disponible et la carte peut etre rechargee separement."}
             </p>
             <div className="inline-actions">
               <Button href="/live-map">Voir la carte en direct</Button>
               <Button href="/dashboard" variant="secondary">
-                Ouvrir l’espace pilote
+                Ouvrir l'espace pilote
               </Button>
             </div>
           </Card>
 
           <Card className="ops-card">
-            <span className="section-eyebrow">Mode production</span>
-            <h2>Zéro trafic fictif, zéro session simulée</h2>
+            <span className="section-eyebrow">Distribution</span>
+            <h2>
+              {downloadTarget.status === "missing"
+                ? "Aucun package publie"
+                : "Installeur Windows disponible"}
+            </h2>
             <p>
-              La seed de production conserve une plateforme vide par défaut. La
-              live map, le dashboard pilote et l’administration restent
-              fonctionnels même sans flotte, hubs, routes ou vols préchargés.
+              {downloadTarget.status === "missing"
+                ? downloadTarget.message
+                : `Le telechargement pointe vers ${downloadTarget.fileName}. Le client Electron pilote l'authentification, SimBrief, SimConnect et la session ACARS reelle.`}
             </p>
           </Card>
         </section>
@@ -157,12 +177,12 @@ export default async function AcarsPage({
       <section className="section-band">
         <div className="section-band__header">
           <div>
-            <span className="section-eyebrow">Flux réel cible</span>
+            <span className="section-eyebrow">Flux reel cible</span>
             <h2>Le parcours attendu pour le client MSFS2024</h2>
           </div>
           <p>
-            Le socle web gère l’identité pilote, SimBrief, les réservations et
-            le suivi. Le desktop prendra ensuite le relais pour l’exploitation
+            Le socle web gere l'identite pilote, SimBrief, les reservations et
+            le suivi. Le desktop prend ensuite le relais pour l'exploitation
             live via SimConnect.
           </p>
         </div>
@@ -170,21 +190,21 @@ export default async function AcarsPage({
         <section className="panel-grid">
           <Card>
             <span className="section-eyebrow">Depuis le web</span>
-            <h2>Préparer le vol</h2>
+            <h2>Preparer le vol</h2>
             <ul className="list-clean">
               <li>se connecter avec le compte pilote</li>
-              <li>charger une réservation ou une rotation issue de SimBrief</li>
-              <li>vérifier la préparation et la carte en direct</li>
+              <li>charger une reservation ou une rotation issue de SimBrief</li>
+              <li>verifier la preparation et la carte en direct</li>
             </ul>
           </Card>
 
           <Card>
             <span className="section-eyebrow">Depuis ACARS</span>
-            <h2>Exploiter le vol réel</h2>
+            <h2>Exploiter le vol reel</h2>
             <ul className="list-clean">
               <li>ouvrir une session ACARS canonique</li>
-              <li>envoyer la télémétrie live depuis MSFS2024 via SimConnect</li>
-              <li>clôturer le vol et préparer le PIREP réel</li>
+              <li>envoyer la telemetrie live depuis MSFS2024 via SimConnect</li>
+              <li>cloturer le vol et preparer le PIREP reel</li>
             </ul>
           </Card>
         </section>
@@ -194,7 +214,7 @@ export default async function AcarsPage({
         <section className="section-band">
           <EmptyState
             title="Aucun trafic en direct"
-            description="Le module ACARS est prêt pour le client réel, mais aucune session active n’est visible pour le moment."
+            description="Le module ACARS est pret pour le client reel, mais aucune session active n'est visible pour le moment."
           />
         </section>
       ) : null}

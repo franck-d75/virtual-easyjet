@@ -1,12 +1,12 @@
 import type { DesktopConfig, TelemetryInput } from "./types.js";
 
 export const DEFAULT_DESKTOP_CONFIG: DesktopConfig = {
-  apiBaseUrl: "http://localhost:3001/api",
-  acarsBaseUrl: "http://localhost:3002/acars",
-  clientVersion: "0.1.0-desktop-mvp",
-  simulatorProvider: "MSFS_MOCK",
-  backendMode: "mock",
-  telemetryMode: "mock",
+  apiBaseUrl: "https://api.virtual-easyjet.fr/api",
+  acarsBaseUrl: "https://api.virtual-easyjet.fr/acars",
+  clientVersion: "0.2.0",
+  simulatorProvider: "MSFS2024",
+  backendMode: "live",
+  telemetryMode: "simconnect",
 };
 
 export const DEFAULT_MANUAL_TELEMETRY: TelemetryInput = {

@@ -1,27 +1,38 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 
 import { NextResponse } from "next/server";
-
-const ARCHIVE_FILENAME = "virtual-easyjet-acars-preview.zip";
+import { resolveAcarsDownloadTarget } from "@/lib/acars/download";
 
 export async function GET() {
-  const archivePath = join(
-    process.cwd(),
-    "public",
-    "downloads",
-    ARCHIVE_FILENAME,
-  );
+  const target = resolveAcarsDownloadTarget();
 
-  const archiveBuffer = await readFile(archivePath);
+  if (target.status === "redirect") {
+    return NextResponse.redirect(target.downloadUrl, 307);
+  }
 
-  return new NextResponse(new Uint8Array(archiveBuffer), {
+  if (target.status === "missing") {
+    return NextResponse.json(
+      {
+        error: target.message,
+      },
+      {
+        status: 503,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      },
+    );
+  }
+
+  const installerBuffer = await readFile(target.filePath);
+
+  return new NextResponse(new Uint8Array(installerBuffer), {
     status: 200,
     headers: {
-      "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="${ARCHIVE_FILENAME}"`,
+      "Content-Type": "application/vnd.microsoft.portable-executable",
+      "Content-Disposition": `attachment; filename="${target.fileName}"`,
       "Cache-Control": "public, max-age=300",
-      "Content-Length": String(archiveBuffer.byteLength),
+      "Content-Length": String(installerBuffer.byteLength),
     },
   });
 }

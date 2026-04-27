@@ -1,7 +1,4 @@
-import {
-  DEFAULT_DESKTOP_CONFIG,
-  DEFAULT_MANUAL_TELEMETRY,
-} from "../shared/defaults.js";
+import { DEFAULT_DESKTOP_CONFIG } from "../shared/defaults.js";
 import {
   getBackendModePresentation,
   getBookingStatusPresentation,
@@ -12,15 +9,14 @@ import {
   type PresentationTone,
 } from "../shared/presentation.js";
 import type {
-  BackendMode,
   BookingSummary,
   DesktopBridge,
   DesktopSnapshot,
   FlightSummary,
   LoadOperationsResult,
-  MockProgress,
   SessionSummary,
-  TelemetryInput,
+  SimulatorSnapshot,
+  TelemetryTrackingState,
 } from "../shared/types.js";
 
 declare global {
@@ -35,17 +31,20 @@ type UiState = {
   snapshot: DesktopSnapshot | null;
   dispatch: LoadOperationsResult | null;
   activeSession: SessionSummary | null;
-  lastMockProgress: MockProgress | null;
+  simulator: SimulatorSnapshot | null;
+  tracking: TelemetryTrackingState | null;
   logs: string[];
 };
 
-const STORAGE_KEY = "va-acars-desktop:last-login";
+const STORAGE_KEY = "va-acars:last-login";
+const POLL_INTERVAL_MS = 5_000;
 
 const state: UiState = {
   snapshot: null,
   dispatch: null,
   activeSession: null,
-  lastMockProgress: null,
+  simulator: null,
+  tracking: null,
   logs: [],
 };
 
@@ -64,21 +63,23 @@ const refreshDispatchButton = requireElement<HTMLButtonElement>(
   "refresh-dispatch-button",
 );
 const dispatchSummary = requireElement<HTMLDivElement>("dispatch-summary");
+const ofpSummary = requireElement<HTMLDivElement>("ofp-summary");
 const bookingsList = requireElement<HTMLDivElement>("bookings-list");
 const flightsList = requireElement<HTMLDivElement>("flights-list");
+const simulatorSummary = requireElement<HTMLDivElement>("simulator-summary");
 const refreshSessionButton = requireElement<HTMLButtonElement>(
   "refresh-session-button",
 );
-const nextMockStepButton = requireElement<HTMLButtonElement>(
-  "next-mock-step-button",
+const startTrackingButton = requireElement<HTMLButtonElement>(
+  "start-tracking-button",
 );
-const resetMockSequenceButton = requireElement<HTMLButtonElement>(
-  "reset-mock-sequence-button",
+const pauseTrackingButton = requireElement<HTMLButtonElement>(
+  "pause-tracking-button",
+);
+const resumeTrackingButton = requireElement<HTMLButtonElement>(
+  "resume-tracking-button",
 );
 const sessionSummary = requireElement<HTMLDivElement>("session-summary");
-const manualTelemetryForm = requireElement<HTMLFormElement>(
-  "manual-telemetry-form",
-);
 const completeSessionForm = requireElement<HTMLFormElement>(
   "complete-session-form",
 );
@@ -89,10 +90,18 @@ function requireElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
 
   if (!element) {
-    throw new Error(`Élément requis introuvable : #${id}.`);
+    throw new Error(`Element requis introuvable : #${id}.`);
   }
 
   return element as T;
+}
+
+function getDesktopBridge(): DesktopBridge {
+  if (!window.acarsDesktop) {
+    throw new Error("Bridge Electron indisponible.");
+  }
+
+  return window.acarsDesktop;
 }
 
 function escapeHtml(value: string): string {
@@ -120,37 +129,8 @@ function appendLog(message: string): void {
   });
 
   state.logs.unshift(`[${timestamp}] ${message}`);
-  state.logs = state.logs.slice(0, 50);
+  state.logs = state.logs.slice(0, 100);
   activityLog.textContent = state.logs.join("\n");
-}
-
-function getDesktopBridge(): DesktopBridge {
-  const bridge = window.acarsDesktop;
-
-  if (!bridge) {
-    console.error("[renderer] window.acarsDesktop is undefined.", {
-      hasAcarsDesktop: false,
-      windowKeys: Object.keys(window).filter((key) =>
-        key.toLowerCase().includes("acars"),
-      ),
-    });
-
-    throw new Error(
-      "Bridge Electron indisponible. Vérifiez le chemin du preload et l’exposition du contextBridge.",
-    );
-  }
-
-  if (typeof bridge.login !== "function") {
-    console.error("[renderer] acarsDesktop bridge is incomplete.", {
-      methods: Object.keys(bridge),
-    });
-
-    throw new Error(
-      "Bridge Electron incomplet : la méthode login() est indisponible.",
-    );
-  }
-
-  return bridge;
 }
 
 function setNotice(message: string, tone: NoticeTone = "info"): void {
@@ -163,42 +143,78 @@ function formatDate(value: string | null | undefined): string {
     return "n/d";
   }
 
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString("fr-FR");
+  const parsedDate = new Date(value);
+  return Number.isNaN(parsedDate.getTime())
+    ? value
+    : parsedDate.toLocaleString("fr-FR");
 }
 
-function formatNullableValue(value: number | boolean | string | null): string {
-  if (value === null) {
+function formatDuration(minutes: number | null | undefined): string {
+  if (typeof minutes !== "number" || !Number.isFinite(minutes)) {
     return "n/d";
   }
 
-  if (typeof value === "boolean") {
-    return value ? "Oui" : "Non";
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (hours <= 0) {
+    return `${remainingMinutes} min`;
   }
 
-  return String(value);
+  return `${hours} h ${String(remainingMinutes).padStart(2, "0")}`;
 }
 
-function getSelectedBackendMode(): BackendMode {
-  return backendModeInput.value === "live" ? "live" : "mock";
+function getTrackingTone(status: TelemetryTrackingState["status"]): PresentationTone {
+  switch (status) {
+    case "RUNNING":
+      return "success";
+    case "PAUSED":
+      return "warning";
+    case "ERROR":
+      return "danger";
+    default:
+      return "neutral";
+  }
 }
 
-function applyLoginDefaults(config: DesktopSnapshot["config"]): void {
-  backendModeInput.value = config.backendMode;
-  apiBaseUrlInput.value = config.apiBaseUrl;
-  acarsBaseUrlInput.value = config.acarsBaseUrl;
+function getSimulatorTone(snapshot: SimulatorSnapshot | null): PresentationTone {
+  if (!snapshot) {
+    return "neutral";
+  }
+
+  switch (snapshot.status) {
+    case "AIRCRAFT_DETECTED":
+      return "success";
+    case "CONNECTED":
+      return "info";
+    case "CONNECTING":
+      return "warning";
+    case "ERROR":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
+function getDisplayPilotName(snapshot: DesktopSnapshot | null): string {
+  const pilotProfile = snapshot?.user?.pilotProfile;
+
+  if (
+    pilotProfile?.firstName &&
+    pilotProfile.lastName &&
+    `${pilotProfile.firstName} ${pilotProfile.lastName}`.trim().length > 0
+  ) {
+    return `${pilotProfile.firstName} ${pilotProfile.lastName}`;
+  }
+
+  return snapshot?.user?.username ?? "Aucun pilote";
 }
 
 function persistLoginPreferences(): void {
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
-      backendMode: getSelectedBackendMode(),
+      backendMode: backendModeInput.value,
       apiBaseUrl: apiBaseUrlInput.value.trim(),
       acarsBaseUrl: acarsBaseUrlInput.value.trim(),
       identifier: identifierInput.value.trim(),
@@ -207,238 +223,92 @@ function persistLoginPreferences(): void {
 }
 
 function restoreLoginPreferences(): void {
-  const storedRawValue = localStorage.getItem(STORAGE_KEY);
+  const rawValue = localStorage.getItem(STORAGE_KEY);
 
-  if (!storedRawValue) {
+  if (!rawValue) {
     return;
   }
 
   try {
-    const storedValue = JSON.parse(storedRawValue) as Partial<{
-      backendMode: BackendMode;
+    const storedValue = JSON.parse(rawValue) as Partial<{
+      backendMode: string;
       apiBaseUrl: string;
       acarsBaseUrl: string;
       identifier: string;
     }>;
 
-    backendModeInput.value = storedValue.backendMode ?? backendModeInput.value;
-    apiBaseUrlInput.value = storedValue.apiBaseUrl ?? apiBaseUrlInput.value;
+    backendModeInput.value = storedValue.backendMode ?? DEFAULT_DESKTOP_CONFIG.backendMode;
+    apiBaseUrlInput.value = storedValue.apiBaseUrl ?? DEFAULT_DESKTOP_CONFIG.apiBaseUrl;
     acarsBaseUrlInput.value =
-      storedValue.acarsBaseUrl ?? acarsBaseUrlInput.value;
+      storedValue.acarsBaseUrl ?? DEFAULT_DESKTOP_CONFIG.acarsBaseUrl;
     identifierInput.value = storedValue.identifier ?? "";
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
 }
 
-function renderBackendModeBadge(): void {
-  const authenticatedMode = state.snapshot?.config.backendMode;
-  const mode = authenticatedMode ?? getSelectedBackendMode();
-  const presentation = getBackendModePresentation(mode);
-
-  backendModeBadge.textContent = presentation.label;
-  backendModeBadge.className = `badge badge--${presentation.tone}`;
-}
-
-function setManualTelemetryDefaults(): void {
-  setNumericValue("latitude", DEFAULT_MANUAL_TELEMETRY.latitude);
-  setNumericValue("longitude", DEFAULT_MANUAL_TELEMETRY.longitude);
-  setNumericValue("altitudeFt", DEFAULT_MANUAL_TELEMETRY.altitudeFt);
-  setNumericValue("groundspeedKts", DEFAULT_MANUAL_TELEMETRY.groundspeedKts);
-  setNumericValue("headingDeg", DEFAULT_MANUAL_TELEMETRY.headingDeg);
-  setNumericValue("verticalSpeedFpm", DEFAULT_MANUAL_TELEMETRY.verticalSpeedFpm);
-  setNumericValue("fuelTotalKg", DEFAULT_MANUAL_TELEMETRY.fuelTotalKg ?? 0);
-  setNumericValue("gearPercent", DEFAULT_MANUAL_TELEMETRY.gearPercent ?? 100);
-  setNumericValue("flapsPercent", DEFAULT_MANUAL_TELEMETRY.flapsPercent ?? 0);
-  setCheckboxValue("onGround", DEFAULT_MANUAL_TELEMETRY.onGround);
-  setCheckboxValue("parkingBrake", DEFAULT_MANUAL_TELEMETRY.parkingBrake ?? false);
-}
-
-function setNumericValue(name: string, value: number): void {
-  const input = manualTelemetryForm.elements.namedItem(name);
-
-  if (input instanceof HTMLInputElement) {
-    input.value = String(value);
-  }
-}
-
-function setCheckboxValue(name: string, value: boolean): void {
-  const input = manualTelemetryForm.elements.namedItem(name);
-
-  if (input instanceof HTMLInputElement) {
-    input.checked = value;
-  }
+function applySnapshotDefaults(snapshot: DesktopSnapshot | null): void {
+  const config = snapshot?.config ?? DEFAULT_DESKTOP_CONFIG;
+  backendModeInput.value = config.backendMode;
+  apiBaseUrlInput.value = config.apiBaseUrl;
+  acarsBaseUrlInput.value = config.acarsBaseUrl;
 }
 
 function renderSnapshot(): void {
   const snapshot = state.snapshot;
+  const backendPresentation = getBackendModePresentation(
+    snapshot?.config.backendMode ?? "live",
+  );
 
-  renderBackendModeBadge();
+  backendModeBadge.className = `badge badge--${backendPresentation.tone}`;
+  backendModeBadge.textContent = backendPresentation.label;
 
-  authBadge.textContent = snapshot?.isAuthenticated ? "Connecté" : "Hors ligne";
   authBadge.className = snapshot?.isAuthenticated
     ? "badge badge--success"
     : "badge badge--neutral";
+  authBadge.textContent = snapshot?.isAuthenticated ? "Connecte" : "Hors ligne";
 
   if (!snapshot?.user) {
     identityCard.innerHTML = `
-      <strong>Aucun pilote chargé</strong>
+      <strong>Aucun pilote charge</strong>
       <p class="helper">
-        Connectez-vous pour ouvrir une session desktop Virtual Easyjet.
+        Connectez-vous avec votre compte Virtual Easyjet pour charger vos operations reelles.
       </p>
     `;
     return;
   }
 
-  const pilotProfile = snapshot.user.pilotProfile;
-  const pilotName = pilotProfile
-    ? `${pilotProfile.firstName} ${pilotProfile.lastName}`
-    : snapshot.user.username;
-  const roles = snapshot.user.roles.length > 0
-    ? snapshot.user.roles.join(", ")
-    : "aucun rôle";
-
   identityCard.innerHTML = `
-    <div class="identity-head">
+    <div class="list-item__header">
       <div>
-        <p class="eyebrow">Pilote connecté</p>
-        <strong>${escapeHtml(pilotName)}</strong>
+        <strong>${escapeHtml(getDisplayPilotName(snapshot))}</strong>
         <p class="helper">
-          ${escapeHtml(snapshot.user.email)} · pilote ${
-            escapeHtml(pilotProfile?.pilotNumber ?? "n/d")
+          ${escapeHtml(snapshot.user.email)} · numero pilote ${
+            escapeHtml(snapshot.user.pilotProfile?.pilotNumber ?? "n/d")
           }
         </p>
       </div>
-      ${renderBadge("Session active", "success")}
+      ${renderBadge("Pilote connecte", "success")}
     </div>
     <div class="token-row">
       ${renderToken(`Utilisateur: ${snapshot.user.username}`)}
-      ${renderToken(`Rôles: ${roles}`)}
-      ${renderToken(`Backend: ${snapshot.config.backendMode}`)}
-      ${renderToken(`Télémétrie: ${snapshot.config.telemetryMode}`)}
+      ${renderToken(`SimBrief Pilot ID: ${snapshot.user.pilotProfile?.simbriefPilotId ?? "non renseigne"}`)}
+      ${renderToken(`Telemetrie: ${snapshot.config.telemetryMode}`)}
+      ${renderToken(`Simulateur: ${snapshot.config.simulatorProvider}`)}
     </div>
   `;
 }
 
-function renderBookings(bookings: BookingSummary[]): void {
-  if (bookings.length === 0) {
-    bookingsList.innerHTML =
-      `<div class="empty-state">Aucune réservation chargée.</div>`;
-    return;
-  }
+function renderOperations(): void {
+  const dispatch = state.dispatch;
 
-  bookingsList.innerHTML = bookings
-    .map((booking) => {
-      const status = getBookingStatusPresentation(booking.status);
-
-      return `
-        <article class="list-item">
-          <div class="list-item__header">
-            <div>
-              <strong>${escapeHtml(booking.reservedFlightNumber)}</strong>
-              <p class="helper">
-                ${escapeHtml(booking.departureAirport.icao)} → ${escapeHtml(booking.arrivalAirport.icao)} ·
-                ${escapeHtml(booking.aircraft.aircraftType.name)}
-              </p>
-            </div>
-            ${renderBadge(status.label, status.tone)}
-          </div>
-          <div class="meta-row">
-            ${renderToken(`Départ: ${formatDate(booking.bookedFor)}`)}
-            ${
-              booking.flight
-                ? renderToken(`Vol lié: ${booking.flight.status}`)
-                : renderToken("Vol lié: aucun")
-            }
-            ${renderToken(`Avion: ${booking.aircraft.registration}`)}
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-}
-
-function buildFlightActions(flight: FlightSummary): string {
-  if (flight.acarsSession) {
-    return `
-      <button class="button button--secondary" type="button" data-action="open-session" data-session-id="${escapeHtml(flight.acarsSession.id)}">
-        Reprendre la session
-      </button>
-    `;
-  }
-
-  if (flight.status === "IN_PROGRESS") {
-    return `
-      <button class="button button--primary" type="button" data-action="create-session" data-flight-id="${escapeHtml(flight.id)}">
-        Démarrer ACARS
-      </button>
-    `;
-  }
-
-  return renderToken("Non exploitable");
-}
-
-function renderFlights(flights: FlightSummary[]): void {
-  if (flights.length === 0) {
-    flightsList.innerHTML = `
-      <div class="empty-state">
-        Aucun vol chargé. Créez d’abord un vol canonique depuis le site web si nécessaire.
-      </div>
-    `;
-    return;
-  }
-
-  flightsList.innerHTML = flights
-    .map((flight) => {
-      const flightStatus = getFlightStatusPresentation(flight.status);
-      const sessionStatus = flight.acarsSession
-        ? getSessionStatusPresentation(flight.acarsSession.status)
-        : null;
-      const pirepStatus = flight.pirep
-        ? getPirepStatusPresentation(flight.pirep.status)
-        : null;
-
-      return `
-        <article class="list-item">
-          <div class="list-item__header">
-            <div>
-              <strong>${escapeHtml(flight.flightNumber)}</strong>
-              <p class="helper">
-                ${escapeHtml(flight.departureAirport.icao)} → ${escapeHtml(flight.arrivalAirport.icao)} ·
-                ${escapeHtml(flight.aircraft.aircraftType.name)}
-              </p>
-            </div>
-            ${renderBadge(flightStatus.label, flightStatus.tone)}
-          </div>
-          <div class="meta-row">
-            ${renderToken(`Réservation: ${flight.booking.status}`)}
-            ${
-              sessionStatus
-                ? renderBadge(sessionStatus.label, sessionStatus.tone)
-                : renderToken("Session: aucune")
-            }
-            ${
-              pirepStatus
-                ? renderBadge(pirepStatus.label, pirepStatus.tone)
-                : renderToken("PIREP: aucun")
-            }
-          </div>
-          <div class="button-row">
-            ${buildFlightActions(flight)}
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-}
-
-function renderDispatch(): void {
-  if (!state.dispatch) {
+  if (!dispatch) {
     dispatchSummary.innerHTML = `
       <div class="empty-state">
-        Chargez vos opérations après connexion.
+        Connectez-vous puis chargez vos operations pour voir reservations, OFP et vols exploitables.
       </div>
     `;
+    ofpSummary.innerHTML = "";
     bookingsList.innerHTML = "";
     flightsList.innerHTML = "";
     return;
@@ -447,49 +317,204 @@ function renderDispatch(): void {
   dispatchSummary.innerHTML = `
     <div class="summary-grid">
       <div class="metric">
-        <span class="metric-label">Réservations chargées</span>
-        <span class="metric-value">${state.dispatch.bookings.length}</span>
+        <span class="metric-label">Reservations</span>
+        <span class="metric-value">${dispatch.bookings.length}</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Réservations exploitables</span>
-        <span class="metric-value">${state.dispatch.usableBookings.length}</span>
+        <span class="metric-label">Vols exploitables</span>
+        <span class="metric-value">${dispatch.usableFlights.length}</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Vols chargés</span>
-        <span class="metric-value">${state.dispatch.flights.length}</span>
+        <span class="metric-label">Numero pilote</span>
+        <span class="metric-value">${escapeHtml(dispatch.pilotProfile?.pilotNumber ?? "n/d")}</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Vols ACARS prêts</span>
-        <span class="metric-value">${state.dispatch.usableFlights.length}</span>
+        <span class="metric-label">SimBrief</span>
+        <span class="metric-value">${escapeHtml(dispatch.pilotProfile?.simbriefPilotId ?? "n/d")}</span>
       </div>
     </div>
   `;
 
-  renderBookings(state.dispatch.bookings);
-  renderFlights(state.dispatch.flights);
+  ofpSummary.innerHTML = dispatch.latestOfp
+    ? `
+      <article class="list-item">
+        <div class="list-item__header">
+          <div>
+            <strong>${escapeHtml(dispatch.latestOfp.flightNumber ?? dispatch.latestOfp.callsign ?? "Dernier OFP")}</strong>
+            <p class="helper">
+              ${escapeHtml(dispatch.latestOfp.departureIcao ?? "----")} -> ${escapeHtml(dispatch.latestOfp.arrivalIcao ?? "----")} ·
+              ${escapeHtml(dispatch.latestOfp.aircraft?.icaoCode ?? "type n/d")}
+            </p>
+          </div>
+          ${renderBadge(dispatch.latestOfp.status, dispatch.latestOfp.status === "AVAILABLE" ? "success" : "warning")}
+        </div>
+        <div class="meta-row">
+          ${renderToken(`Route: ${dispatch.latestOfp.route ?? "n/d"}`)}
+          ${renderToken(`Distance: ${dispatch.latestOfp.distanceNm ?? "n/d"} NM`)}
+          ${renderToken(`Block time: ${formatDuration(dispatch.latestOfp.blockTimeMinutes)}`)}
+          ${renderToken(`ETE: ${dispatch.latestOfp.estimatedTimeEnroute ?? "n/d"}`)}
+        </div>
+      </article>
+    `
+    : `
+      <div class="empty-state">
+        Aucun OFP SimBrief exploitable n'est charge pour ce pilote.
+      </div>
+    `;
+
+  renderBookings(dispatch.bookings);
+  renderFlights(dispatch.flights);
+}
+
+function renderBookings(bookings: BookingSummary[]): void {
+  if (bookings.length === 0) {
+    bookingsList.innerHTML = `<div class="empty-state">Aucune reservation active.</div>`;
+    return;
+  }
+
+  bookingsList.innerHTML = bookings
+    .map((booking) => {
+      const status = getBookingStatusPresentation(booking.status);
+      const canCreateFlight =
+        booking.status === "RESERVED" && booking.flight === null;
+
+      return `
+        <article class="list-item">
+          <div class="list-item__header">
+            <div>
+              <strong>${escapeHtml(booking.reservedFlightNumber)}</strong>
+              <p class="helper">
+                ${escapeHtml(booking.departureAirport.icao)} -> ${escapeHtml(booking.arrivalAirport.icao)} ·
+                ${escapeHtml(booking.aircraft.registration)}
+              </p>
+            </div>
+            ${renderBadge(status.label, status.tone)}
+          </div>
+          <div class="meta-row">
+            ${renderToken(`Depart prevu: ${formatDate(booking.bookedFor)}`)}
+            ${renderToken(`Appareil: ${booking.aircraft.aircraftType.icaoCode}`)}
+          </div>
+          <div class="button-row">
+            ${
+              canCreateFlight
+                ? `<button class="button button--secondary" type="button" data-action="create-flight" data-booking-id="${escapeHtml(booking.id)}">Creer le vol</button>`
+                : renderToken(booking.flight ? "Vol deja cree" : "Reservation non exploitable")
+            }
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderFlights(flights: FlightSummary[]): void {
+  if (flights.length === 0) {
+    flightsList.innerHTML = `<div class="empty-state">Aucun vol exploitable n'est charge.</div>`;
+    return;
+  }
+
+  flightsList.innerHTML = flights
+    .map((flight) => {
+      const status = getFlightStatusPresentation(flight.status);
+
+      return `
+        <article class="list-item">
+          <div class="list-item__header">
+            <div>
+              <strong>${escapeHtml(flight.flightNumber)}</strong>
+              <p class="helper">
+                ${escapeHtml(flight.departureAirport.icao)} -> ${escapeHtml(flight.arrivalAirport.icao)} ·
+                ${escapeHtml(flight.aircraft.registration)}
+              </p>
+            </div>
+            ${renderBadge(status.label, status.tone)}
+          </div>
+          <div class="meta-row">
+            ${renderToken(`Reservation: ${flight.booking.status}`)}
+            ${
+              flight.acarsSession
+                ? renderToken(`Session ACARS: ${flight.acarsSession.detectedPhase}`)
+                : renderToken("Session ACARS: aucune")
+            }
+          </div>
+          <div class="button-row">
+            ${
+              flight.acarsSession
+                ? `<button class="button button--secondary" type="button" data-action="open-session" data-session-id="${escapeHtml(flight.acarsSession.id)}">Ouvrir la session</button>`
+                : `<button class="button button--primary" type="button" data-action="start-flight" data-flight-id="${escapeHtml(flight.id)}">Start Flight</button>`
+            }
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderSimulator(): void {
+  const simulator = state.simulator;
+
+  if (!simulator) {
+    simulatorSummary.innerHTML = `
+      <div class="empty-state">
+        Le statut SimConnect sera visible ici apres initialisation du client.
+      </div>
+    `;
+    return;
+  }
+
+  simulatorSummary.innerHTML = `
+    <div class="list-item__header">
+      <div>
+        <strong>MSFS2024 / SimConnect</strong>
+        <p class="helper">${escapeHtml(simulator.message)}</p>
+      </div>
+      ${renderBadge(simulator.status, getSimulatorTone(simulator))}
+    </div>
+    <div class="summary-grid">
+      <div class="metric">
+        <span class="metric-label">Appareil detecte</span>
+        <span class="metric-value">${escapeHtml(simulator.aircraft?.registration ?? simulator.aircraft?.title ?? "n/d")}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Cap</span>
+        <span class="metric-value">${simulator.telemetry?.headingDeg ?? "n/d"}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Altitude</span>
+        <span class="metric-value">${simulator.telemetry?.altitudeFt ?? "n/d"}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Vitesse sol</span>
+        <span class="metric-value">${simulator.telemetry?.groundspeedKts ?? "n/d"}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Au sol</span>
+        <span class="metric-value">${simulator.telemetry ? (simulator.telemetry.onGround ? "Oui" : "Non") : "n/d"}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Dernier echantillon</span>
+        <span class="metric-value">${escapeHtml(formatDate(simulator.lastSampleAt))}</span>
+      </div>
+    </div>
+  `;
 }
 
 function renderSession(): void {
   const session = state.activeSession;
+  const tracking = state.tracking;
 
   if (!session) {
     sessionSummary.innerHTML = `
       <div class="empty-state">
-        Ouvrez ou créez une session ACARS depuis un vol en cours.
+        Aucun vol actif. Chargez une reservation, creez un vol, puis ouvrez une session ACARS.
       </div>
     `;
     pirepResult.innerHTML = "Aucun PIREP disponible.";
-    updateSessionControls();
+    updateActionState();
     return;
   }
 
-  const sessionStatus = getSessionStatusPresentation(session.status);
-  const phaseLabel = getPhaseLabel(session.detectedPhase);
-  const lastStepLabel = state.lastMockProgress?.step?.label ?? "n/d";
-  const remainingSteps =
-    state.lastMockProgress?.remainingSteps !== undefined
-      ? String(state.lastMockProgress.remainingSteps)
-      : "n/d";
+  const sessionPresentation = getSessionStatusPresentation(session.status);
 
   sessionSummary.innerHTML = `
     <div class="list-item__header">
@@ -497,170 +522,119 @@ function renderSession(): void {
         <strong>${escapeHtml(session.flight.flightNumber)}</strong>
         <p class="helper">
           ${escapeHtml(session.flight.departureAirport.icao)} -> ${escapeHtml(session.flight.arrivalAirport.icao)} ·
-          ${escapeHtml(session.flight.aircraft.aircraftType.name)}
+          ${escapeHtml(session.flight.aircraft.registration)}
         </p>
       </div>
-      ${renderBadge(sessionStatus.label, sessionStatus.tone)}
+      ${renderBadge(sessionPresentation.label, sessionPresentation.tone)}
     </div>
     <div class="meta-row">
-      ${renderBadge(phaseLabel, "info")}
-      ${renderToken(`Dernière télémétrie: ${formatDate(session.lastTelemetryAt)}`)}
-      ${renderToken(`Mock restant: ${remainingSteps}`)}
+      ${renderBadge(getPhaseLabel(session.detectedPhase), "info")}
+      ${renderBadge(tracking?.status ?? "IDLE", getTrackingTone(tracking?.status ?? "IDLE"))}
+      ${renderToken(`Derniere telemetrie: ${formatDate(session.lastTelemetryAt)}`)}
+      ${renderToken(`Dernier envoi: ${formatDate(tracking?.lastSentAt)}`)}
     </div>
-    <div class="session-metrics">
+    <div class="summary-grid">
       <div class="metric">
-        <span class="metric-label">Phase détectée</span>
-        <span class="metric-value">${escapeHtml(phaseLabel)}</span>
+        <span class="metric-label">Latitude</span>
+        <span class="metric-value">${session.currentPosition.latitude ?? "n/d"}</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Dernière étape mock</span>
-        <span class="metric-value">${escapeHtml(lastStepLabel)}</span>
+        <span class="metric-label">Longitude</span>
+        <span class="metric-value">${session.currentPosition.longitude ?? "n/d"}</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Altitude ft</span>
-        <span class="metric-value">${formatNullableValue(session.currentPosition.altitudeFt)}</span>
+        <span class="metric-label">Altitude</span>
+        <span class="metric-value">${session.currentPosition.altitudeFt ?? "n/d"}</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Vitesse sol (kt)</span>
-        <span class="metric-value">${formatNullableValue(session.currentPosition.groundspeedKts)}</span>
+        <span class="metric-label">Vitesse sol</span>
+        <span class="metric-value">${session.currentPosition.groundspeedKts ?? "n/d"}</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Au sol</span>
-        <span class="metric-value">${formatNullableValue(session.currentPosition.onGround)}</span>
+        <span class="metric-label">Carburant depart</span>
+        <span class="metric-value">${session.fuel.departureFuelKg ?? "n/d"}</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Frein de parking</span>
-        <span class="metric-value">${formatNullableValue(session.latestTelemetry?.parkingBrake ?? null)}</span>
-      </div>
-      <div class="metric">
-        <span class="metric-label">Carburant départ (kg)</span>
-        <span class="metric-value">${formatNullableValue(session.fuel.departureFuelKg)}</span>
-      </div>
-      <div class="metric">
-        <span class="metric-label">Carburant arrivée (kg)</span>
-        <span class="metric-value">${formatNullableValue(session.fuel.arrivalFuelKg)}</span>
+        <span class="metric-label">Carburant arrivee</span>
+        <span class="metric-value">${session.fuel.arrivalFuelKg ?? "n/d"}</span>
       </div>
     </div>
+    ${
+      tracking?.lastError
+        ? `<p class="inline-feedback inline-feedback--danger">${escapeHtml(tracking.lastError)}</p>`
+        : ""
+    }
   `;
 
   if (session.pirep) {
-    const pirepStatus = getPirepStatusPresentation(session.pirep.status);
+    const pirepPresentation = getPirepStatusPresentation(session.pirep.status);
 
     pirepResult.innerHTML = `
       <div class="list-item__header">
         <div>
-          <strong>PIREP généré</strong>
-          <p class="helper">
-            Source ${escapeHtml(session.pirep.source)} · soumis le ${formatDate(session.pirep.submittedAt)}
-          </p>
+          <strong>PIREP cree</strong>
+          <p class="helper">Soumis le ${formatDate(session.pirep.submittedAt)}</p>
         </div>
-        ${renderBadge(pirepStatus.label, pirepStatus.tone)}
+        ${renderBadge(pirepPresentation.label, pirepPresentation.tone)}
       </div>
-      <pre class="json-panel">${escapeHtml(
-        JSON.stringify(
-          {
-            pirep: session.pirep,
-            summary: session.eventSummary,
-          },
-          null,
-          2,
-        ),
-      )}</pre>
     `;
   } else {
     pirepResult.innerHTML = `
-      <strong>Aucun PIREP généré</strong>
+      <strong>Aucun PIREP disponible</strong>
       <p class="helper">
-        Finalisez la session pour produire le rapport automatique du MVP.
+        Terminez le vol pour envoyer le PIREP reel au backend Virtual Easyjet.
       </p>
     `;
   }
 
-  updateSessionControls();
+  updateActionState();
 }
 
-function updateSessionControls(): void {
-  const hasSession = state.activeSession !== null;
-  const sessionCompleted = state.activeSession?.status === "COMPLETED";
-  const mockControlsEnabled =
-    (state.snapshot?.config.backendMode ?? getSelectedBackendMode()) === "mock" &&
-    hasSession &&
-    !sessionCompleted;
+function updateActionState(): void {
+  const authenticated = Boolean(state.snapshot?.isAuthenticated);
+  const hasSession = Boolean(state.activeSession);
+  const trackingStatus = state.tracking?.status ?? "IDLE";
+  const canOperate = authenticated && hasSession;
 
-  refreshSessionButton.disabled = !hasSession;
-  nextMockStepButton.disabled = !mockControlsEnabled;
-  resetMockSequenceButton.disabled = !mockControlsEnabled;
+  refreshDispatchButton.disabled = !authenticated;
+  refreshSessionButton.disabled = !canOperate;
+  startTrackingButton.disabled = !canOperate || trackingStatus === "RUNNING";
+  pauseTrackingButton.disabled = !canOperate || trackingStatus !== "RUNNING";
+  resumeTrackingButton.disabled = !canOperate || trackingStatus !== "PAUSED";
 
-  const manualFormElements = manualTelemetryForm.querySelectorAll<
-    HTMLInputElement | HTMLButtonElement
-  >("input, button");
-  manualFormElements.forEach((element) => {
-    element.disabled = !hasSession || sessionCompleted;
-  });
-
-  const completeFormElements = completeSessionForm.querySelectorAll<
+  const completeControls = completeSessionForm.querySelectorAll<
     HTMLTextAreaElement | HTMLButtonElement
   >("textarea, button");
-  completeFormElements.forEach((element) => {
-    element.disabled = !hasSession || sessionCompleted;
+  completeControls.forEach((element) => {
+    element.disabled = !canOperate;
   });
 }
 
-function parseTelemetryForm(): TelemetryInput {
-  const formData = new FormData(manualTelemetryForm);
-  const onGround = formData.get("onGround") === "on";
-  const parkingBrake = formData.get("parkingBrake") === "on";
-  const fuelTotalKg = readOptionalNumber(formData.get("fuelTotalKg"));
-  const gearPercent = readOptionalNumber(formData.get("gearPercent"));
-  const flapsPercent = readOptionalNumber(formData.get("flapsPercent"));
+async function refreshRuntimeState(): Promise<void> {
+  const bridge = getDesktopBridge();
+  state.snapshot = await bridge.getSnapshot();
+  state.simulator = await bridge.getSimulatorSnapshot();
+  state.tracking = await bridge.getTrackingState();
 
-  const telemetry: TelemetryInput = {
-    capturedAt: new Date().toISOString(),
-    latitude: Number(formData.get("latitude")),
-    longitude: Number(formData.get("longitude")),
-    altitudeFt: Number(formData.get("altitudeFt")),
-    groundspeedKts: Number(formData.get("groundspeedKts")),
-    headingDeg: Number(formData.get("headingDeg")),
-    verticalSpeedFpm: Number(formData.get("verticalSpeedFpm")),
-    onGround,
-    parkingBrake,
-  };
+  const sessionId =
+    state.tracking.activeSessionId ?? state.activeSession?.id ?? null;
 
-  if (fuelTotalKg !== undefined) {
-    telemetry.fuelTotalKg = fuelTotalKg;
+  if (sessionId) {
+    try {
+      state.activeSession = await bridge.getSession(sessionId);
+    } catch {
+      state.activeSession = null;
+    }
   }
 
-  if (gearPercent !== undefined) {
-    telemetry.gearPercent = gearPercent;
-  }
-
-  if (flapsPercent !== undefined) {
-    telemetry.flapsPercent = flapsPercent;
-  }
-
-  return telemetry;
-}
-
-function readOptionalNumber(value: FormDataEntryValue | null): number | undefined {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return undefined;
-  }
-
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function requireActiveSessionId(): string {
-  if (!state.activeSession) {
-    throw new Error("Ouvrez ou créez d’abord une session ACARS.");
-  }
-
-  return state.activeSession.id;
+  renderSnapshot();
+  renderSimulator();
+  renderSession();
 }
 
 async function handleLogin(): Promise<void> {
   const snapshot = await getDesktopBridge().login({
-    backendMode: getSelectedBackendMode(),
+    backendMode: backendModeInput.value === "mock" ? "mock" : "live",
     apiBaseUrl: apiBaseUrlInput.value,
     acarsBaseUrl: acarsBaseUrlInput.value,
     identifier: identifierInput.value,
@@ -670,163 +644,107 @@ async function handleLogin(): Promise<void> {
   state.snapshot = snapshot;
   state.dispatch = null;
   state.activeSession = null;
-  state.lastMockProgress = null;
   passwordInput.value = "";
 
   persistLoginPreferences();
-  renderSnapshot();
-  renderDispatch();
-  renderSession();
-
-  appendLog(`Connexion ouverte pour ${snapshot.user?.username ?? "utilisateur inconnu"}.`);
-  setNotice(
-    snapshot.config.backendMode === "live"
-      ? "Connexion réelle réussie. Vous pouvez maintenant charger les opérations réelles."
-      : "Connexion mock réussie. Vous pouvez charger les opérations locales de démonstration.",
-    "success",
-  );
+  await refreshRuntimeState();
+  appendLog(`Connexion ouverte pour ${snapshot.user?.username ?? "pilote"}.`);
+  setNotice("Connexion reussie. Chargez maintenant vos operations reelles.", "success");
 }
 
 async function handleLogout(): Promise<void> {
-  const snapshot = await getDesktopBridge().logout();
-  state.snapshot = snapshot;
+  state.snapshot = await getDesktopBridge().logout();
   state.dispatch = null;
   state.activeSession = null;
-  state.lastMockProgress = null;
-
-  renderSnapshot();
-  renderDispatch();
-  renderSession();
-
-  appendLog("Session desktop fermée.");
-  setNotice("Session desktop fermée.", "info");
+  await refreshRuntimeState();
+  appendLog("Session desktop fermee.");
+  setNotice("Session desktop fermee.", "info");
 }
 
 async function loadDispatch(): Promise<void> {
-  const dispatch = await getDesktopBridge().loadDispatchData();
-  state.dispatch = dispatch;
+  state.dispatch = await getDesktopBridge().loadDispatchData();
+  renderOperations();
+  appendLog("Operations pilote rechargees.");
+  setNotice("Reservations, OFP et vols charges.", "success");
+}
 
-  renderDispatch();
-
-  appendLog(
-    `Opérations chargées : ${dispatch.bookings.length} réservation(s), ${dispatch.flights.length} vol(s).`,
-  );
-
-  if (dispatch.usableFlights.length === 0) {
-    setNotice(
-      "Aucun vol en cours sans session ACARS. Créez ou reprenez d’abord un vol côté VA.",
-      "warning",
-    );
-  } else {
-    setNotice("Opérations chargées. Une session ACARS peut maintenant être ouverte.", "success");
-  }
+async function createFlightFromBooking(bookingId: string): Promise<void> {
+  const flight = await getDesktopBridge().createFlightFromBooking(bookingId);
+  appendLog(`Vol ${flight.flightNumber} cree depuis la reservation.`);
+  setNotice("Le vol a ete cree. Vous pouvez maintenant demarrer la session ACARS.", "success");
+  await loadDispatch();
 }
 
 async function createSession(flightId: string): Promise<void> {
-  const session = await getDesktopBridge().createSession(flightId);
-  state.activeSession = session;
-  state.lastMockProgress = null;
-
+  state.activeSession = await getDesktopBridge().createSession(flightId);
+  state.tracking = await getDesktopBridge().getTrackingState();
   renderSession();
-  appendLog(`Session ACARS ${session.id} créée pour ${session.flight.flightNumber}.`);
-  setNotice(
-    state.snapshot?.config.backendMode === "live"
-      ? `Session ${session.id} créée. Vous pouvez envoyer la télémétrie au backend réel.`
-      : `Session ${session.id} créée. La séquence mock est disponible.`,
-    "success",
-  );
-
+  appendLog(`Session ACARS ${state.activeSession.id} ouverte.`);
+  setNotice("Session ACARS ouverte. Le suivi SimConnect est pret.", "success");
   await loadDispatch();
 }
 
 async function openSession(sessionId: string): Promise<void> {
-  const session = await getDesktopBridge().getSession(sessionId);
-  state.activeSession = session;
-
+  state.activeSession = await getDesktopBridge().getSession(sessionId);
+  state.tracking = await getDesktopBridge().getTrackingState();
   renderSession();
-  appendLog(`Session ${session.id} rechargée.`);
-  setNotice(`Session ${session.id} rechargée.`, "success");
+  appendLog(`Session ${sessionId} rechargee.`);
+  setNotice("Session ACARS rechargee.", "info");
 }
 
 async function refreshSession(): Promise<void> {
-  const sessionId = requireActiveSessionId();
-  const session = await getDesktopBridge().getSession(sessionId);
-  state.activeSession = session;
-
-  renderSession();
-  appendLog(`Session ${session.id} rafraîchie.`);
-  setNotice(`Session ${session.id} rafraîchie.`, "info");
-}
-
-async function sendNextMockStep(): Promise<void> {
-  const sessionId = requireActiveSessionId();
-  const progress = await getDesktopBridge().sendNextMockTelemetry(sessionId);
-  state.activeSession = progress.session;
-  state.lastMockProgress = progress;
-
-  renderSession();
-
-  if (progress.step) {
-    appendLog(
-      `Télémétrie mock envoyée : ${progress.step.label} → ${getPhaseLabel(progress.session.detectedPhase)}.`,
-    );
-    setNotice(
-      `Étape mock envoyée : ${progress.step.label}. Phase courante : ${getPhaseLabel(progress.session.detectedPhase)}.`,
-      "success",
-    );
-  } else {
-    appendLog("La séquence mock est déjà terminée.");
-    setNotice(
-      "La séquence mock est terminée. Finalisez la session ou réinitialisez le mock.",
-      "warning",
-    );
+  if (!state.activeSession) {
+    return;
   }
+
+  state.activeSession = await getDesktopBridge().getSession(state.activeSession.id);
+  state.tracking = await getDesktopBridge().getTrackingState();
+  renderSession();
+  appendLog(`Session ${state.activeSession.id} rafraichie.`);
+  setNotice("Session rafraichie.", "info");
 }
 
-async function resetMockSequence(): Promise<void> {
-  const sessionId = requireActiveSessionId();
-  const resetResult = await getDesktopBridge().resetMockSequence(sessionId);
-  state.lastMockProgress = null;
-  renderSession();
+async function startTracking(): Promise<void> {
+  if (!state.activeSession) {
+    throw new Error("Aucune session active a suivre.");
+  }
 
-  appendLog(`Séquence mock réinitialisée (${resetResult.totalSteps} étapes).`);
-  setNotice("Séquence mock réinitialisée.", "info");
+  state.tracking = await getDesktopBridge().startSessionTracking(state.activeSession.id);
+  await refreshRuntimeState();
+  appendLog("Suivi SimConnect demarre.");
+  setNotice("Le suivi live ACARS tourne maintenant sur la telemetrie MSFS2024.", "success");
 }
 
-async function sendManualTelemetry(): Promise<void> {
-  const sessionId = requireActiveSessionId();
-  const session = await getDesktopBridge().sendManualTelemetry(
-    sessionId,
-    parseTelemetryForm(),
-  );
-
-  state.activeSession = session;
+async function pauseTracking(): Promise<void> {
+  state.tracking = await getDesktopBridge().pauseSessionTracking();
   renderSession();
+  appendLog("Suivi ACARS mis en pause.");
+  setNotice("Le suivi live est en pause.", "warning");
+}
 
-  appendLog(`Télémétrie manuelle envoyée → ${getPhaseLabel(session.detectedPhase)}.`);
-  setNotice(
-    `Télémétrie envoyée. Phase courante : ${getPhaseLabel(session.detectedPhase)}.`,
-    "success",
-  );
+async function resumeTracking(): Promise<void> {
+  state.tracking = await getDesktopBridge().resumeSessionTracking();
+  await refreshRuntimeState();
+  appendLog("Suivi ACARS repris.");
+  setNotice("Le suivi live ACARS a repris.", "success");
 }
 
 async function completeSession(): Promise<void> {
-  const sessionId = requireActiveSessionId();
-  const formData = new FormData(completeSessionForm);
-  const pilotComment = String(formData.get("pilotComment") ?? "");
-  const session = await getDesktopBridge().completeSession(
-    sessionId,
+  if (!state.activeSession) {
+    throw new Error("Aucune session ACARS active.");
+  }
+
+  const pilotComment = String(
+    new FormData(completeSessionForm).get("pilotComment") ?? "",
+  );
+  state.activeSession = await getDesktopBridge().completeSession(
+    state.activeSession.id,
     pilotComment,
   );
-
-  state.activeSession = session;
+  state.tracking = await getDesktopBridge().getTrackingState();
   renderSession();
-
-  appendLog(
-    `Session ${session.id} terminée. Statut PIREP : ${session.pirep?.status ?? "n/d"}.`,
-  );
-  setNotice("Session finalisée. Le PIREP automatique est disponible.", "success");
-
+  appendLog(`Session ${state.activeSession.id} finalisee.`);
+  setNotice("Vol cloture. Le PIREP reel a ete prepare.", "success");
   await loadDispatch();
 }
 
@@ -836,17 +754,12 @@ async function runSafely(action: () => Promise<void>): Promise<void> {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Erreur desktop inattendue.";
-    appendLog(`Erreur : ${message}`);
+    appendLog(`Erreur: ${message}`);
     setNotice(message, "danger");
   }
 }
 
 function bindEvents(): void {
-  backendModeInput.addEventListener("change", () => {
-    renderBackendModeBadge();
-    updateSessionControls();
-  });
-
   loginForm.addEventListener("submit", (event) => {
     event.preventDefault();
     void runSafely(handleLogin);
@@ -858,6 +771,24 @@ function bindEvents(): void {
 
   refreshDispatchButton.addEventListener("click", () => {
     void runSafely(loadDispatch);
+  });
+
+  bookingsList.addEventListener("click", (event) => {
+    const target = event.target;
+
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const button = target.closest<HTMLButtonElement>("button[data-action]");
+
+    if (!button || !button.dataset.bookingId) {
+      return;
+    }
+
+    if (button.dataset.action === "create-flight") {
+      void runSafely(() => createFlightFromBooking(button.dataset.bookingId as string));
+    }
   });
 
   flightsList.addEventListener("click", (event) => {
@@ -873,13 +804,11 @@ function bindEvents(): void {
       return;
     }
 
-    const action = button.dataset.action;
-
-    if (action === "create-session" && button.dataset.flightId) {
+    if (button.dataset.action === "start-flight" && button.dataset.flightId) {
       void runSafely(() => createSession(button.dataset.flightId as string));
     }
 
-    if (action === "open-session" && button.dataset.sessionId) {
+    if (button.dataset.action === "open-session" && button.dataset.sessionId) {
       void runSafely(() => openSession(button.dataset.sessionId as string));
     }
   });
@@ -888,17 +817,16 @@ function bindEvents(): void {
     void runSafely(refreshSession);
   });
 
-  nextMockStepButton.addEventListener("click", () => {
-    void runSafely(sendNextMockStep);
+  startTrackingButton.addEventListener("click", () => {
+    void runSafely(startTracking);
   });
 
-  resetMockSequenceButton.addEventListener("click", () => {
-    void runSafely(resetMockSequence);
+  pauseTrackingButton.addEventListener("click", () => {
+    void runSafely(pauseTracking);
   });
 
-  manualTelemetryForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    void runSafely(sendManualTelemetry);
+  resumeTrackingButton.addEventListener("click", () => {
+    void runSafely(resumeTracking);
   });
 
   completeSessionForm.addEventListener("submit", (event) => {
@@ -908,37 +836,22 @@ function bindEvents(): void {
 }
 
 async function bootstrap(): Promise<void> {
-  applyLoginDefaults(DEFAULT_DESKTOP_CONFIG);
+  applySnapshotDefaults(null);
   restoreLoginPreferences();
-  setManualTelemetryDefaults();
   bindEvents();
+  await refreshRuntimeState();
+  renderOperations();
+  updateActionState();
 
-  let bridge: DesktopBridge;
+  window.setInterval(() => {
+    void runSafely(refreshRuntimeState);
+  }, POLL_INTERVAL_MS);
 
-  try {
-    bridge = getDesktopBridge();
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Bridge Electron indisponible.";
-    appendLog(`Erreur de bridge : ${message}`);
-    setNotice(message, "danger");
-    renderSnapshot();
-    renderDispatch();
-    renderSession();
-    updateSessionControls();
-    return;
-  }
-
-  state.snapshot = await bridge.getSnapshot();
-  applyLoginDefaults(state.snapshot.config);
-  restoreLoginPreferences();
-  renderSnapshot();
-  renderDispatch();
-  renderSession();
-  updateSessionControls();
-
-  appendLog("Interface desktop initialisée.");
-  setNotice("Client ACARS prêt. Choisissez un mode mock ou réel pour commencer.", "info");
+  appendLog("Client ACARS initialise.");
+  setNotice(
+    "Client ACARS pret. Connectez-vous puis chargez vos operations pour lancer un vol reel.",
+    "info",
+  );
 }
 
 void bootstrap();

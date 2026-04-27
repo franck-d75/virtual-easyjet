@@ -24,6 +24,9 @@ function registerDesktopBridgeHandlers(): void {
   });
 
   ipcMain.handle("acarsDesktop:getSnapshot", () => desktopService.getSnapshot());
+  ipcMain.handle("acarsDesktop:getSimulatorSnapshot", () =>
+    desktopService.getSimulatorSnapshot(),
+  );
   ipcMain.handle("acarsDesktop:login", (_event, input) =>
     desktopService.login(input),
   );
@@ -31,11 +34,26 @@ function registerDesktopBridgeHandlers(): void {
   ipcMain.handle("acarsDesktop:loadDispatchData", () =>
     desktopService.loadDispatchData(),
   );
+  ipcMain.handle("acarsDesktop:createFlightFromBooking", (_event, bookingId: string) =>
+    desktopService.createFlightFromBooking(bookingId),
+  );
   ipcMain.handle("acarsDesktop:createSession", (_event, flightId: string) =>
     desktopService.createSession(flightId),
   );
   ipcMain.handle("acarsDesktop:getSession", (_event, sessionId: string) =>
     desktopService.getSession(sessionId),
+  );
+  ipcMain.handle("acarsDesktop:startSessionTracking", (_event, sessionId: string) =>
+    desktopService.startSessionTracking(sessionId),
+  );
+  ipcMain.handle("acarsDesktop:pauseSessionTracking", () =>
+    desktopService.pauseSessionTracking(),
+  );
+  ipcMain.handle("acarsDesktop:resumeSessionTracking", () =>
+    desktopService.resumeSessionTracking(),
+  );
+  ipcMain.handle("acarsDesktop:getTrackingState", () =>
+    desktopService.getTrackingState(),
   );
   ipcMain.handle(
     "acarsDesktop:sendManualTelemetry",

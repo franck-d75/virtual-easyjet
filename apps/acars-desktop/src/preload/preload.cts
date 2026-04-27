@@ -20,13 +20,25 @@ process.on("unhandledRejection", (reason) => {
 try {
   const bridge = {
     getSnapshot: () => ipcRenderer.invoke("acarsDesktop:getSnapshot"),
+    getSimulatorSnapshot: () =>
+      ipcRenderer.invoke("acarsDesktop:getSimulatorSnapshot"),
     login: (input: unknown) => ipcRenderer.invoke("acarsDesktop:login", input),
     logout: () => ipcRenderer.invoke("acarsDesktop:logout"),
     loadDispatchData: () => ipcRenderer.invoke("acarsDesktop:loadDispatchData"),
+    createFlightFromBooking: (bookingId: string) =>
+      ipcRenderer.invoke("acarsDesktop:createFlightFromBooking", bookingId),
     createSession: (flightId: string) =>
       ipcRenderer.invoke("acarsDesktop:createSession", flightId),
     getSession: (sessionId: string) =>
       ipcRenderer.invoke("acarsDesktop:getSession", sessionId),
+    startSessionTracking: (sessionId: string) =>
+      ipcRenderer.invoke("acarsDesktop:startSessionTracking", sessionId),
+    pauseSessionTracking: () =>
+      ipcRenderer.invoke("acarsDesktop:pauseSessionTracking"),
+    resumeSessionTracking: () =>
+      ipcRenderer.invoke("acarsDesktop:resumeSessionTracking"),
+    getTrackingState: () =>
+      ipcRenderer.invoke("acarsDesktop:getTrackingState"),
     sendManualTelemetry: (sessionId: string, payload: unknown) =>
       ipcRenderer.invoke(
         "acarsDesktop:sendManualTelemetry",

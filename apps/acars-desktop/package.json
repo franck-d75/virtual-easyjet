@@ -1,5 +1,5 @@
 {
-  "name": "@va/acars-desktop",
+  "name": "@va/acars",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -8,12 +8,18 @@
   "main": "dist/main/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.preload.json",
-    "dev": "pnpm run build && electron dist/main/main.js",
+    "build:app": "pnpm run build",
+    "prepare:native": "electron-builder install-app-deps",
+    "dev": "pnpm run prepare:native && pnpm run build && electron dist/main/main.js",
     "start": "electron dist/main/main.js",
-    "package:dir": "pnpm run build && electron-builder --config electron-builder.json --dir",
-    "package:win": "pnpm run build && electron-builder --config electron-builder.json --win nsis portable",
-    "lint": "echo \"No lint configured for @va/acars-desktop\"",
-    "test": "echo \"No tests configured for @va/acars-desktop\""
+    "package": "pnpm run package:win",
+    "package:dir": "pnpm run prepare:native && pnpm run build && electron-builder --config electron-builder.json --dir",
+    "package:win": "pnpm run prepare:native && pnpm run build && electron-builder --config electron-builder.json --win nsis portable",
+    "lint": "echo \"No lint configured for @va/acars\"",
+    "test": "echo \"No tests configured for @va/acars\""
+  },
+  "dependencies": {
+    "msfs-simconnect-api-wrapper": "^4.5.0"
   },
   "devDependencies": {
     "@types/node": "25.6.0",

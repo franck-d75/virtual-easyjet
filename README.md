@@ -5,7 +5,7 @@ Monorepo TypeScript pour la plateforme Virtual Easyjet :
 - site web Next.js
 - API NestJS
 - backend ACARS MVP
-- client desktop Electron MVP
+- client desktop Electron Windows
 
 Virtual Easyjet est une compagnie aerienne virtuelle non officielle, creee par des passionnes de simulation de vol, sans affiliation avec easyJet.
 
@@ -73,9 +73,12 @@ Le seed par defaut `pnpm db:seed` prepare une compagnie vierge avec admin, roles
 - `pnpm dev:web` : lance seulement le frontend web
 - `pnpm dev:api` : lance seulement l'API
 - `pnpm dev:acars-service` : lance seulement le backend ACARS
-- `pnpm dev:acars-desktop` : lance seulement le desktop ACARS
-- `pnpm build:acars-desktop` : compile le desktop Electron
-- `pnpm package:acars-desktop` : genere l'installateur Windows et la version portable
+- `pnpm dev:acars` : lance seulement le desktop ACARS
+- `pnpm dev:acars-desktop` : alias historique du desktop ACARS
+- `pnpm build:acars` : compile le client Electron Windows
+- `pnpm build:acars-desktop` : alias historique du build desktop
+- `pnpm package:acars` : genere l'installateur Windows et la version portable
+- `pnpm package:acars-desktop` : alias historique du packaging desktop
 - `pnpm package:acars-desktop:dir` : genere une version packee non installee
 - `pnpm start:web:prod` : lance le frontend web en mode production apres build
 - `pnpm start:api:prod` : lance l'API compilee en mode production apres build
@@ -96,12 +99,12 @@ Variables de seed utiles :
 
 ## Packaging ACARS Windows
 
-Le desktop peut etre distribue comme vrai logiciel Windows via `electron-builder`.
+Le client ACARS peut etre distribue comme vrai logiciel Windows via `electron-builder`.
 
 Commande recommande depuis la racine :
 
 ```bash
-pnpm package:acars-desktop
+pnpm --filter @va/acars package
 ```
 
 Sorties attendues :
@@ -112,7 +115,7 @@ Sorties attendues :
 Commande alternative pour verifier seulement le package sans installateur :
 
 ```bash
-pnpm package:acars-desktop:dir
+pnpm --filter @va/acars package:dir
 ```
 
 Limites actuelles de distribution :
@@ -122,6 +125,14 @@ Limites actuelles de distribution :
 - pas d'auto-update
 - SmartScreen ou certains antivirus peuvent afficher un avertissement tant que le binaire n'est pas signe
 - le lien public du telechargement doit etre branche via `ACARS_DOWNLOAD_URL`
+
+Build simple du client :
+
+```bash
+pnpm --filter @va/acars build
+```
+
+Le telechargement web `/acars` et `/api/acars/download` ne sert plus le preview zip. Il redirige vers `ACARS_DOWNLOAD_URL` quand une release publique est configuree, ou sert localement le vrai build Windows si un installateur existe dans `apps/acars-desktop/release`.
 
 Note PowerShell :
 
@@ -170,7 +181,7 @@ Inclus :
 - donnees publiques VA
 - bookings, vols, PIREPs MVP
 - backend ACARS MVP
-- client desktop ACARS mock et live
+- client desktop ACARS Windows avec auth reelle, OFP SimBrief et suivi SimConnect
 
 Hors Sprint 1 :
 
@@ -184,6 +195,7 @@ Hors Sprint 1 :
 
 - `docs/architecture.md`
 - `docs/acars-msfs2024.md`
+- `apps/acars-desktop/README.md`
 - `docs/data-model.md`
 - `docs/manual-validation.md`
 - `docs/acars-distribution.md`

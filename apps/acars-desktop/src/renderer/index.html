@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' http://localhost:3001 http://localhost:3002 ws://localhost:3001;"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self';"
     />
     <title>Virtual Easyjet ACARS</title>
     <link rel="stylesheet" href="./styles.css" />
@@ -28,18 +28,17 @@
             </svg>
           </div>
           <div class="hero-card__copy">
-            <p class="eyebrow">Centre opérationnel premium</p>
+            <p class="eyebrow">Centre operationnel premium</p>
             <h1>ACARS Virtual Easyjet</h1>
             <p class="hero-copy">
-              Le web reste l’interface de gestion pilote. Ce client desktop
-              sert d’interface opérationnelle pour charger les vols
-              exploitables, ouvrir une session ACARS, envoyer la télémétrie et
-              finaliser le PIREP.
+              Client desktop Windows pour exploiter un vol reel Virtual Easyjet,
+              charger le dernier OFP SimBrief, connecter MSFS2024 via SimConnect
+              et transmettre une telemetrie canonique au backend ACARS.
             </p>
             <p class="hero-disclaimer">
-              Virtual Easyjet est une compagnie aérienne virtuelle non
-              officielle, créée par des passionnés de simulation de vol, sans
-              affiliation avec easyJet.
+              Aucun trafic mock n'est genere dans ce client. Si aucun vol ou
+              aucun simulateur n'est disponible, l'interface reste exploitable
+              avec un etat vide clair.
             </p>
           </div>
         </div>
@@ -47,14 +46,14 @@
         <div class="hero-card__aside">
           <div class="badge-row">
             <div class="badge badge--neutral" id="backend-mode-badge">
-              Mode mock
+              Mode reel
             </div>
             <div class="badge badge--neutral" id="auth-badge">
               Hors ligne
             </div>
           </div>
           <div class="status-banner" id="status-banner">
-            Initialisation du client desktop...
+            Initialisation du client ACARS...
           </div>
         </div>
       </header>
@@ -64,7 +63,7 @@
           <div class="panel-head">
             <div>
               <p class="eyebrow">Session pilote</p>
-              <h2>Connexion et configuration</h2>
+              <h2>Connexion et endpoints</h2>
             </div>
           </div>
 
@@ -72,12 +71,12 @@
             <label>
               <span>Mode backend</span>
               <select id="backend-mode" name="backendMode">
-                <option value="mock">Mock local</option>
-                <option value="live">Mode réel</option>
+                <option value="live">Mode reel</option>
+                <option value="mock">Mode mock local</option>
               </select>
             </label>
             <label>
-              <span>URL API VA</span>
+              <span>URL API Virtual Easyjet</span>
               <input id="api-base-url" name="apiBaseUrl" type="url" required />
             </label>
             <label>
@@ -90,7 +89,7 @@
               />
             </label>
             <label>
-              <span>Adresse e-mail ou identifiant</span>
+              <span>Email ou identifiant</span>
               <input id="identifier" name="identifier" type="text" required />
             </label>
             <label>
@@ -99,34 +98,38 @@
             </label>
 
             <div class="button-row">
-              <button class="button button--primary" id="login-button" type="submit">
+              <button class="button button--primary" type="submit">
                 Se connecter
               </button>
-              <button class="button button--secondary" id="logout-button" type="button">
-                Déconnexion
+              <button
+                class="button button--secondary"
+                id="logout-button"
+                type="button"
+              >
+                Deconnexion
               </button>
             </div>
           </form>
 
           <div class="support-note">
-            <strong>Périmètre MVP</strong>
+            <strong>Flux de production</strong>
             <p>
-              Le desktop ne crée pas la réservation ni le vol. Il charge les
-              vols déjà exploitables sur la VA, puis pilote uniquement la
-              session ACARS et la génération du PIREP.
+              Le web gere la reservation, le dashboard et le suivi. Le desktop
+              charge ensuite vos vols exploitables, ouvre une session ACARS
+              reelle et alimente la live map via la telemetrie SimConnect.
             </p>
           </div>
 
           <div class="identity-card" id="identity-card">
-            Aucun pilote chargé.
+            Aucun pilote charge.
           </div>
         </section>
 
         <section class="panel panel--dispatch">
           <div class="panel-head">
             <div>
-              <p class="eyebrow">Opérations VA</p>
-              <h2>Réservations et vols</h2>
+              <p class="eyebrow">Preparation</p>
+              <h2>Operations et OFP SimBrief</h2>
             </div>
             <button
               class="button button--secondary"
@@ -138,14 +141,26 @@
           </div>
 
           <div class="dispatch-summary" id="dispatch-summary">
-            Connectez-vous pour charger vos réservations et vos vols.
+            Connectez-vous pour charger vos reservations, vols et OFP.
           </div>
 
-          <div class="dispatch-grid">
+          <div class="dispatch-grid dispatch-grid--three">
             <article class="subpanel">
               <div class="subpanel__head">
-                <h3>Réservations</h3>
-                <p class="helper">Réservations ouvertes ou déjà exploitées.</p>
+                <h3>Dernier OFP</h3>
+                <p class="helper">
+                  Resume du dernier plan de vol SimBrief disponible.
+                </p>
+              </div>
+              <div class="list-panel" id="ofp-summary"></div>
+            </article>
+
+            <article class="subpanel">
+              <div class="subpanel__head">
+                <h3>Reservations</h3>
+                <p class="helper">
+                  Rotations encore a transformer en vol exploitable.
+                </p>
               </div>
               <div class="list-panel" id="bookings-list"></div>
             </article>
@@ -154,7 +169,7 @@
               <div class="subpanel__head">
                 <h3>Vols exploitables</h3>
                 <p class="helper">
-                  Vols canoniques chargés depuis le backend ou le mode mock.
+                  Vols deja prets a ouvrir dans le service ACARS.
                 </p>
               </div>
               <div class="list-panel" id="flights-list"></div>
@@ -162,11 +177,24 @@
           </div>
         </section>
 
-        <section class="panel panel--session">
+        <section class="panel panel--telemetry">
           <div class="panel-head">
             <div>
-              <p class="eyebrow">Session ACARS</p>
-              <h2>Vol actif et phases de vol</h2>
+              <p class="eyebrow">SimConnect</p>
+              <h2>MSFS2024 et telemetrie</h2>
+            </div>
+          </div>
+
+          <div class="session-summary" id="simulator-summary">
+            Statut SimConnect en attente d'initialisation.
+          </div>
+        </section>
+
+        <section class="panel panel--pirep">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Suivi ACARS</p>
+              <h2>Controle du vol</h2>
             </div>
             <div class="button-row">
               <button
@@ -174,97 +202,42 @@
                 id="refresh-session-button"
                 type="button"
               >
-                Rafraîchir
+                Rafraichir
               </button>
               <button
                 class="button button--primary"
-                id="next-mock-step-button"
+                id="start-tracking-button"
                 type="button"
               >
-                Étape mock suivante
+                Start Flight
               </button>
               <button
                 class="button button--ghost"
-                id="reset-mock-sequence-button"
+                id="pause-tracking-button"
                 type="button"
               >
-                Réinitialiser le mock
+                Pause
+              </button>
+              <button
+                class="button button--secondary"
+                id="resume-tracking-button"
+                type="button"
+              >
+                Resume
               </button>
             </div>
           </div>
 
           <div class="session-summary" id="session-summary">
-            Aucune session ACARS active.
+            Aucun vol actif.
           </div>
         </section>
 
-        <section class="panel panel--telemetry">
+        <section class="panel panel--session">
           <div class="panel-head">
             <div>
-              <p class="eyebrow">Télémétrie</p>
-              <h2>Envoi manuel</h2>
-            </div>
-          </div>
-
-          <form id="manual-telemetry-form" class="telemetry-grid">
-            <label>
-              <span>Latitude</span>
-              <input name="latitude" type="number" step="0.0001" required />
-            </label>
-            <label>
-              <span>Longitude</span>
-              <input name="longitude" type="number" step="0.0001" required />
-            </label>
-            <label>
-              <span>Altitude (ft)</span>
-              <input name="altitudeFt" type="number" step="1" required />
-            </label>
-            <label>
-              <span>Vitesse sol (kt)</span>
-              <input name="groundspeedKts" type="number" step="1" required />
-            </label>
-            <label>
-              <span>Cap (deg)</span>
-              <input name="headingDeg" type="number" step="1" required />
-            </label>
-            <label>
-              <span>Vitesse verticale (fpm)</span>
-              <input name="verticalSpeedFpm" type="number" step="1" required />
-            </label>
-            <label>
-              <span>Carburant total (kg)</span>
-              <input name="fuelTotalKg" type="number" step="0.1" />
-            </label>
-            <label>
-              <span>Train (%)</span>
-              <input name="gearPercent" type="number" step="1" min="0" max="100" />
-            </label>
-            <label>
-              <span>Volets (%)</span>
-              <input name="flapsPercent" type="number" step="1" min="0" max="100" />
-            </label>
-            <label class="checkbox">
-              <input name="onGround" type="checkbox" />
-              <span>Au sol</span>
-            </label>
-            <label class="checkbox">
-              <input name="parkingBrake" type="checkbox" />
-              <span>Frein de parking</span>
-            </label>
-
-            <div class="button-row telemetry-actions">
-              <button class="button button--secondary" type="submit">
-                Envoyer la télémétrie
-              </button>
-            </div>
-          </form>
-        </section>
-
-        <section class="panel panel--pirep">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">Clôture</p>
-              <h2>Finalisation et PIREP</h2>
+              <p class="eyebrow">Cloture</p>
+              <h2>Fin de vol et PIREP</h2>
             </div>
           </div>
 
@@ -275,13 +248,13 @@
                 id="pilot-comment"
                 name="pilotComment"
                 rows="5"
-                placeholder="Commentaire libre ajouté au PIREP"
+                placeholder="Commentaire libre ajoute au PIREP"
               ></textarea>
             </label>
 
             <div class="button-row">
-              <button class="button button--primary" id="complete-session-button" type="submit">
-                Finaliser la session
+              <button class="button button--primary" type="submit">
+                End Flight
               </button>
             </div>
           </form>
@@ -295,7 +268,7 @@
           <div class="panel-head">
             <div>
               <p class="eyebrow">Journal</p>
-              <h2>Activité locale</h2>
+              <h2>Activite locale</h2>
             </div>
           </div>
           <pre class="activity-log" id="activity-log"></pre>
