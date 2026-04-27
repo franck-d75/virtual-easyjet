@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { DesktopConfig, SimulatorSnapshot, TelemetryInput } from "../shared/types.js";
@@ -92,7 +93,26 @@ export class FsuipcBridge {
   }
 
   public start(): void {
-    this.ensureWorker();
+    try {
+      this.ensureWorker();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Demarrage du worker FSUIPC impossible.";
+
+      this.snapshot = {
+        ...this.snapshot,
+        status: "ERROR",
+        telemetryMode: this.getConfig().telemetryMode,
+        dataSource: "none",
+        message: "Le worker FSUIPC7 n'a pas pu etre demarre.",
+        connected: false,
+        aircraftDetected: false,
+        error: message,
+      };
+      this.log("fsuipc worker start failed", {
+        error: message,
+      });
+    }
   }
 
   public async connect(): Promise<SimulatorSnapshot> {
@@ -147,21 +167,37 @@ export class FsuipcBridge {
     });
   }
 
+  private resolveWorkerPath(): string {
+    const preloadDirectory = dirname(fileURLToPath(import.meta.url));
+    const candidates = [
+      join(process.resourcesPath, "app.asar.unpacked", "scripts", "fsuipc-worker.cjs"),
+      join(process.resourcesPath, "scripts", "fsuipc-worker.cjs"),
+      join(process.resourcesPath, "app.asar", "scripts", "fsuipc-worker.cjs"),
+      fileURLToPath(new URL("../../scripts/fsuipc-worker.cjs", import.meta.url)),
+      join(preloadDirectory, "..", "..", "scripts", "fsuipc-worker.cjs"),
+    ];
+
+    const workerPath = candidates.find((candidatePath) => existsSync(candidatePath));
+
+    if (!workerPath) {
+      throw new Error(
+        `FSUIPC worker introuvable. Candidates: ${candidates.join(" | ")}`,
+      );
+    }
+
+    return workerPath;
+  }
+
   private ensureWorker(): ChildProcess {
     if (this.worker && !this.worker.killed) {
       return this.worker;
     }
 
-    const workerPath = fileURLToPath(
-      new URL("../../scripts/fsuipc-worker.cjs", import.meta.url),
-    );
-
-    if (!existsSync(workerPath)) {
-      throw new Error(`FSUIPC worker introuvable: ${workerPath}`);
-    }
+    const workerPath = this.resolveWorkerPath();
+    const workerCwd = dirname(workerPath);
 
     const worker = spawn(process.execPath, [workerPath], {
-      cwd: fileURLToPath(new URL("../../", import.meta.url)),
+      cwd: workerCwd,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
       env: {
@@ -170,9 +206,9 @@ export class FsuipcBridge {
       },
     });
 
-    this.log("FSUIPC worker started", {
+    this.log(`FSUIPC worker started at ${workerPath}`, {
+      cwd: workerCwd,
       pid: worker.pid ?? null,
-      workerPath,
     });
 
     worker.stdout?.on("data", (chunk) => {
@@ -190,6 +226,16 @@ export class FsuipcBridge {
     });
 
     worker.on("error", (error) => {
+      this.snapshot = {
+        ...this.snapshot,
+        status: "ERROR",
+        telemetryMode: this.getConfig().telemetryMode,
+        dataSource: "none",
+        message: "Le worker FSUIPC7 n'a pas pu etre lance.",
+        connected: false,
+        aircraftDetected: false,
+        error: error.message,
+      };
       this.log("fsuipc worker process error", {
         error: error.message,
       });
@@ -199,6 +245,16 @@ export class FsuipcBridge {
     });
 
     worker.on("exit", (code, signal) => {
+      this.snapshot = {
+        ...this.snapshot,
+        status: "ERROR",
+        telemetryMode: this.getConfig().telemetryMode,
+        dataSource: "none",
+        message: "Le worker FSUIPC7 s'est arrete avant la telemetrie.",
+        connected: false,
+        aircraftDetected: false,
+        error: `code=${code ?? "null"} signal=${signal ?? "null"}`,
+      };
       this.log("fsuipc worker exited", {
         code,
         signal,
@@ -233,9 +289,7 @@ export class FsuipcBridge {
         continue;
       }
 
-      this.log("Worker stdout received", {
-        line: rawLine,
-      });
+      this.log(`Worker stdout received: ${rawLine}`);
 
       try {
         const parsedLine = JSON.parse(rawLine) as unknown;
