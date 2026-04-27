@@ -84,6 +84,11 @@ export interface SimulatorAircraftState {
   atcId: string | null;
   rawAtcId: string | null;
   liveryName: string | null;
+  airlineIcao: string | null;
+  atcAirline: string | null;
+  selcal: string | null;
+  liveryId: string | null;
+  versionId: string | null;
   transponder: string | null;
   model: string | null;
 }

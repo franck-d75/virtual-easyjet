@@ -1,5 +1,8 @@
 const path = require("node:path");
-const { findAircraftConfigByTitle } = require("./msfs-aircraft-registry.cjs");
+const {
+  findAircraftConfigByTitle,
+  findFenixLivery,
+} = require("./msfs-aircraft-registry.cjs");
 
 let fsuipcModule = null;
 
@@ -374,14 +377,22 @@ async function sampleClient(client, selectedMode) {
   const payload = await client.process();
   const { telemetry, indicatedAirspeedKts } = buildTelemetrySample(payload);
   const aircraftTitle = readString(payload, "aircraftTitle");
-  const aircraftAtcId = readString(payload, "aircraftRegistration");
+  const aircraftRawAtcId = readString(payload, "aircraftRegistration");
   const aircraftType = readString(payload, "aircraftType");
   const aircraftConfig = aircraftTitle
     ? await findAircraftConfigByTitle(aircraftTitle)
     : null;
-  const uiVariation = normalizeUiVariation(aircraftConfig?.uiVariation ?? null);
   const explicitTitleRegistration = extractRegistrationsFromText(aircraftTitle)[0] ?? null;
-  const explicitLiveryRegistration = extractRegistrationsFromText(uiVariation)[0] ?? null;
+  const fenixLivery = await findFenixLivery({
+    aircraftTitle,
+    parsedRegistration: explicitTitleRegistration,
+    atcId: aircraftRawAtcId,
+  });
+  const uiVariation = normalizeUiVariation(
+    fenixLivery?.name ?? aircraftConfig?.uiVariation ?? null,
+  );
+  const explicitLiveryRegistration =
+    extractRegistrationsFromText(fenixLivery?.name ?? uiVariation)[0] ?? null;
   const explicitAircraftConfigRegistration =
     extractRegistrationsFromText(aircraftConfig?.atcId ?? null)[0] ?? null;
   const { registration, registrationSource } = chooseResolvedRegistration([
@@ -399,19 +410,24 @@ async function sampleClient(client, selectedMode) {
     },
     {
       source: "atc_id",
-      value: aircraftAtcId,
+      value: aircraftRawAtcId,
     },
   ]);
-  const aircraftIcao = aircraftConfig?.icaoCode ?? normalizeAircraftIcao(
+  const aircraftIcao =
+    fenixLivery?.aircraftIcao ??
+    aircraftConfig?.icaoCode ??
+    normalizeAircraftIcao(
     aircraftTitle,
     aircraftType,
-    aircraftAtcId,
+    aircraftRawAtcId,
   );
-  const aircraftDisplayName = normalizeAircraftDisplayName(
-    aircraftTitle,
-    aircraftType,
-    aircraftIcao,
-  );
+  const aircraftDisplayName =
+    fenixLivery?.aircraftName ??
+    normalizeAircraftDisplayName(
+      aircraftTitle,
+      aircraftType,
+      aircraftIcao,
+    );
   const aircraftDetected = Boolean(
     aircraftDisplayName || aircraftTitle || aircraftType || telemetry,
   );
@@ -434,8 +450,13 @@ async function sampleClient(client, selectedMode) {
         registration,
         registrationSource,
         atcId: registration,
-        rawAtcId: aircraftAtcId,
+        rawAtcId: aircraftRawAtcId,
         liveryName: uiVariation,
+        airlineIcao: fenixLivery?.airlineIcao ?? null,
+        atcAirline: fenixLivery?.atcAirline ?? null,
+        selcal: fenixLivery?.selcal ?? null,
+        liveryId: fenixLivery?.liveryId ?? null,
+        versionId: fenixLivery?.versionId ?? null,
         transponder: null,
         model: aircraftType ?? aircraftTitle,
       },

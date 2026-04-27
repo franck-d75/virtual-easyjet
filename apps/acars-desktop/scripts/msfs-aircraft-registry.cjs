@@ -5,12 +5,20 @@ const path = require("node:path");
 
 const USER_CFG_FILENAME = "UserCfg.opt";
 const AIRCRAFT_CFG_FILENAME = "aircraft.cfg";
+const LIVERY_CFG_FILENAME = "livery.cfg";
 
 let aircraftConfigFilesPromise = null;
-const titleMatchCache = new Map();
+let liveryConfigFilesPromise = null;
+const aircraftTitleMatchCache = new Map();
+const liveryLookupCache = new Map();
 
 function normalizeText(value) {
   return typeof value === "string" ? value.replace(/\0+/gu, "").trim() : "";
+}
+
+function normalizeUpperText(value) {
+  const normalizedValue = normalizeText(value);
+  return normalizedValue.length > 0 ? normalizedValue.toUpperCase() : "";
 }
 
 function uniquePaths(values) {
@@ -115,9 +123,9 @@ async function resolveInstalledPackagesDirectories() {
   return uniquePaths(directories).filter(looksLikeDirectory);
 }
 
-async function collectAircraftConfigFiles(rootDirectories) {
+async function collectConfigFiles(rootDirectories, expectedFilename) {
   const pendingDirectories = [...rootDirectories];
-  const aircraftConfigFiles = [];
+  const matchingFiles = [];
 
   while (pendingDirectories.length > 0) {
     const currentDirectory = pendingDirectories.pop();
@@ -144,26 +152,36 @@ async function collectAircraftConfigFiles(rootDirectories) {
         continue;
       }
 
-      if (entry.isFile() && entry.name.toLowerCase() === AIRCRAFT_CFG_FILENAME) {
-        aircraftConfigFiles.push(absolutePath);
+      if (entry.isFile() && entry.name.toLowerCase() === expectedFilename) {
+        matchingFiles.push(absolutePath);
       }
     }
   }
 
-  return aircraftConfigFiles;
+  return matchingFiles;
 }
 
 async function getAircraftConfigFiles() {
   if (!aircraftConfigFilesPromise) {
-    aircraftConfigFilesPromise = resolveInstalledPackagesDirectories().then(
-      collectAircraftConfigFiles,
+    aircraftConfigFilesPromise = resolveInstalledPackagesDirectories().then((rootDirectories) =>
+      collectConfigFiles(rootDirectories, AIRCRAFT_CFG_FILENAME),
     );
   }
 
   return aircraftConfigFilesPromise;
 }
 
-function parseAircraftConfigSections(content, filePath) {
+async function getLiveryConfigFiles() {
+  if (!liveryConfigFilesPromise) {
+    liveryConfigFilesPromise = resolveInstalledPackagesDirectories().then((rootDirectories) =>
+      collectConfigFiles(rootDirectories, LIVERY_CFG_FILENAME),
+    );
+  }
+
+  return liveryConfigFilesPromise;
+}
+
+function parseIniSections(content, filePath) {
   const sections = [];
   const lines = content.split(/\r?\n/gu);
   let currentSectionName = null;
@@ -177,10 +195,7 @@ function parseAircraftConfigSections(content, filePath) {
     sections.push({
       filePath,
       sectionName: currentSectionName,
-      title: normalizeText(currentValues.title),
-      atcId: normalizeText(currentValues.atc_id),
-      uiVariation: normalizeText(currentValues.ui_variation),
-      icaoCode: normalizeText(currentValues.icao_type_designator).toUpperCase() || null,
+      values: currentValues,
     });
   }
 
@@ -213,7 +228,113 @@ function parseAircraftConfigSections(content, filePath) {
   }
 
   flushSection();
-  return sections.filter((section) => section.title.length > 0);
+  return sections;
+}
+
+function extractAircraftIcaoFromText(value) {
+  const normalizedValue = normalizeUpperText(value);
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  if (normalizedValue.includes("A21N") || normalizedValue.includes("A321NEO")) {
+    return "A21N";
+  }
+
+  if (normalizedValue.includes("A20N") || normalizedValue.includes("A320NEO")) {
+    return "A20N";
+  }
+
+  if (normalizedValue.includes("A319")) {
+    return "A319";
+  }
+
+  if (normalizedValue.includes("A320")) {
+    return "A320";
+  }
+
+  return null;
+}
+
+function parseAircraftConfigSections(content, filePath) {
+  return parseIniSections(content, filePath)
+    .map((section) => ({
+      filePath,
+      sectionName: section.sectionName,
+      title: normalizeText(section.values.title),
+      atcId: normalizeText(section.values.atc_id),
+      uiVariation: normalizeText(section.values.ui_variation),
+      icaoCode:
+        normalizeUpperText(section.values.icao_type_designator) ||
+        extractAircraftIcaoFromText(section.values.title) ||
+        null,
+    }))
+    .filter((section) => section.title.length > 0);
+}
+
+function isFenixLiveryCandidate(filePath, sections) {
+  const haystack = [
+    filePath,
+    ...sections.flatMap((section) => [section.sectionName, ...Object.values(section.values)]),
+  ]
+    .map(normalizeUpperText)
+    .join(" ");
+
+  return haystack.includes("FENIX") || haystack.includes("FNX_");
+}
+
+function parseLiveryConfigEntry(content, filePath) {
+  const sections = parseIniSections(content, filePath);
+
+  if (sections.length === 0 || !isFenixLiveryCandidate(filePath, sections)) {
+    return null;
+  }
+
+  const generalSection = sections.find(
+    (section) => section.sectionName.toUpperCase() === "GENERAL",
+  );
+  const fltsimSection = sections.find((section) =>
+    section.sectionName.toUpperCase().startsWith("FLTSIM"),
+  );
+  const requiredTagsSection = sections.find((section) =>
+    section.sectionName.toUpperCase().includes("REQUIRED"),
+  );
+
+  const liveryName =
+    normalizeText(generalSection?.values.name) ||
+    normalizeText(fltsimSection?.values.ui_variation) ||
+    null;
+  const atcId = normalizeUpperText(fltsimSection?.values.atc_id) || null;
+
+  if (!liveryName || !atcId) {
+    return null;
+  }
+
+  const aircraftIcao =
+    normalizeUpperText(requiredTagsSection?.values.icao_type_designator) ||
+    extractAircraftIcaoFromText(requiredTagsSection?.values.required_tags) ||
+    extractAircraftIcaoFromText(requiredTagsSection?.values.tags) ||
+    extractAircraftIcaoFromText(liveryName) ||
+    (normalizeUpperText(filePath).includes("A320") ? "A320" : null);
+
+  const aircraftName =
+    aircraftIcao === "A320" || normalizeUpperText(filePath).includes("FENIX")
+      ? "Fenix A320"
+      : aircraftIcao;
+
+  return {
+    filePath,
+    atcId,
+    name: liveryName,
+    airlineIcao: normalizeUpperText(fltsimSection?.values.icao_airline) || null,
+    atcAirline: normalizeText(fltsimSection?.values.atc_airline) || null,
+    selcal: normalizeText(fltsimSection?.values.fnx_selcal_code) || null,
+    liveryId: normalizeText(fltsimSection?.values.fnx_livery_id) || null,
+    versionId: normalizeText(fltsimSection?.values.fnx_version_id) || null,
+    aircraftIcao,
+    aircraftName,
+  };
 }
 
 async function findAircraftConfigByTitle(aircraftTitle) {
@@ -223,8 +344,8 @@ async function findAircraftConfigByTitle(aircraftTitle) {
     return null;
   }
 
-  if (titleMatchCache.has(normalizedTitle)) {
-    return titleMatchCache.get(normalizedTitle);
+  if (aircraftTitleMatchCache.has(normalizedTitle)) {
+    return aircraftTitleMatchCache.get(normalizedTitle);
   }
 
   const aircraftConfigFiles = await getAircraftConfigFiles();
@@ -238,7 +359,7 @@ async function findAircraftConfigByTitle(aircraftTitle) {
       );
 
       if (matchedSection) {
-        titleMatchCache.set(normalizedTitle, matchedSection);
+        aircraftTitleMatchCache.set(normalizedTitle, matchedSection);
         return matchedSection;
       }
     } catch {
@@ -246,10 +367,78 @@ async function findAircraftConfigByTitle(aircraftTitle) {
     }
   }
 
-  titleMatchCache.set(normalizedTitle, null);
+  aircraftTitleMatchCache.set(normalizedTitle, null);
+  return null;
+}
+
+async function buildFenixLiveryLookup() {
+  if (liveryLookupCache.has("fenix")) {
+    return liveryLookupCache.get("fenix");
+  }
+
+  const byAtcId = new Map();
+  const byName = new Map();
+  const liveryConfigFiles = await getLiveryConfigFiles();
+
+  for (const filePath of liveryConfigFiles) {
+    try {
+      const content = await fsp.readFile(filePath, "utf8");
+      const entry = parseLiveryConfigEntry(content, filePath);
+
+      if (!entry) {
+        continue;
+      }
+
+      byAtcId.set(entry.atcId, entry);
+      byName.set(entry.name.toUpperCase(), entry);
+    } catch {
+      // Ignore unreadable livery.cfg files.
+    }
+  }
+
+  const lookup = {
+    byAtcId,
+    byName,
+  };
+
+  liveryLookupCache.set("fenix", lookup);
+  return lookup;
+}
+
+async function findFenixLivery({ aircraftTitle, parsedRegistration, atcId }) {
+  const lookup = await buildFenixLiveryLookup();
+  const normalizedParsedRegistration = normalizeUpperText(parsedRegistration);
+  const normalizedAtcId = normalizeUpperText(atcId);
+  const normalizedTitle = normalizeUpperText(aircraftTitle);
+
+  if (normalizedParsedRegistration && lookup.byAtcId.has(normalizedParsedRegistration)) {
+    return lookup.byAtcId.get(normalizedParsedRegistration) ?? null;
+  }
+
+  if (normalizedAtcId && lookup.byAtcId.has(normalizedAtcId)) {
+    return lookup.byAtcId.get(normalizedAtcId) ?? null;
+  }
+
+  if (normalizedTitle) {
+    const registrationMatch = normalizedTitle.match(
+      /\b([A-Z]{1,2}-[A-Z0-9]{2,5}|N\d{1,5}[A-Z]{0,2}|C-[FGI][A-Z]{3}|JA\d{3,4}[A-Z]?)\b/u,
+    );
+
+    if (registrationMatch?.[1] && lookup.byAtcId.has(registrationMatch[1])) {
+      return lookup.byAtcId.get(registrationMatch[1]) ?? null;
+    }
+
+    for (const [entryName, entry] of lookup.byName.entries()) {
+      if (normalizedTitle.includes(entryName) || entryName.includes(normalizedTitle)) {
+        return entry;
+      }
+    }
+  }
+
   return null;
 }
 
 module.exports = {
   findAircraftConfigByTitle,
+  findFenixLivery,
 };
