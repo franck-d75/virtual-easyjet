@@ -27,12 +27,15 @@ export type LiveMapPhase = (typeof LIVE_MAP_PHASES)[number];
 
 export interface LiveMapAircraft {
   callsign: string;
+  flightNumber?: string;
+  registration?: string | null;
   lat: number;
   lon: number;
   altitude: number;
   speed: number;
   phase: LiveMapPhase;
   heading: number;
+  onGround?: boolean | null;
 }
 
 export interface LiveFlightSnapshot {

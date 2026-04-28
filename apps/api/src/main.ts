@@ -88,6 +88,11 @@ async function bootstrap(): Promise<void> {
       request.originalUrl === "/acars" ||
       request.originalUrl.startsWith("/acars/")
     ) {
+      console.info("[api] acars root route rewritten", {
+        method: request.method,
+        from: request.originalUrl,
+        to: `/api${request.url}`,
+      });
       request.url = `/api${request.url}`;
     }
 

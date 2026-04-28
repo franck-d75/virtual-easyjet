@@ -11,10 +11,12 @@ const LIVE_PHASE_THRESHOLDS = {
   airborneAltitudeFt: 1000,
 } as const;
 
-const ACTIVE_ACARS_STATUSES: SessionStatus[] = [
-  SessionStatus.CONNECTED,
-  SessionStatus.TRACKING,
+const HIDDEN_ACARS_STATUSES: SessionStatus[] = [
+  SessionStatus.COMPLETED,
+  SessionStatus.ABORTED,
 ];
+
+const LIVE_SESSION_LOOKBACK_MS = 15 * 60 * 1000;
 
 const liveSessionSelect = {
   currentAltitudeFt: true,
@@ -27,6 +29,11 @@ const liveSessionSelect = {
   flight: {
     select: {
       flightNumber: true,
+      aircraft: {
+        select: {
+          registration: true,
+        },
+      },
     },
   },
 } satisfies Prisma.AcarsSessionSelect;
@@ -41,13 +48,14 @@ export class AcarsLiveService {
   public constructor(private readonly prisma: PrismaService) {}
 
   public async listLiveFlights(): Promise<LiveMapAircraft[]> {
+    const staleThreshold = new Date(Date.now() - LIVE_SESSION_LOOKBACK_MS);
     const sessions = await this.prisma.acarsSession.findMany({
       where: {
         status: {
-          in: ACTIVE_ACARS_STATUSES,
+          notIn: HIDDEN_ACARS_STATUSES,
         },
         lastTelemetryAt: {
-          not: null,
+          gte: staleThreshold,
         },
         currentLatitude: {
           not: null,
@@ -78,11 +86,14 @@ export class AcarsLiveService {
 
     return {
       callsign: session.flight.flightNumber,
+      flightNumber: session.flight.flightNumber,
+      registration: session.flight.aircraft.registration,
       lat: decimalToNumber(session.currentLatitude) ?? 0,
       lon: decimalToNumber(session.currentLongitude) ?? 0,
       altitude,
       speed,
       heading: normalizeHeading(session.currentHeadingDeg),
+      onGround: session.currentOnGround,
       phase: deriveLiveMapPhase(
         altitude,
         speed,
