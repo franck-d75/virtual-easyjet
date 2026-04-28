@@ -9,6 +9,7 @@ import {
   BookingStatus,
   FlightStatus,
   PilotStatus,
+  PirepStatus,
   Prisma,
   type AircraftStatus,
   UserPlatformRole,
@@ -27,6 +28,7 @@ import type {
   CreateAdminRouteDto,
   ImportAdminAircraftFromSimbriefAirframeDto,
   LinkAdminAircraftSimbriefAirframeDto,
+  ReviewAdminPirepDto,
   UpdateAdminUserDto,
   UpdateAdminAircraftDto,
   UpdateAdminHubDto,
@@ -93,6 +95,38 @@ const adminRouteInclude = {
   },
 } satisfies Prisma.RouteInclude;
 
+const adminPirepInclude = {
+  flight: true,
+  pilotProfile: {
+    include: {
+      user: {
+        select: {
+          id: true,
+          username: true,
+          email: true,
+        },
+      },
+      rank: true,
+      hub: true,
+    },
+  },
+  reviewedBy: {
+    select: {
+      id: true,
+      username: true,
+      email: true,
+    },
+  },
+  departureAirport: true,
+  arrivalAirport: true,
+  aircraft: {
+    include: {
+      aircraftType: true,
+      hub: true,
+    },
+  },
+} satisfies Prisma.PirepInclude;
+
 type AdminAircraftRecord = Prisma.AircraftGetPayload<{
   include: typeof adminAircraftInclude;
 }>;
@@ -107,6 +141,10 @@ type AdminHubRecord = Prisma.HubGetPayload<{
 
 type AdminRouteRecord = Prisma.RouteGetPayload<{
   include: typeof adminRouteInclude;
+}>;
+
+type AdminPirepRecord = Prisma.PirepGetPayload<{
+  include: typeof adminPirepInclude;
 }>;
 
 const REFERENCE_AIRCRAFT_TYPES = [
@@ -748,6 +786,69 @@ export class AdminService {
     });
 
     return users.map((user) => this.serializeAdminUserListItem(user));
+  }
+
+  public async listPireps() {
+    const pireps = await this.prisma.pirep.findMany({
+      where: {
+        status: {
+          not: PirepStatus.DRAFT,
+        },
+      },
+      orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
+      include: adminPirepInclude,
+    });
+
+    return this.serializeAdminPirepList(pireps);
+  }
+
+  public async reviewPirep(
+    id: string,
+    payload: ReviewAdminPirepDto,
+    currentUser: AuthenticatedUser,
+  ) {
+    let previousStatus: PirepStatus | null = null;
+
+    try {
+      const pirep = await this.prisma.$transaction(async (transaction) => {
+        const existingPirep = await transaction.pirep.findUnique({
+          where: { id },
+          include: adminPirepInclude,
+        });
+
+        if (!existingPirep) {
+          throw new NotFoundException("Rapport de vol introuvable.");
+        }
+
+        if (existingPirep.status === PirepStatus.DRAFT) {
+          throw new ConflictException(
+            "Seuls les rapports de vol soumis peuvent être validés ou rejetés.",
+          );
+        }
+
+        previousStatus = existingPirep.status;
+
+        return transaction.pirep.update({
+          where: { id },
+          data: {
+            status: payload.status,
+            reviewedAt: new Date(),
+            reviewedById: currentUser.id,
+            reviewerComment: normalizeOptionalString(payload.reviewerComment),
+          },
+          include: adminPirepInclude,
+        });
+      });
+
+      logAdminAction("pirep.review", currentUser.id, id, {
+        previousStatus,
+        nextStatus: payload.status,
+      });
+
+      return this.serializeAdminPirep(pirep);
+    } catch (error) {
+      throw this.normalizePrismaError(error, "Rapport de vol");
+    }
   }
 
   public async getUser(id: string) {
@@ -1827,6 +1928,86 @@ export class AdminService {
         name: pirep.arrivalAirport.name,
       },
     };
+  }
+
+  private serializeAdminPirep(pirep: AdminPirepRecord) {
+    return {
+      id: pirep.id,
+      status: pirep.status,
+      source: pirep.source,
+      submittedAt: pirep.submittedAt,
+      reviewedAt: pirep.reviewedAt,
+      createdAt: pirep.createdAt,
+      blockTimeMinutes: pirep.blockTimeMinutes,
+      flightTimeMinutes: pirep.flightTimeMinutes,
+      fuelUsedKg: decimalToNumber(pirep.fuelUsedKg),
+      score: pirep.score,
+      landingRateFpm: pirep.landingRateFpm,
+      summary: pirep.summary,
+      pilotComment: pirep.pilotComment,
+      reviewerComment: pirep.reviewerComment,
+      flight: {
+        id: pirep.flight.id,
+        flightNumber: pirep.flight.flightNumber,
+        status: pirep.flight.status,
+      },
+      pilotProfile: {
+        id: pirep.pilotProfile.id,
+        pilotNumber: pirep.pilotProfile.pilotNumber,
+        firstName: pirep.pilotProfile.firstName,
+        lastName: pirep.pilotProfile.lastName,
+        user: {
+          id: pirep.pilotProfile.user.id,
+          username: pirep.pilotProfile.user.username,
+          email: pirep.pilotProfile.user.email,
+        },
+      },
+      reviewedBy: pirep.reviewedBy
+        ? {
+            id: pirep.reviewedBy.id,
+            username: pirep.reviewedBy.username,
+            email: pirep.reviewedBy.email,
+          }
+        : null,
+      aircraft: {
+        id: pirep.aircraft.id,
+        registration: pirep.aircraft.registration,
+        label: pirep.aircraft.label,
+        aircraftType: {
+          id: pirep.aircraft.aircraftType.id,
+          icaoCode: pirep.aircraft.aircraftType.icaoCode,
+          name: pirep.aircraft.aircraftType.name,
+        },
+        hub: pirep.aircraft.hub
+          ? {
+              id: pirep.aircraft.hub.id,
+              code: pirep.aircraft.hub.code,
+              name: pirep.aircraft.hub.name,
+            }
+          : null,
+      },
+      departureAirport: {
+        id: pirep.departureAirport.id,
+        icao: pirep.departureAirport.icao,
+        name: pirep.departureAirport.name,
+      },
+      arrivalAirport: {
+        id: pirep.arrivalAirport.id,
+        icao: pirep.arrivalAirport.icao,
+        name: pirep.arrivalAirport.name,
+      },
+    };
+  }
+
+  private serializeAdminPirepList(pireps: AdminPirepRecord[]) {
+    return pireps.flatMap((item) => {
+      try {
+        return [this.serializeAdminPirep(item)];
+      } catch (error) {
+        this.logAdminDatasetError(`pirep ${item.id}`, error);
+        return [];
+      }
+    });
   }
 
   private async assertAndLinkSimbriefAirframe(

@@ -5,6 +5,8 @@ import type {
   AdminAircraftImportFromSimbriefAirframePayload,
   AdminAircraftLinkSimbriefAirframePayload,
   AdminAircraftTypeOptionResponse,
+  AdminPirepResponse,
+  AdminPirepReviewPayload,
   AdminUserDetailResponse,
   AdminUserPayload,
   AdminUserSummaryResponse,
@@ -70,6 +72,31 @@ export async function listAdminUsers(
     accessToken,
     cache: "no-store",
   });
+}
+
+export async function listAdminPireps(
+  accessToken: string,
+): Promise<AdminPirepResponse[]> {
+  return apiRequest<AdminPirepResponse[]>("/admin/pireps", {
+    accessToken,
+    cache: "no-store",
+  });
+}
+
+export async function reviewAdminPirep(
+  accessToken: string,
+  id: string,
+  payload: AdminPirepReviewPayload,
+): Promise<AdminPirepResponse> {
+  return apiRequest<AdminPirepResponse>(
+    `/admin/pireps/${encodeURIComponent(id)}/review`,
+    {
+      accessToken,
+      method: "PATCH",
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    },
+  );
 }
 
 export async function getAdminUser(

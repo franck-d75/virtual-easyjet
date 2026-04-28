@@ -1,5 +1,6 @@
 import {
   AircraftStatus,
+  PirepStatus,
   UserPlatformRole,
   UserStatus,
 } from "@va/database";
@@ -352,4 +353,20 @@ export class CleanupAdminAcarsTestDataDto {
   @IsOptional()
   @IsBoolean()
   public dryRun?: boolean;
+}
+
+export class ReviewAdminPirepDto {
+  @IsIn([PirepStatus.ACCEPTED, PirepStatus.REJECTED])
+  public status!: "ACCEPTED" | "REJECTED";
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 500)
+  @Matches(PLAIN_TEXT_REGEX, {
+    message: "Le commentaire de revue ne doit pas contenir de balises HTML.",
+  })
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim() : value,
+  )
+  public reviewerComment?: string | null;
 }

@@ -649,6 +649,74 @@ export interface AdminRecentPirepResponse {
   };
 }
 
+export interface AdminPirepResponse {
+  id: string;
+  status: string;
+  source: string;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  blockTimeMinutes: number | null;
+  flightTimeMinutes: number | null;
+  fuelUsedKg: number | null;
+  score: number | null;
+  landingRateFpm: number | null;
+  summary: unknown;
+  pilotComment: string | null;
+  reviewerComment: string | null;
+  flight: {
+    id: string;
+    flightNumber: string;
+    status: string;
+  };
+  pilotProfile: {
+    id: string;
+    pilotNumber: string;
+    firstName: string;
+    lastName: string;
+    user: {
+      id: string;
+      username: string;
+      email: string;
+    };
+  };
+  reviewedBy: {
+    id: string;
+    username: string;
+    email: string;
+  } | null;
+  aircraft: {
+    id: string;
+    registration: string;
+    label: string | null;
+    aircraftType: {
+      id: string;
+      icaoCode: string;
+      name: string;
+    };
+    hub: {
+      id: string;
+      code: string;
+      name: string;
+    } | null;
+  };
+  departureAirport: {
+    id: string;
+    icao: string;
+    name: string;
+  };
+  arrivalAirport: {
+    id: string;
+    icao: string;
+    name: string;
+  };
+}
+
+export interface AdminPirepReviewPayload {
+  status: "ACCEPTED" | "REJECTED";
+  reviewerComment?: string | null;
+}
+
 export interface AdminUserDetailResponse {
   id: string;
   email: string;

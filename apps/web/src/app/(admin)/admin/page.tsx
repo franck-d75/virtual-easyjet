@@ -51,6 +51,9 @@ export default async function AdminDashboardPage(): Promise<JSX.Element> {
         </div>
         <div className="admin-page-actions">
           <Button href="/admin/utilisateurs">Gérer les utilisateurs</Button>
+          <Button href="/admin/pireps" variant="secondary">
+            Revoir les rapports
+          </Button>
           <Button href="/admin/flotte">Gérer la flotte</Button>
           <Button href="/admin/routes" variant="secondary">
             Gérer les routes
@@ -82,6 +85,17 @@ export default async function AdminDashboardPage(): Promise<JSX.Element> {
           </p>
           <Link className="table-inline-link" href="/admin/utilisateurs">
             Ouvrir la gestion utilisateurs
+          </Link>
+        </Card>
+        <Card>
+          <span className="section-eyebrow">Validation</span>
+          <h2>Rapports de vol</h2>
+          <p>
+            Contrôlez les PIREPs ACARS, appliquez une décision de validation ou
+            de rejet et conservez une trace de revue propre.
+          </p>
+          <Link className="table-inline-link" href="/admin/pireps">
+            Ouvrir la revue des rapports
           </Link>
         </Card>
         <Card>

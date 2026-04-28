@@ -29,6 +29,7 @@ import {
   CreateAdminRouteDto,
   ImportAdminAircraftFromSimbriefAirframeDto,
   LinkAdminAircraftSimbriefAirframeDto,
+  ReviewAdminPirepDto,
   UpdateAdminUserDto,
   UpdateAdminAircraftDto,
   UpdateAdminHubDto,
@@ -86,6 +87,20 @@ export class AdminController {
   @Get("users")
   public listUsers() {
     return this.adminService.listUsers();
+  }
+
+  @Get("pireps")
+  public listPireps() {
+    return this.adminService.listPireps();
+  }
+
+  @Patch("pireps/:id/review")
+  public reviewPirep(
+    @Param("id") id: string,
+    @Body() payload: ReviewAdminPirepDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.reviewPirep(id, payload, currentUser);
   }
 
   @Get("users/:id")

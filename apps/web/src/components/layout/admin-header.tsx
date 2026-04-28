@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils/cn";
 const adminLinks = [
   { href: "/admin", label: "Vue d'ensemble" },
   { href: "/admin/utilisateurs", label: "Utilisateurs" },
+  { href: "/admin/pireps", label: "Rapports de vol" },
   { href: "/admin/flotte", label: "Flotte" },
   { href: "/admin/hubs", label: "Hubs" },
   { href: "/admin/routes", label: "Routes" },
