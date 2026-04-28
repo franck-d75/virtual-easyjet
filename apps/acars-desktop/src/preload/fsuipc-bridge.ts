@@ -320,6 +320,8 @@ export class FsuipcBridge {
             altitudeFt: parsedLine.data.telemetry?.altitudeFt ?? null,
             groundspeedKts: parsedLine.data.telemetry?.groundspeedKts ?? null,
             headingDeg: parsedLine.data.telemetry?.headingDeg ?? null,
+            fuelTotalKg: parsedLine.data.telemetry?.fuelTotalKg ?? null,
+            fuelSource: parsedLine.data.telemetry ? "FSUIPC" : null,
           });
 
           this.resolveSnapshotWaiters(this.snapshot);

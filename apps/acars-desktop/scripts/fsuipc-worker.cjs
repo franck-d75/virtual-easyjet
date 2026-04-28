@@ -13,6 +13,7 @@ let firstTelemetryLogged = false;
 let lastLiveSnapshot = null;
 let lastLiveTelemetry = null;
 let lastAircraftDebugSignature = null;
+let lastLoggedFuelTotalKg = null;
 let sampleInterval = null;
 let sampleInProgress = false;
 
@@ -162,6 +163,19 @@ async function sampleOnce() {
       firstTelemetryLogged = true;
       log("info", "First telemetry received", {
         capturedAt: telemetry.capturedAt ?? null,
+        fuelTotalKg: telemetry.fuelTotalKg ?? null,
+        fuelSource: "FSUIPC",
+      });
+    }
+
+    if (
+      typeof telemetry?.fuelTotalKg === "number" &&
+      telemetry.fuelTotalKg !== lastLoggedFuelTotalKg
+    ) {
+      lastLoggedFuelTotalKg = telemetry.fuelTotalKg;
+      log("info", "Fuel telemetry received", {
+        fuelTotalKg: telemetry.fuelTotalKg ?? null,
+        fuelSource: "FSUIPC",
       });
     }
 

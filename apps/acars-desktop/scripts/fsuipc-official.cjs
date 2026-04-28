@@ -44,6 +44,7 @@ function loadFsuipcModule() {
 const FEET_PER_METER = 3.280839895;
 const KNOTS_PER_MPS = 1.943844492;
 const FEET_PER_MINUTE_PER_MPS = 196.8503937;
+const KILOGRAMS_PER_POUND = 0.45359237;
 const RADIANS_TO_DEGREES = 180 / Math.PI;
 const REGISTERED_FLAG = Symbol.for("va.acars.fsuipc.offsetsRegistered");
 
@@ -231,6 +232,7 @@ function buildTelemetrySample(payload) {
   const verticalSpeedRaw = readNumber(payload, "verticalSpeedRaw");
   const onGroundFlag = readNumber(payload, "onGroundFlag");
   const indicatedAirspeedRaw = readNumber(payload, "indicatedAirspeedRaw");
+  const fuelTotalWeightPounds = readNumber(payload, "fuelTotalWeightPounds");
 
   const altitudeFt = roundInteger(
     typeof altitudeMeters === "number" ? altitudeMeters * FEET_PER_METER : null,
@@ -247,6 +249,13 @@ function buildTelemetrySample(payload) {
   const indicatedAirspeedKts = roundInteger(
     typeof indicatedAirspeedRaw === "number" ? indicatedAirspeedRaw / 128 : null,
   );
+  const fuelTotalKg =
+    typeof fuelTotalWeightPounds === "number"
+      ? Math.max(
+          0,
+          Math.round(fuelTotalWeightPounds * KILOGRAMS_PER_POUND * 100) / 100,
+        )
+      : null;
   const onGround =
     typeof onGroundFlag === "number" ? onGroundFlag >= 1 : null;
 
@@ -275,6 +284,7 @@ function buildTelemetrySample(payload) {
       headingDeg,
       verticalSpeedFpm,
       onGround,
+      fuelTotalKg: fuelTotalKg ?? undefined,
     },
     indicatedAirspeedKts,
   };
@@ -298,6 +308,7 @@ function registerOffsets(targetClient) {
   targetClient.add("onGroundFlag", 0x0366, fsuipc.Type.Int16);
   targetClient.add("verticalSpeedRaw", 0x030c, fsuipc.Type.Int32);
   targetClient.add("indicatedAirspeedRaw", 0x02bc, fsuipc.Type.Int32);
+  targetClient.add("fuelTotalWeightPounds", 0x126c, fsuipc.Type.UInt32);
 
   targetClient[REGISTERED_FLAG] = true;
 }

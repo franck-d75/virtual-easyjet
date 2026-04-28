@@ -163,6 +163,14 @@ function formatDuration(minutes: number | null | undefined): string {
   return `${hours} h ${String(remainingMinutes).padStart(2, "0")}`;
 }
 
+function formatFuelKg(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "n/d";
+  }
+
+  return `${value.toFixed(0)} kg`;
+}
+
 function getTrackingTone(status: TelemetryTrackingState["status"]): PresentationTone {
   switch (status) {
     case "RUNNING":
@@ -597,6 +605,12 @@ function renderSimulator(): void {
         <span class="metric-value">${simulator.indicatedAirspeedKts ?? "n/d"}</span>
       </div>
       <div class="metric">
+        <span class="metric-label">Carburant live</span>
+        <span class="metric-value">${escapeHtml(
+          formatFuelKg(simulator.telemetry?.fuelTotalKg),
+        )}</span>
+      </div>
+      <div class="metric">
         <span class="metric-label">Au sol</span>
         <span class="metric-value">${simulator.telemetry ? (simulator.telemetry.onGround ? "Oui" : "Non") : "n/d"}</span>
       </div>
@@ -615,6 +629,18 @@ function renderSimulator(): void {
 function renderSession(): void {
   const session = state.activeSession;
   const tracking = state.tracking;
+  const liveFuelKg =
+    state.simulator?.telemetry?.fuelTotalKg ?? session?.latestTelemetry?.fuelTotalKg ?? null;
+  const fuelArrivalOrLiveKg = session?.fuel.arrivalFuelKg ?? liveFuelKg ?? null;
+  const fuelDepartureKg = session?.fuel.departureFuelKg ?? null;
+  const fuelArrivalKg = session?.fuel.arrivalFuelKg ?? null;
+  const fuelUsedKg =
+    typeof fuelDepartureKg === "number" &&
+    Number.isFinite(fuelDepartureKg) &&
+    typeof fuelArrivalOrLiveKg === "number" &&
+    Number.isFinite(fuelArrivalOrLiveKg)
+      ? Math.max(0, fuelDepartureKg - fuelArrivalOrLiveKg)
+      : null;
 
   if (!session) {
     sessionSummary.innerHTML = `
@@ -665,11 +691,19 @@ function renderSession(): void {
       </div>
       <div class="metric">
         <span class="metric-label">Carburant depart</span>
-        <span class="metric-value">${session.fuel.departureFuelKg ?? "n/d"}</span>
+        <span class="metric-value">${escapeHtml(formatFuelKg(fuelDepartureKg))}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Carburant live</span>
+        <span class="metric-value">${escapeHtml(formatFuelKg(liveFuelKg))}</span>
       </div>
       <div class="metric">
         <span class="metric-label">Carburant arrivee</span>
-        <span class="metric-value">${session.fuel.arrivalFuelKg ?? "n/d"}</span>
+        <span class="metric-value">${escapeHtml(formatFuelKg(fuelArrivalKg))}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Consommation</span>
+        <span class="metric-value">${escapeHtml(formatFuelKg(fuelUsedKg))}</span>
       </div>
     </div>
     ${
@@ -741,6 +775,7 @@ function applySimulatorUpdate(simulator: SimulatorSnapshot): void {
       altitudeFt: simulator.telemetry.altitudeFt,
       groundspeedKts: simulator.telemetry.groundspeedKts,
       headingDeg: simulator.telemetry.headingDeg,
+      fuelTotalKg: simulator.telemetry.fuelTotalKg ?? null,
       aircraftDisplayName: simulator.aircraft?.displayName ?? null,
       aircraftIcao: simulator.aircraft?.icaoCode ?? null,
       aircraftLivery: simulator.aircraft?.liveryName ?? null,
@@ -752,6 +787,7 @@ function applySimulatorUpdate(simulator: SimulatorSnapshot): void {
 
   renderSnapshot();
   renderSimulator();
+  renderSession();
 }
 
 async function refreshRuntimeState(): Promise<void> {

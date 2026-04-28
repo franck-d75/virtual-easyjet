@@ -755,6 +755,11 @@ export class DesktopService {
         altitudeFt: snapshot.telemetry.altitudeFt,
         groundspeedKts: snapshot.telemetry.groundspeedKts,
         headingDeg: snapshot.telemetry.headingDeg,
+        fuelTotalKg: snapshot.telemetry.fuelTotalKg ?? null,
+        fuelSource:
+          snapshot.dataSource === "fsuipc" || snapshot.dataSource === "simconnect"
+            ? snapshot.dataSource.toUpperCase()
+            : null,
       });
     }
 
@@ -894,6 +899,7 @@ export class DesktopService {
 
     if (this.config.telemetryMode !== "mock") {
       await this.startSessionTracking(session.id);
+      return this.getSession(session.id);
     }
 
     return session;
@@ -1170,6 +1176,19 @@ export class DesktopService {
   ): Promise<SessionSummary> {
     if (this.isMockBackend()) {
       return this.completeMockSession(sessionId, pilotComment);
+    }
+
+    try {
+      const telemetry = await this.samplePreferredTelemetry();
+
+      if (telemetry) {
+        await this.sendManualTelemetry(sessionId, telemetry);
+      }
+    } catch (error) {
+      this.log("final telemetry sample skipped before session completion", {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     const session = await this.authorizedAcarsRequestJson<SessionSummary>(
