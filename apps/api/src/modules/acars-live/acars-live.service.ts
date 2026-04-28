@@ -37,6 +37,17 @@ const liveSessionSelect = {
       },
     },
   },
+  telemetryPoints: {
+    orderBy: {
+      capturedAt: "desc",
+    },
+    take: 1200,
+    select: {
+      latitude: true,
+      longitude: true,
+      capturedAt: true,
+    },
+  },
 } satisfies Prisma.AcarsSessionSelect;
 
 type LiveSessionRecord = Prisma.AcarsSessionGetPayload<{
@@ -104,6 +115,15 @@ export class AcarsLiveService {
         session.detectedPhase,
         session.currentOnGround,
       ),
+      track: session.telemetryPoints
+        .slice()
+        .reverse()
+        .map((point) => ({
+          lat: decimalToNumber(point.latitude) ?? 0,
+          lon: decimalToNumber(point.longitude) ?? 0,
+          capturedAt: point.capturedAt.toISOString(),
+        }))
+        .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon)),
     };
   }
 }

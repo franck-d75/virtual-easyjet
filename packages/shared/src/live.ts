@@ -25,6 +25,12 @@ export const LIVE_MAP_PHASES = [
 
 export type LiveMapPhase = (typeof LIVE_MAP_PHASES)[number];
 
+export interface LiveMapTrackPoint {
+  lat: number;
+  lon: number;
+  capturedAt: string;
+}
+
 export interface LiveMapAircraft {
   callsign: string;
   flightNumber?: string;
@@ -36,6 +42,7 @@ export interface LiveMapAircraft {
   phase: LiveMapPhase;
   heading: number;
   onGround?: boolean | null;
+  track?: LiveMapTrackPoint[];
 }
 
 export interface LiveFlightSnapshot {

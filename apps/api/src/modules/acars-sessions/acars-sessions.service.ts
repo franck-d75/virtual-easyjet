@@ -57,6 +57,13 @@ type SessionRecord = Prisma.AcarsSessionGetPayload<{
   include: typeof sessionInclude;
 }>;
 
+type ProgressSyncSummary = {
+  completedFlightsCount: number;
+  totalHoursFlownMinutes: number;
+  totalExperiencePoints: number;
+  promotedRankCode: string | null;
+};
+
 const OFF_BLOCK_PHASES: FlightPhase[] = [
   FlightPhase.PUSHBACK,
   FlightPhase.TAXI_OUT,
@@ -246,6 +253,7 @@ export class AcarsSessionsService {
       const nextPhase = detectFlightPhase({
         previousPhase: existingSession.detectedPhase,
         previousOnGround: existingSession.currentOnGround,
+        previousGroundspeedKts: existingSession.currentGroundspeedKts,
         onGround: payload.onGround,
         groundspeedKts: payload.groundspeedKts,
         altitudeFt: payload.altitudeFt,
@@ -548,6 +556,11 @@ export class AcarsSessionsService {
         },
       });
 
+      const profileProgress = await this.syncPilotProfileProgress(
+        transaction,
+        existingSession.flight.pilotProfileId,
+      );
+
       await transaction.flightEvent.createMany({
         data: [
           {
@@ -569,6 +582,7 @@ export class AcarsSessionsService {
             title: "Flight completed",
             message: "The ACARS session finalized the linked flight.",
             occurredAt: completedAt,
+            payload: profileProgress,
           },
         ],
       });
@@ -638,6 +652,80 @@ export class AcarsSessionsService {
     if (status === SessionStatus.ABORTED) {
       throw new ConflictException("This ACARS session is already aborted.");
     }
+  }
+
+  private async syncPilotProfileProgress(
+    transaction: Prisma.TransactionClient,
+    pilotProfileId: string,
+  ): Promise<ProgressSyncSummary> {
+    const [pilotProfile, completedFlightsCount, completedFlightMinutes, activeRanks] =
+      await Promise.all([
+        transaction.pilotProfile.findUniqueOrThrow({
+          where: { id: pilotProfileId },
+          include: {
+            rank: true,
+          },
+        }),
+        transaction.flight.count({
+          where: {
+            pilotProfileId,
+            status: FlightStatus.COMPLETED,
+          },
+        }),
+        transaction.flight.aggregate({
+          where: {
+            pilotProfileId,
+            status: FlightStatus.COMPLETED,
+          },
+          _sum: {
+            durationMinutes: true,
+          },
+        }),
+        transaction.rank.findMany({
+          where: {
+            isActive: true,
+          },
+          orderBy: {
+            sortOrder: "asc",
+          },
+        }),
+      ]);
+
+    const totalHoursFlownMinutes = Math.max(
+      completedFlightMinutes._sum.durationMinutes ?? 0,
+      0,
+    );
+    const totalExperiencePoints = totalHoursFlownMinutes;
+    const highestEligibleRank =
+      activeRanks
+        .filter(
+          (rank) =>
+            rank.minFlights <= completedFlightsCount &&
+            rank.minHoursMinutes <= totalHoursFlownMinutes,
+        )
+        .sort((left, right) => right.sortOrder - left.sortOrder)[0] ?? null;
+    const currentRankSortOrder = pilotProfile.rank?.sortOrder ?? -1;
+    const nextRankId =
+      highestEligibleRank && highestEligibleRank.sortOrder > currentRankSortOrder
+        ? highestEligibleRank.id
+        : pilotProfile.rankId;
+
+    await transaction.pilotProfile.update({
+      where: { id: pilotProfileId },
+      data: {
+        hoursFlownMinutes: totalHoursFlownMinutes,
+        experiencePoints: totalExperiencePoints,
+        rankId: nextRankId,
+      },
+    });
+
+    return {
+      completedFlightsCount,
+      totalHoursFlownMinutes,
+      totalExperiencePoints,
+      promotedRankCode:
+        nextRankId === pilotProfile.rankId ? null : highestEligibleRank?.code ?? null,
+    };
   }
 
   private serializeSession(session: SessionRecord) {

@@ -359,6 +359,32 @@ export function LiveMapPanel({
     }
 
     for (const flight of traffic) {
+      if ((flight.track?.length ?? 0) >= 2) {
+        const trackLatLngs = flight.track!.map((point) => [
+          point.lat,
+          point.lon,
+        ] as [number, number]);
+
+        L.polyline(trackLatLngs, {
+          color: getTrackGlowColor(flight.phase),
+          weight: 8,
+          opacity: 0.28,
+          lineCap: "round",
+          lineJoin: "round",
+          interactive: false,
+        }).addTo(markersLayer);
+
+        L.polyline(trackLatLngs, {
+          color: getTrackColor(flight.phase),
+          weight: 3,
+          opacity: 0.9,
+          lineCap: "round",
+          lineJoin: "round",
+          interactive: false,
+          className: "live-map-flown-track",
+        }).addTo(markersLayer);
+      }
+
       const marker = L.marker([flight.lat, flight.lon], {
         icon: buildMarkerIcon(L, flight.phase),
         keyboard: false,
@@ -867,6 +893,32 @@ function getColor(phase: LiveMapPhase): string {
       return "green";
     default:
       return "white";
+  }
+}
+
+function getTrackColor(phase: LiveMapPhase): string {
+  switch (phase) {
+    case "PARKED":
+      return "#ef4444";
+    case "PUSHBACK":
+      return "#f97316";
+    case "TAXI":
+      return "#facc15";
+    case "AIRBORNE":
+      return "#22c55e";
+  }
+}
+
+function getTrackGlowColor(phase: LiveMapPhase): string {
+  switch (phase) {
+    case "PARKED":
+      return "rgba(239, 68, 68, 0.25)";
+    case "PUSHBACK":
+      return "rgba(249, 115, 22, 0.25)";
+    case "TAXI":
+      return "rgba(250, 204, 21, 0.22)";
+    case "AIRBORNE":
+      return "rgba(34, 197, 94, 0.22)";
   }
 }
 
