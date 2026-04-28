@@ -23,7 +23,8 @@ import { cn } from "@/lib/utils/cn";
 const DEFAULT_MAP_CENTER: [number, number] = [50.1109, 8.6821];
 const DEFAULT_MAP_ZOOM = 5;
 const SINGLE_TARGET_ZOOM = 6;
-const LIVE_MAP_POLL_INTERVAL_MS = 8_000;
+const LIVE_MAP_POLL_INTERVAL_MS = 30_000;
+const LIVE_MAP_RETRY_BACKOFF_MS = 90_000;
 const SIMBRIEF_ROUTE_COLOR = "#7dd3fc";
 const SIMBRIEF_ROUTE_GLOW_COLOR = "rgba(125, 211, 252, 0.28)";
 const DARK_TILE_LAYER_URL =
@@ -89,6 +90,8 @@ export function LiveMapPanel({
   const viewportPointsRef = useRef<[number, number][]>([]);
   const hasUserToggledPanelsRef = useRef(false);
   const previousPanelsVisibilityRef = useRef(true);
+  const pollTimeoutRef = useRef<number | null>(null);
+  const refreshInFlightRef = useRef(false);
 
   const airborneCount = useMemo(
     () => traffic.filter((flight) => flight.phase === "AIRBORNE").length,
@@ -163,7 +166,20 @@ export function LiveMapPanel({
     map.setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
   });
 
+  const clearScheduledRefresh = useEffectEvent(() => {
+    if (pollTimeoutRef.current !== null) {
+      window.clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+  });
+
   const refreshTraffic = useEffectEvent(async (silent: boolean) => {
+    if (refreshInFlightRef.current) {
+      return false;
+    }
+
+    refreshInFlightRef.current = true;
+
     if (!silent) {
       setIsRefreshing(true);
     }
@@ -177,14 +193,39 @@ export function LiveMapPanel({
       if (nextTraffic.length === 0) {
         hasAdjustedViewportRef.current = false;
       }
+
+      return true;
     } catch (refreshError) {
       logWebWarning("live map refresh failed", refreshError);
       setError("La carte en direct n'a pas pu être actualisée depuis l'API.");
+      return false;
     } finally {
+      refreshInFlightRef.current = false;
       if (!silent) {
         setIsRefreshing(false);
       }
     }
+  });
+
+  const scheduleRefresh = useEffectEvent((delayMs: number) => {
+    clearScheduledRefresh();
+
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+      return;
+    }
+
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return;
+    }
+
+    pollTimeoutRef.current = window.setTimeout(() => {
+      void (async () => {
+        const succeeded = await refreshTraffic(true);
+        scheduleRefresh(
+          succeeded ? LIVE_MAP_POLL_INTERVAL_MS : LIVE_MAP_RETRY_BACKOFF_MS,
+        );
+      })();
+    }, delayMs);
   });
 
   useEffect(() => {
@@ -348,18 +389,68 @@ export function LiveMapPanel({
   }, [fitViewport, simbriefRoute, traffic]);
 
   useEffect(() => {
-    if (initialError !== null || initialTraffic.length === 0) {
-      void refreshTraffic(false);
-    }
+    let active = true;
 
-    const intervalId = window.setInterval(() => {
-      void refreshTraffic(true);
-    }, LIVE_MAP_POLL_INTERVAL_MS);
+    const startPolling = async (forceRefresh: boolean) => {
+      if (!active) {
+        return;
+      }
+
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        clearScheduledRefresh();
+        return;
+      }
+
+      const shouldRefreshImmediately =
+        forceRefresh || initialError !== null || initialTraffic.length === 0;
+
+      if (shouldRefreshImmediately) {
+        const succeeded = await refreshTraffic(forceRefresh);
+
+        if (!active) {
+          return;
+        }
+
+        scheduleRefresh(
+          succeeded ? LIVE_MAP_POLL_INTERVAL_MS : LIVE_MAP_RETRY_BACKOFF_MS,
+        );
+        return;
+      }
+
+      scheduleRefresh(LIVE_MAP_POLL_INTERVAL_MS);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void startPolling(true);
+        return;
+      }
+
+      clearScheduledRefresh();
+    };
+
+    const handleOnline = () => {
+      void startPolling(true);
+    };
+
+    void startPolling(false);
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("online", handleOnline);
 
     return () => {
-      window.clearInterval(intervalId);
+      active = false;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("online", handleOnline);
+      clearScheduledRefresh();
     };
-  }, [initialError, initialTraffic.length, refreshTraffic]);
+  }, [
+    clearScheduledRefresh,
+    initialError,
+    initialTraffic.length,
+    refreshTraffic,
+    scheduleRefresh,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -503,14 +594,21 @@ export function LiveMapPanel({
             <span className="live-map-control-slot live-map-control-slot--refresh">
               <Button
                 aria-busy={isRefreshing}
-                aria-disabled={isRefreshing}
+                aria-disabled={isRefreshing || refreshInFlightRef.current}
                 className="live-map-control-button"
                 onClick={(event) => {
                   event.currentTarget.blur();
-                  if (isRefreshing) {
+                  if (isRefreshing || refreshInFlightRef.current) {
                     return;
                   }
-                  void refreshTraffic(false);
+                  void (async () => {
+                    const succeeded = await refreshTraffic(false);
+                    scheduleRefresh(
+                      succeeded
+                        ? LIVE_MAP_POLL_INTERVAL_MS
+                        : LIVE_MAP_RETRY_BACKOFF_MS,
+                    );
+                  })();
                 }}
                 variant="secondary"
               >

@@ -130,7 +130,7 @@ export function PublicHeader(): JSX.Element {
           isLiveMap && "site-header__inner--compact",
         )}
       >
-        <Link className="brand-mark" href="/">
+        <Link className="brand-mark" href="/" prefetch={false}>
           <BrandBadge />
           <span className="brand-mark__text">
             <strong>{APP_NAME}</strong>
@@ -148,6 +148,7 @@ export function PublicHeader(): JSX.Element {
                 className={cn("site-nav__link", isActive && "site-nav__link--active")}
                 href={link.href}
                 key={link.href}
+                prefetch={false}
               >
                 {link.label}
               </Link>
@@ -175,6 +176,7 @@ export function PublicHeader(): JSX.Element {
                   isLiveMap && "site-header__login--compact",
                 )}
                 href={sessionState.user.role === "ADMIN" ? "/admin" : "/dashboard"}
+                prefetch={false}
               >
                 {sessionState.user.role === "ADMIN" ? "Administration" : "Dashboard"}
               </Link>
@@ -185,6 +187,7 @@ export function PublicHeader(): JSX.Element {
           <Link
             className={cn("site-header__login", isLiveMap && "site-header__login--compact")}
             href="/connexion"
+            prefetch={false}
           >
             {sessionState.status === "loading" ? "Connexion..." : "Se connecter"}
           </Link>

@@ -16,13 +16,13 @@ export function Footer(): JSX.Element {
           <small className="site-footer__legal">{UNOFFICIAL_DISCLAIMER}</small>
         </div>
         <nav className="site-footer__links" aria-label="Liens de pied de page">
-          <Link href="/">Accueil</Link>
-          <Link href="/compagnie">Compagnie</Link>
-          <Link href="/flotte">Flotte</Link>
-          <Link href="/hubs">Hubs</Link>
-          <Link href="/routes">Routes</Link>
-          <Link href="/acars">ACARS</Link>
-          <Link href="/connexion">Connexion</Link>
+          <Link href="/" prefetch={false}>Accueil</Link>
+          <Link href="/compagnie" prefetch={false}>Compagnie</Link>
+          <Link href="/flotte" prefetch={false}>Flotte</Link>
+          <Link href="/hubs" prefetch={false}>Hubs</Link>
+          <Link href="/routes" prefetch={false}>Routes</Link>
+          <Link href="/acars" prefetch={false}>ACARS</Link>
+          <Link href="/connexion" prefetch={false}>Connexion</Link>
         </nav>
       </div>
     </footer>
