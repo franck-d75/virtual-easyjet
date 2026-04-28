@@ -201,6 +201,16 @@ export class AcarsSessionsService {
     payload: IngestTelemetryDto,
   ) {
     const pilotProfileId = this.getRequiredPilotProfileId(user);
+    console.info("[acars] telemetry received", {
+      sessionId: id,
+      pilotProfileId,
+      latitude: payload.latitude,
+      longitude: payload.longitude,
+      altitudeFt: payload.altitudeFt,
+      groundspeedKts: payload.groundspeedKts,
+      onGround: payload.onGround,
+      capturedAt: payload.capturedAt ?? null,
+    });
 
     const session = await this.prisma.$transaction(async (transaction) => {
       const existingSession = await transaction.acarsSession.findUnique({
@@ -338,6 +348,18 @@ export class AcarsSessionsService {
         where: { id: existingSession.id },
         include: sessionInclude,
       });
+    });
+
+    console.info("[acars] live session upserted", {
+      sessionId: session.id,
+      flightId: session.flightId,
+      phase: session.detectedPhase,
+      latitude: session.currentLatitude?.toString?.() ?? null,
+      longitude: session.currentLongitude?.toString?.() ?? null,
+      altitudeFt: session.currentAltitudeFt ?? null,
+      groundspeedKts: session.currentGroundspeedKts ?? null,
+      onGround: session.currentOnGround ?? null,
+      lastTelemetryAt: session.lastTelemetryAt?.toISOString?.() ?? null,
     });
 
     return this.serializeSession(session);

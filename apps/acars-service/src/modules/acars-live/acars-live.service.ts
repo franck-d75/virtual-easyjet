@@ -2,14 +2,7 @@ import { Dependencies, Injectable } from "@nestjs/common";
 import { FlightPhase, Prisma, SessionStatus } from "@va/database";
 import type { LiveMapAircraft, LiveMapPhase } from "@va/shared";
 
-import { decimalToNumber } from "../../common/utils/decimal.utils.js";
 import { PrismaService } from "../prisma/prisma.service.js";
-
-const LIVE_PHASE_THRESHOLDS = {
-  parkedSpeedKts: 5,
-  pushbackSpeedKts: 15,
-  airborneAltitudeFt: 1000,
-} as const;
 
 const ACTIVE_ACARS_STATUSES: SessionStatus[] = [
   SessionStatus.CONNECTED,
@@ -64,7 +57,7 @@ export class AcarsLiveService {
 
     const liveFlights = sessions.map((session) => this.serializeSession(session));
 
-    console.info("[api] live map sessions returned count", {
+    console.info("[acars] live map sessions returned count", {
       count: liveFlights.length,
       callsigns: liveFlights.map((flight) => flight.callsign),
     });
@@ -91,6 +84,15 @@ export class AcarsLiveService {
       ),
     };
   }
+}
+
+function decimalToNumber(value: Prisma.Decimal | null | undefined): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const numericValue = value.toNumber();
+  return Number.isFinite(numericValue) ? numericValue : null;
 }
 
 function normalizeHeading(value: number | null | undefined): number {
@@ -147,14 +149,13 @@ function deriveLiveMapPhase(
     return speedKts <= 1 ? "PARKED" : "TAXI";
   }
 
-  if (altitudeFt > LIVE_PHASE_THRESHOLDS.airborneAltitudeFt) {
+  if (altitudeFt > 1000) {
     return "AIRBORNE";
   }
 
-  if (speedKts < LIVE_PHASE_THRESHOLDS.parkedSpeedKts) {
+  if (speedKts < 5) {
     return "PARKED";
   }
 
   return "TAXI";
 }
-

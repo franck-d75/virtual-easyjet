@@ -1,4 +1,5 @@
 import { apiRequest } from "./client";
+import { getApiBaseUrl } from "../config/env";
 import type {
   AircraftResponse,
   HubResponse,
@@ -49,6 +50,55 @@ function normalizeLiveMapTraffic(payload: unknown): LiveMapAircraft[] {
   }
 
   return [];
+}
+
+function getAcarsServiceBaseUrl(): string {
+  return getApiBaseUrl().replace(/\/api$/iu, "/acars");
+}
+
+async function fetchLiveMapTrafficFromAbsoluteUrl(
+  url: string,
+  source: string,
+): Promise<LiveMapAircraft[] | null> {
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => {
+    abortController.abort();
+  }, 8_000);
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      next: { revalidate: 0 },
+      signal: abortController.signal,
+    });
+    const responseText = await response.text();
+    const responsePayload =
+      responseText.length > 0 ? tryParseJson(responseText) : undefined;
+
+    if (!response.ok) {
+      throw new Error(
+        typeof responsePayload === "object" &&
+          responsePayload !== null &&
+          "message" in responsePayload &&
+          typeof responsePayload.message === "string"
+          ? responsePayload.message
+          : `Live traffic request failed for ${source}.`,
+      );
+    }
+
+    const normalizedTraffic = normalizeLiveMapTraffic(responsePayload);
+    console.info("[web] live map payload count", {
+      source,
+      count: normalizedTraffic.length,
+    });
+    return normalizedTraffic;
+  } catch (error) {
+    logWebWarning(`live map ${source} failed`, error);
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function normalizePublicStats(payload: unknown): PublicStatsResponse {
@@ -228,7 +278,12 @@ export async function getPublicRouteCatalog(): Promise<RouteDetailResponse[]> {
 }
 
 export async function getBackendAcarsLiveTraffic(): Promise<LiveMapAircraft[]> {
-  const payload = await safePublicRequest("backend acars live", () =>
+  const acarsServiceTraffic = await fetchLiveMapTrafficFromAbsoluteUrl(
+    `${getAcarsServiceBaseUrl()}/live`,
+    "acars-service",
+  );
+
+  const apiTrafficPayload = await safePublicRequest("backend acars live", () =>
     apiRequest<unknown>("/acars/live", {
       cache: "no-store",
       next: { revalidate: 0 },
@@ -237,11 +292,35 @@ export async function getBackendAcarsLiveTraffic(): Promise<LiveMapAircraft[]> {
     }),
   undefined);
 
-  if (payload === undefined) {
-    return [];
+  const apiTraffic =
+    apiTrafficPayload === undefined
+      ? null
+      : normalizeLiveMapTraffic(apiTrafficPayload);
+
+  if (apiTraffic !== null) {
+    console.info("[web] live map payload count", {
+      source: "api",
+      count: apiTraffic.length,
+    });
   }
 
-  return normalizeLiveMapTraffic(payload);
+  if (acarsServiceTraffic && acarsServiceTraffic.length > 0) {
+    return acarsServiceTraffic;
+  }
+
+  if (apiTraffic && apiTraffic.length > 0) {
+    return apiTraffic;
+  }
+
+  if (acarsServiceTraffic !== null) {
+    return acarsServiceTraffic;
+  }
+
+  if (apiTraffic !== null) {
+    return apiTraffic;
+  }
+
+  return [];
 }
 
 export async function getAcarsLiveTraffic(): Promise<LiveMapAircraft[]> {

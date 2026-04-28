@@ -10,6 +10,7 @@ import { RateLimitGuard } from "./common/security/rate-limit.guard.js";
 import { RateLimitService } from "./common/security/rate-limit.service.js";
 import { validateAcarsEnv } from "./config/env.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
+import { AcarsLiveModule } from "./modules/acars-live/acars-live.module.js";
 import { AcarsSessionsModule } from "./modules/acars-sessions/acars-sessions.module.js";
 import { HealthModule } from "./modules/health/health.module.js";
 import { PrismaModule } from "./modules/prisma/prisma.module.js";
@@ -50,6 +51,7 @@ const repositoryRoot = findWorkspaceRoot(appModuleDirectory);
     PrismaModule,
     AuthModule,
     HealthModule,
+    AcarsLiveModule,
     AcarsSessionsModule,
   ],
   providers: [
