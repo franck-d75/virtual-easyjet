@@ -28,6 +28,33 @@ export interface PublicHomeResponse {
   routes: RouteResponse[];
 }
 
+export type RulesSectionKey =
+  | "behavior"
+  | "operations"
+  | "activity"
+  | "sanctions";
+
+export interface RulesSectionResponse {
+  key: RulesSectionKey;
+  title: string;
+  summary: string;
+  body: string[];
+}
+
+export interface RulesContentResponse {
+  sections: RulesSectionResponse[];
+  updatedAt: string | null;
+  updatedBy: {
+    id: string;
+    username: string;
+    email?: string;
+  } | null;
+}
+
+export interface AdminRulesPayload {
+  sections: RulesSectionResponse[];
+}
+
 export interface UserRoleSummary {
   code: string;
   name: string;

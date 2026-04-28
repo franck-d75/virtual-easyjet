@@ -65,8 +65,11 @@ export function AdminHeader({
 
         <div className="pilot-chip">
           <div className="pilot-chip__identity">
-            <UserAvatar avatarUrl={avatarUrl} name={adminName} size="sm" />
-            <div>
+            <div className="pilot-chip__avatar">
+              <UserAvatar avatarUrl={avatarUrl} name={adminName} size="sm" />
+            </div>
+            <div className="pilot-chip__copy">
+              <span className="pilot-chip__eyebrow">Console d&apos;administration</span>
               <strong>{adminName}</strong>
               <small>Accès administrateur</small>
             </div>

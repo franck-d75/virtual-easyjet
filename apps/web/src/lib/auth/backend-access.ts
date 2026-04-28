@@ -11,7 +11,7 @@ import {
   REFRESH_COOKIE_NAME,
 } from "./cookies";
 
-const INVALID_AUTH_SESSION_MESSAGE = "Session d’authentification invalide.";
+const INVALID_AUTH_SESSION_MESSAGE = "Session d'authentification invalide.";
 
 export interface BackendAccessResult<T> {
   data: T;
@@ -69,7 +69,7 @@ export function createBackendErrorResponse(error: unknown): NextResponse {
   const message =
     error instanceof ApiError
       ? error.message
-      : "L’action demandée est momentanément indisponible.";
+      : "L'action demandée est momentanément indisponible.";
 
   const response = NextResponse.json(
     {

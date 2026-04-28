@@ -21,6 +21,10 @@ import { AvatarStorageService } from "../../common/storage/avatar-storage.servic
 import type { UploadedAvatarFile } from "../../common/storage/avatar-upload.constants.js";
 import { decimalToNumber } from "../../common/utils/decimal.utils.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import {
+  normalizeRulesContent,
+  PUBLIC_RULES_SETTING_KEY,
+} from "../rules/rules-content.js";
 import type {
   CleanupAdminAcarsTestDataDto,
   CreateAdminAircraftDto,
@@ -29,6 +33,7 @@ import type {
   ImportAdminAircraftFromSimbriefAirframeDto,
   LinkAdminAircraftSimbriefAirframeDto,
   ReviewAdminPirepDto,
+  UpdateAdminRulesDto,
   UpdateAdminUserDto,
   UpdateAdminAircraftDto,
   UpdateAdminHubDto,
@@ -764,6 +769,78 @@ export class AdminService {
       this.logAdminDatasetError("SimBrief airframes", error);
       return [];
     }
+  }
+
+  public async getRules() {
+    const setting = await this.prisma.setting.findUnique({
+      where: {
+        key: PUBLIC_RULES_SETTING_KEY,
+      },
+      include: {
+        updatedBy: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    const content = normalizeRulesContent(setting?.value);
+
+    return {
+      sections: content.sections,
+      updatedAt: setting?.updatedAt.toISOString() ?? null,
+      updatedBy: setting?.updatedBy ?? null,
+    };
+  }
+
+  public async updateRules(
+    payload: UpdateAdminRulesDto,
+    currentUser: AuthenticatedUser,
+  ) {
+    const normalizedContent = normalizeRulesContent(payload);
+
+    const setting = await this.prisma.setting.upsert({
+      where: {
+        key: PUBLIC_RULES_SETTING_KEY,
+      },
+      update: {
+        value: normalizedContent as unknown as Prisma.InputJsonValue,
+        isPublic: true,
+        description:
+          "Contenu éditable du règlement public (comportement, exploitation, activité et sanctions).",
+        updatedById: currentUser.id,
+      },
+      create: {
+        key: PUBLIC_RULES_SETTING_KEY,
+        value: normalizedContent as unknown as Prisma.InputJsonValue,
+        isPublic: true,
+        description:
+          "Contenu éditable du règlement public (comportement, exploitation, activité et sanctions).",
+        updatedById: currentUser.id,
+      },
+      include: {
+        updatedBy: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    logAdminAction("rules.update", currentUser.id, PUBLIC_RULES_SETTING_KEY, {
+      sections: normalizedContent.sections.length,
+    });
+
+    return {
+      sections: normalizedContent.sections,
+      updatedAt: setting.updatedAt.toISOString(),
+      updatedBy: setting.updatedBy,
+    };
   }
 
   public async initializeAircraftTypeReferenceData(

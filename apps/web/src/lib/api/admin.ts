@@ -5,6 +5,7 @@ import type {
   AdminAircraftImportFromSimbriefAirframePayload,
   AdminAircraftLinkSimbriefAirframePayload,
   AdminAircraftTypeOptionResponse,
+  AdminRulesPayload,
   AdminPirepResponse,
   AdminPirepReviewPayload,
   AdminUserDetailResponse,
@@ -16,6 +17,7 @@ import type {
   AdminStatsResponse,
   AircraftResponse,
   HubResponse,
+  RulesContentResponse,
   RouteResponse,
   SimbriefAirframeResponse,
 } from "./types";
@@ -180,6 +182,27 @@ export async function listAdminSimbriefAirframes(
 ): Promise<SimbriefAirframeResponse[]> {
   return apiRequest<SimbriefAirframeResponse[]>("/admin/simbrief-airframes", {
     accessToken,
+    cache: "no-store",
+  });
+}
+
+export async function getAdminRules(
+  accessToken: string,
+): Promise<RulesContentResponse> {
+  return apiRequest<RulesContentResponse>("/admin/rules", {
+    accessToken,
+    cache: "no-store",
+  });
+}
+
+export async function updateAdminRules(
+  accessToken: string,
+  payload: AdminRulesPayload,
+): Promise<RulesContentResponse> {
+  return apiRequest<RulesContentResponse>("/admin/rules", {
+    accessToken,
+    method: "PATCH",
+    body: JSON.stringify(payload),
     cache: "no-store",
   });
 }

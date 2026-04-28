@@ -6,6 +6,7 @@ import type {
   LiveMapAircraft,
   PublicHomeResponse,
   RankResponse,
+  RulesContentResponse,
   RouteDetailResponse,
   PublicStatsResponse,
   RouteResponse,
@@ -198,6 +199,21 @@ export async function getPublicStats(): Promise<PublicStatsResponse> {
       timeoutMs: 8_000,
     }),
   EMPTY_PUBLIC_STATS);
+}
+
+export async function getPublicRules(): Promise<RulesContentResponse> {
+  return safePublicRequest("public rules", () =>
+    apiRequest<RulesContentResponse>("/public/rules", {
+      cache: "no-store",
+      next: { revalidate: 0 },
+      retryCount: 1,
+      timeoutMs: 8_000,
+    }),
+  {
+    sections: [],
+    updatedAt: null,
+    updatedBy: null,
+  });
 }
 
 export async function getPublicRanks(): Promise<RankResponse[]> {

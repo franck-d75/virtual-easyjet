@@ -21,7 +21,7 @@ const publicLinks = [
   { href: "/live-map", label: "Carte en direct" },
   { href: "/acars", label: "ACARS" },
   { href: "/recrutement", label: "Recrutement" },
-  { href: "/reglement", label: "Reglement" },
+  { href: "/reglement", label: "Règlement" },
 ];
 
 type SessionState =
@@ -44,12 +44,16 @@ function getDisplayName(user: UserMeResponse): string {
 }
 
 function getSecondaryLabel(user: UserMeResponse): string {
+  const pilotNumber = user.pilotProfile?.pilotNumber?.trim() ?? null;
+
   if (user.role === "ADMIN") {
-    return "Acces administrateur";
+    return pilotNumber
+      ? `Accès administrateur · ${pilotNumber}`
+      : "Accès administrateur";
   }
 
-  if (user.pilotProfile?.pilotNumber) {
-    return user.pilotProfile.pilotNumber;
+  if (pilotNumber) {
+    return `Compte pilote · ${pilotNumber}`;
   }
 
   return "Compte pilote";
@@ -134,7 +138,7 @@ export function PublicHeader(): JSX.Element {
           <BrandBadge />
           <span className="brand-mark__text">
             <strong>{APP_NAME}</strong>
-            <small>{isLiveMap ? "Suivi ACARS" : "Compagnie aerienne virtuelle"}</small>
+            <small>{isLiveMap ? "Suivi ACARS" : "Compagnie aérienne virtuelle"}</small>
           </span>
         </Link>
 
@@ -159,17 +163,22 @@ export function PublicHeader(): JSX.Element {
         {sessionState.status === "authenticated" ? (
           <div className="pilot-chip">
             <div className="pilot-chip__identity">
-              <UserAvatar
-                avatarUrl={sessionState.user.avatarUrl}
-                name={getDisplayName(sessionState.user)}
-                size="sm"
-              />
-              <div>
+              <div className="pilot-chip__avatar">
+                <UserAvatar
+                  avatarUrl={sessionState.user.avatarUrl}
+                  name={getDisplayName(sessionState.user)}
+                  size="sm"
+                />
+              </div>
+              <div className="pilot-chip__copy">
+                <span className="pilot-chip__eyebrow">
+                  {isLiveMap ? "Suivi en direct" : "Bienvenue à bord"}
+                </span>
                 <strong>{getDisplayName(sessionState.user)}</strong>
                 <small>{getSecondaryLabel(sessionState.user)}</small>
               </div>
             </div>
-            <div className="button-row">
+            <div className="pilot-chip__actions">
               <Link
                 className={cn(
                   "site-header__login",

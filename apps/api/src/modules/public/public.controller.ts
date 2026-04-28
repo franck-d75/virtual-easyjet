@@ -35,5 +35,10 @@ export class PublicController {
   public routes() {
     return this.publicService.getRoutes();
   }
+
+  @Get("rules")
+  public rules() {
+    return this.publicService.getRules();
+  }
 }
 

@@ -1,9 +1,9 @@
 export const APP_NAME = "Virtual Easyjet";
 export const APP_SHORT_NAME = "VEJ";
 export const APP_DESCRIPTION =
-  "Compagnie aerienne virtuelle moderne avec espace pilote, reservations, vols et PIREPs.";
+  "Compagnie aérienne virtuelle moderne avec espace pilote, réservations, vols et PIREPs.";
 export const UNOFFICIAL_DISCLAIMER =
-  "Virtual Easyjet est une compagnie aerienne virtuelle non officielle, creee par des passionnes de simulation de vol, sans affiliation avec easyJet.";
+  "Virtual Easyjet est une compagnie aérienne virtuelle non officielle, créée par des passionnés de simulation de vol, sans affiliation avec easyJet.";
 export const ACARS_DOWNLOAD_PROXY_PATH = "/api/acars/download";
 export const ACARS_PRODUCT_NAME = "Virtual Easyjet ACARS";
 

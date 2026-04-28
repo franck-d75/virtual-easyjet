@@ -4,18 +4,21 @@ import {
   UserPlatformRole,
   UserStatus,
 } from "@va/database";
-import { Transform } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import {
+  ArrayMinSize,
   IsBoolean,
   IsEnum,
   IsIn,
   IsInt,
   IsOptional,
   IsString,
+  IsArray,
   Length,
   Matches,
   MaxLength,
   Min,
+  ValidateNested,
 } from "class-validator";
 
 const PLAIN_TEXT_REGEX = /^[^<>]*$/;
@@ -369,4 +372,57 @@ export class ReviewAdminPirepDto {
     typeof value === "string" ? value.trim() : value,
   )
   public reviewerComment?: string | null;
+}
+
+export class UpdateAdminRulesSectionDto {
+  @IsIn(["behavior", "operations", "activity", "sanctions"])
+  public key!: "behavior" | "operations" | "activity" | "sanctions";
+
+  @IsString()
+  @Length(2, 80)
+  @Matches(PLAIN_TEXT_REGEX, {
+    message: "Le titre ne doit pas contenir de balises HTML.",
+  })
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim() : value,
+  )
+  public title!: string;
+
+  @IsString()
+  @Length(8, 220)
+  @Matches(PLAIN_TEXT_REGEX, {
+    message: "Le résumé ne doit pas contenir de balises HTML.",
+  })
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim() : value,
+  )
+  public summary!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  @Length(6, 500, { each: true })
+  @Matches(PLAIN_TEXT_REGEX, {
+    each: true,
+    message: "Le contenu du règlement ne doit pas contenir de balises HTML.",
+  })
+  @Transform(({ value }) =>
+    Array.isArray(value)
+      ? value
+          .map((entry) => (typeof entry === "string" ? entry.trim() : entry))
+          .filter(
+            (entry): entry is string =>
+              typeof entry === "string" && entry.length > 0,
+          )
+      : value,
+  )
+  public body!: string[];
+}
+
+export class UpdateAdminRulesDto {
+  @IsArray()
+  @ArrayMinSize(4)
+  @ValidateNested({ each: true })
+  @Type(() => UpdateAdminRulesSectionDto)
+  public sections!: UpdateAdminRulesSectionDto[];
 }

@@ -298,14 +298,17 @@ small {
 .pilot-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.9rem;
-  padding: 0.35rem 0.4rem 0.35rem 1rem;
-  border: 1px solid rgba(51, 65, 85, 0.88);
-  border-radius: 18px;
+  gap: 1rem;
+  padding: 0.55rem 0.6rem 0.55rem 1rem;
+  border: 1px solid rgba(74, 85, 104, 0.88);
+  border-radius: 22px;
   background:
-    linear-gradient(135deg, rgba(255, 102, 0, 0.12), rgba(17, 24, 39, 0.82) 56%),
-    rgba(17, 24, 39, 0.8);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    radial-gradient(circle at left top, rgba(255, 102, 0, 0.18), transparent 38%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 22%),
+    linear-gradient(145deg, rgba(20, 28, 40, 0.96), rgba(11, 15, 20, 0.84) 58%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 18px 38px rgba(2, 6, 23, 0.22);
 }
 
 .pilot-chip__identity {
@@ -315,13 +318,46 @@ small {
   min-width: 0;
 }
 
+.pilot-chip__avatar {
+  position: relative;
+  display: inline-flex;
+  padding: 0.16rem;
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 102, 0, 0.36));
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.pilot-chip__copy {
+  display: grid;
+  gap: 0.14rem;
+  min-width: 0;
+}
+
+.pilot-chip__eyebrow {
+  color: #fdba74;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
 .pilot-chip strong {
   display: block;
   margin-bottom: 0.08rem;
+  font-size: 1rem;
 }
 
 .pilot-chip small {
   color: var(--color-text-muted);
+}
+
+.pilot-chip__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .pilot-chip .button {
@@ -516,12 +552,59 @@ small {
 }
 
 .hero__copy {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
   display: grid;
   align-content: start;
   gap: 0.25rem;
   padding: 2.6rem;
   background:
+    radial-gradient(circle at right top, rgba(255, 102, 0, 0.18), transparent 28%),
     linear-gradient(180deg, rgba(38, 47, 62, 0.98), rgba(19, 27, 39, 0.96));
+}
+
+.hero__content {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 0.25rem;
+  max-width: min(36rem, 100%);
+}
+
+.hero__artwork {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.hero-aircraft {
+  position: absolute;
+  right: -2rem;
+  bottom: -1.35rem;
+  width: min(54%, 38rem);
+  opacity: 0.92;
+  transform: rotate(-6deg);
+  filter: drop-shadow(0 18px 32px rgba(2, 6, 23, 0.3));
+}
+
+.hero-aircraft__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.hero__copy::after {
+  content: "";
+  position: absolute;
+  right: 2rem;
+  top: 2rem;
+  width: 11rem;
+  height: 11rem;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 102, 0, 0.18), transparent 68%);
+  filter: blur(8px);
 }
 
 .hero__aside {
@@ -614,6 +697,129 @@ small {
 
 .hero-aside-note {
   margin: 0;
+}
+
+.rules-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.rules-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.rules-card__summary {
+  margin: 0;
+  color: #fde7d3;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.rules-card__body {
+  display: grid;
+  gap: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.rules-card__body p {
+  margin: 0;
+}
+
+.rules-editor-card {
+  display: grid;
+  gap: 1.25rem;
+  margin-bottom: 1.4rem;
+}
+
+.rules-editor-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.rules-editor-card__header h2 {
+  margin-bottom: 0.5rem;
+}
+
+.rules-editor-card__header p {
+  max-width: 60ch;
+  color: var(--color-text-secondary);
+}
+
+.rules-editor-card__meta {
+  min-width: 14rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid rgba(51, 65, 85, 0.8);
+  border-radius: 18px;
+  background: rgba(11, 15, 20, 0.26);
+}
+
+.rules-editor-card__meta span,
+.rules-editor-card__meta small {
+  display: block;
+  color: var(--color-text-muted);
+}
+
+.rules-editor-card__meta span {
+  margin-bottom: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.rules-editor-card__meta strong {
+  display: block;
+  margin-bottom: 0.18rem;
+  font-size: 1.1rem;
+}
+
+.rules-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.rules-editor-section {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border: 1px solid rgba(51, 65, 85, 0.74);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 28%),
+    rgba(11, 15, 20, 0.24);
+}
+
+.field textarea {
+  min-height: 7.25rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(42, 54, 71, 0.95);
+  border-radius: 16px;
+  background: rgba(11, 15, 20, 0.56);
+  color: var(--color-text);
+  font: inherit;
+  line-height: 1.55;
+  resize: vertical;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.field textarea:focus {
+  outline: none;
+  border-color: rgba(255, 102, 0, 0.44);
+  background: rgba(17, 24, 39, 0.82);
+}
+
+.rules-editor-help {
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
 }
 
 .page-hero {
@@ -2759,6 +2965,8 @@ small {
   .content-grid,
   .panel-grid,
   .card-grid,
+  .rules-grid,
+  .rules-editor-grid,
   .two-column,
   .dashboard-grid,
   .definition-grid,
@@ -2847,7 +3055,8 @@ small {
   }
 
   .showcase-card__header,
-  .dashboard-progress__summary {
+  .dashboard-progress__summary,
+  .rules-editor-card__header {
     flex-direction: column;
   }
 
@@ -2958,6 +3167,22 @@ small {
   .pilot-chip {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .pilot-chip__actions {
+    width: 100%;
+  }
+
+  .hero-aircraft {
+    right: -4rem;
+    bottom: -0.5rem;
+    width: min(62%, 28rem);
+    opacity: 0.5;
+  }
+
+  .rules-editor-card__meta {
+    min-width: 0;
+    width: 100%;
   }
 
   .live-map-brief__copy h1 {

@@ -8,6 +8,10 @@ import {
 
 import { decimalToNumber } from "../../common/utils/decimal.utils.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import {
+  normalizeRulesContent,
+  PUBLIC_RULES_SETTING_KEY,
+} from "../rules/rules-content.js";
 
 const aircraftInclude = {
   aircraftType: {
@@ -150,6 +154,30 @@ export class PublicService {
     });
 
     return routes.map((route) => this.serializeRoute(route));
+  }
+
+  public async getRules() {
+    const setting = await this.prisma.setting.findUnique({
+      where: {
+        key: PUBLIC_RULES_SETTING_KEY,
+      },
+      include: {
+        updatedBy: {
+          select: {
+            id: true,
+            username: true,
+          },
+        },
+      },
+    });
+
+    const content = normalizeRulesContent(setting?.value);
+
+    return {
+      sections: content.sections,
+      updatedAt: setting?.updatedAt.toISOString() ?? null,
+      updatedBy: setting?.updatedBy ?? null,
+    };
   }
 
   private serializeAircraft(aircraft: AircraftRecord) {
