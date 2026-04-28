@@ -78,21 +78,24 @@ export default async function BookingsPage(): Promise<JSX.Element> {
     getPublicRouteCatalog(),
     getMyLatestSimbriefOfp(session.accessToken),
   ]);
+  const visibleBookings = bookings.filter(
+    (booking) => booking.status !== "CANCELLED" && booking.status !== "EXPIRED",
+  );
   const opportunities = buildBookingOpportunities(
     routeCatalog,
     profile.rank?.sortOrder ?? null,
   );
-  const activeBookings = bookings.filter((booking) =>
+  const activeBookings = visibleBookings.filter((booking) =>
     ["RESERVED", "IN_PROGRESS"].includes(booking.status),
   );
-  const readyBookings = bookings.filter(
+  const readyBookings = visibleBookings.filter(
     (booking) => booking.status === "RESERVED" && booking.flight === null,
   );
-  const completedBookings = bookings.filter(
+  const completedBookings = visibleBookings.filter(
     (booking) => booking.status === "COMPLETED",
   );
   const featuredBooking = readyBookings[0] ?? activeBookings[0] ?? null;
-  const bookingCandidates = bookings.map(buildBookingSimbriefCandidate);
+  const bookingCandidates = visibleBookings.map(buildBookingSimbriefCandidate);
   const bookingSimbriefMatches = buildSimbriefMatchMap(
     latestSimbriefOfp,
     bookingCandidates,
@@ -354,7 +357,7 @@ export default async function BookingsPage(): Promise<JSX.Element> {
 
         <Card>
           <BookingsTable
-            bookings={bookings}
+            bookings={visibleBookings}
             simbriefMatches={bookingSimbriefMatches}
             renderActions={(booking) => {
               const canCancelPlannedBooking =
