@@ -577,23 +577,50 @@ small {
   inset: 0;
   z-index: 1;
   pointer-events: none;
+  overflow: hidden;
 }
 
 .hero-aircraft {
   position: absolute;
-  right: -4.75rem;
-  bottom: -1.1rem;
-  width: min(64%, 44rem);
-  opacity: 0.97;
-  transform: rotate(-2deg);
-  transform-origin: center;
-  filter: drop-shadow(0 20px 42px rgba(2, 6, 23, 0.34));
+  inset: 0;
 }
 
-.hero-aircraft__svg {
-  display: block;
-  width: 100%;
+.hero-aircraft::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(22, 30, 42, 0.98) 0%,
+      rgba(22, 30, 42, 0.96) 22%,
+      rgba(22, 30, 42, 0.74) 38%,
+      rgba(22, 30, 42, 0.24) 60%,
+      rgba(22, 30, 42, 0.58) 82%,
+      rgba(22, 30, 42, 0.9) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(22, 30, 42, 0.04) 0%,
+      rgba(22, 30, 42, 0.04) 56%,
+      rgba(22, 30, 42, 0.66) 100%
+    );
+}
+
+.hero-aircraft__image {
+  position: absolute;
+  right: -7.5rem;
+  bottom: -2.2rem;
+  width: min(78%, 55rem);
   height: auto;
+  opacity: 0.72;
+  transform: rotate(-1deg);
+  transform-origin: center;
+  filter:
+    saturate(0.96)
+    brightness(0.92)
+    contrast(1.02)
+    drop-shadow(0 24px 44px rgba(2, 6, 23, 0.34));
 }
 
 .hero__copy::after {
@@ -3175,10 +3202,14 @@ small {
   }
 
   .hero-aircraft {
-    right: -3.2rem;
-    bottom: 0.15rem;
-    width: min(82vw, 31rem);
-    opacity: 0.74;
+    inset: 0;
+  }
+
+  .hero-aircraft__image {
+    right: -5.4rem;
+    bottom: -0.65rem;
+    width: min(93vw, 34rem);
+    opacity: 0.5;
   }
 
   .rules-editor-card__meta {
