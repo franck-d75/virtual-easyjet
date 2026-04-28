@@ -27,6 +27,7 @@ const liveSessionSelect = {
   currentHeadingDeg: true,
   currentLatitude: true,
   currentLongitude: true,
+  currentOnGround: true,
   detectedPhase: true,
   flight: {
     select: {
@@ -85,7 +86,12 @@ export class AcarsLiveService {
       altitude,
       speed,
       heading: normalizeHeading(session.currentHeadingDeg),
-      phase: deriveLiveMapPhase(altitude, speed, session.detectedPhase),
+      phase: deriveLiveMapPhase(
+        altitude,
+        speed,
+        session.detectedPhase,
+        session.currentOnGround,
+      ),
     };
   }
 }
@@ -103,24 +109,52 @@ function deriveLiveMapPhase(
   altitudeFt: number,
   speedKts: number,
   detectedPhase: FlightPhase,
+  onGround: boolean | null,
 ): LiveMapPhase {
+  if (detectedPhase === FlightPhase.PUSHBACK) {
+    return "PUSHBACK";
+  }
+
+  if (
+    detectedPhase === FlightPhase.PRE_FLIGHT ||
+    detectedPhase === FlightPhase.DEPARTURE_PARKING ||
+    detectedPhase === FlightPhase.ARRIVAL_PARKING ||
+    detectedPhase === FlightPhase.COMPLETED
+  ) {
+    return "PARKED";
+  }
+
+  if (
+    detectedPhase === FlightPhase.TAXI_OUT ||
+    detectedPhase === FlightPhase.TAXI_IN
+  ) {
+    return "TAXI";
+  }
+
+  if (
+    detectedPhase === FlightPhase.TAKEOFF ||
+    detectedPhase === FlightPhase.CLIMB ||
+    detectedPhase === FlightPhase.CRUISE ||
+    detectedPhase === FlightPhase.DESCENT ||
+    detectedPhase === FlightPhase.APPROACH ||
+    detectedPhase === FlightPhase.LANDING
+  ) {
+    return "AIRBORNE";
+  }
+
+  if (onGround === false) {
+    return "AIRBORNE";
+  }
+
+  if (onGround === true) {
+    return speedKts <= 1 ? "PARKED" : "TAXI";
+  }
+
   if (altitudeFt > LIVE_PHASE_THRESHOLDS.airborneAltitudeFt) {
     return "AIRBORNE";
   }
 
-  if (altitudeFt > 0) {
-    return "AIRBORNE";
-  }
-
   if (speedKts < LIVE_PHASE_THRESHOLDS.parkedSpeedKts) {
-    return "PARKED";
-  }
-
-  if (speedKts <= LIVE_PHASE_THRESHOLDS.pushbackSpeedKts) {
-    return "PUSHBACK";
-  }
-
-  if (detectedPhase === "DEPARTURE_PARKING" || detectedPhase === "ARRIVAL_PARKING") {
     return "PARKED";
   }
 

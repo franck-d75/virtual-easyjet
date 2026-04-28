@@ -33,7 +33,7 @@ function buildContentSecurityPolicy(): string {
     "default-src 'self'",
     `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https://tile.openstreetmap.org https://a.tile.openstreetmap.org https://b.tile.openstreetmap.org https://c.tile.openstreetmap.org https://*.tile.openstreetmap.org https://*.openstreetmap.org https://*.public.blob.vercel-storage.com https://blob.vercel-storage.com",
+    "img-src 'self' data: blob: https://tile.openstreetmap.org https://a.tile.openstreetmap.org https://b.tile.openstreetmap.org https://c.tile.openstreetmap.org https://*.tile.openstreetmap.org https://*.openstreetmap.org https://*.basemaps.cartocdn.com https://basemaps.cartocdn.com https://*.public.blob.vercel-storage.com https://blob.vercel-storage.com",
     "font-src 'self' data:",
     `connect-src ${Array.from(connectSources).join(" ")}`,
     "frame-ancestors 'none'",

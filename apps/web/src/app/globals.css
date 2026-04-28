@@ -1410,6 +1410,20 @@ small {
   display: flex;
   align-items: flex-start;
   gap: 0.8rem;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    filter 0.2s ease;
+}
+
+.live-map-legend__item--inactive {
+  opacity: 0.48;
+}
+
+.live-map-legend__item--active {
+  opacity: 1;
+  transform: translateX(2px);
+  filter: saturate(1.08);
 }
 
 .live-map-legend__item strong,
@@ -1436,6 +1450,13 @@ small {
   height: 0.95rem;
   margin-top: 0.2rem;
   flex-shrink: 0;
+}
+
+.live-phase-dot--active {
+  box-shadow:
+    0 0 0 0.24rem rgba(255, 255, 255, 0.06),
+    0 0 18px currentColor;
+  animation: live-map-legend-pulse 1.8s ease-in-out infinite;
 }
 
 .live-map-route-swatch {
@@ -1536,6 +1557,11 @@ small {
   filter: drop-shadow(0 0 12px rgba(125, 211, 252, 0.16));
 }
 
+.live-map-canvas,
+.live-map-canvas .leaflet-container {
+  background: #0a1120;
+}
+
 .live-map-popup .leaflet-popup-content-wrapper {
   border: 1px solid rgba(51, 65, 85, 0.94);
   border-radius: 18px;
@@ -1593,6 +1619,19 @@ small {
 
 .live-map-canvas .leaflet-control-attribution a {
   color: var(--color-text-secondary);
+}
+
+@keyframes live-map-legend-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.08);
+    opacity: 0.92;
+  }
 }
 
 .ops-card {

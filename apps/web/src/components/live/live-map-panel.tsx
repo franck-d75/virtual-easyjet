@@ -26,6 +26,10 @@ const SINGLE_TARGET_ZOOM = 6;
 const LIVE_MAP_POLL_INTERVAL_MS = 8_000;
 const SIMBRIEF_ROUTE_COLOR = "#7dd3fc";
 const SIMBRIEF_ROUTE_GLOW_COLOR = "rgba(125, 211, 252, 0.28)";
+const DARK_TILE_LAYER_URL =
+  "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+const DARK_TILE_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 const VIEWPORT_PADDING: [number, number] = [56, 56];
 const MOBILE_MEDIA_QUERY = "(max-width: 900px)";
 
@@ -101,6 +105,15 @@ export function LiveMapPanel({
   const parkedCount = useMemo(
     () => traffic.filter((flight) => flight.phase === "PARKED").length,
     [traffic],
+  );
+  const phaseActivity = useMemo(
+    () => ({
+      PARKED: parkedCount,
+      PUSHBACK: pushbackCount,
+      TAXI: taxiCount,
+      AIRBORNE: airborneCount,
+    }),
+    [airborneCount, parkedCount, pushbackCount, taxiCount],
   );
 
   const routeLabel = simbriefRoute
@@ -227,10 +240,10 @@ export function LiveMapPanel({
         attributionControl: true,
       });
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "&copy; OpenStreetMap contributors",
-        subdomains: ["a", "b", "c"],
-        maxZoom: 19,
+      L.tileLayer(DARK_TILE_LAYER_URL, {
+        attribution: DARK_TILE_ATTRIBUTION,
+        subdomains: ["a", "b", "c", "d"],
+        maxZoom: 20,
       }).addTo(map);
 
       routeLayerRef.current = L.layerGroup().addTo(map);
@@ -603,15 +616,31 @@ export function LiveMapPanel({
                   {(["PARKED", "PUSHBACK", "TAXI", "AIRBORNE"] as const).map(
                     (phase) => {
                       const presentation = getPhasePresentation(phase);
+                      const isActive = phaseActivity[phase] > 0;
 
                       return (
-                        <div className="live-map-legend__item" key={phase}>
+                        <div
+                          className={cn(
+                            "live-map-legend__item",
+                            isActive
+                              ? "live-map-legend__item--active"
+                              : "live-map-legend__item--inactive",
+                          )}
+                          key={phase}
+                        >
                           <span
                             aria-hidden="true"
-                            className={`live-phase-dot ${presentation.phaseClassName}`}
+                            className={cn(
+                              "live-phase-dot",
+                              presentation.phaseClassName,
+                              isActive && "live-phase-dot--active",
+                            )}
                           />
                           <div>
-                            <strong>{presentation.label}</strong>
+                            <strong>
+                              {presentation.label}
+                              {isActive ? ` · ${phaseActivity[phase]}` : ""}
+                            </strong>
                             <small>{describePhase(phase)}</small>
                           </div>
                         </div>
@@ -746,13 +775,13 @@ function getColor(phase: LiveMapPhase): string {
 function describePhase(phase: LiveMapPhase): string {
   switch (phase) {
     case "PARKED":
-      return "Altitude nulle et vitesse quasi nulle.";
+      return "Appareil au parking, au sol et sans roulage actif.";
     case "PUSHBACK":
-      return "Mouvement lent au sol entre 5 et 15 kt.";
+      return "Repoussage détecté par la phase ACARS active.";
     case "TAXI":
-      return "Roulage établi au sol au-delà de 15 kt.";
+      return "Roulage actif au sol avant ou après le vol.";
     case "AIRBORNE":
-      return "Appareil détecté en vol hors régime sol.";
+      return "Montée, croisière, descente, approche ou atterrissage.";
   }
 }
 
