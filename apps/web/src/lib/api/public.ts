@@ -52,8 +52,8 @@ function normalizeLiveMapTraffic(payload: unknown): LiveMapAircraft[] {
   return [];
 }
 
-function getAcarsServiceBaseUrl(): string {
-  return getApiBaseUrl().replace(/\/api$/iu, "/acars");
+function getApiRootBaseUrl(): string {
+  return getApiBaseUrl().replace(/\/api$/iu, "");
 }
 
 async function fetchLiveMapTrafficFromAbsoluteUrl(
@@ -278,49 +278,12 @@ export async function getPublicRouteCatalog(): Promise<RouteDetailResponse[]> {
 }
 
 export async function getBackendAcarsLiveTraffic(): Promise<LiveMapAircraft[]> {
-  const acarsServiceTraffic = await fetchLiveMapTrafficFromAbsoluteUrl(
-    `${getAcarsServiceBaseUrl()}/live`,
-    "acars-service",
+  const apiTraffic = await fetchLiveMapTrafficFromAbsoluteUrl(
+    `${getApiRootBaseUrl()}/acars/live`,
+    "api-root-acars",
   );
 
-  const apiTrafficPayload = await safePublicRequest("backend acars live", () =>
-    apiRequest<unknown>("/acars/live", {
-      cache: "no-store",
-      next: { revalidate: 0 },
-      retryCount: 1,
-      timeoutMs: 8_000,
-    }),
-  undefined);
-
-  const apiTraffic =
-    apiTrafficPayload === undefined
-      ? null
-      : normalizeLiveMapTraffic(apiTrafficPayload);
-
-  if (apiTraffic !== null) {
-    console.info("[web] live map payload count", {
-      source: "api",
-      count: apiTraffic.length,
-    });
-  }
-
-  if (acarsServiceTraffic && acarsServiceTraffic.length > 0) {
-    return acarsServiceTraffic;
-  }
-
-  if (apiTraffic && apiTraffic.length > 0) {
-    return apiTraffic;
-  }
-
-  if (acarsServiceTraffic !== null) {
-    return acarsServiceTraffic;
-  }
-
-  if (apiTraffic !== null) {
-    return apiTraffic;
-  }
-
-  return [];
+  return apiTraffic ?? [];
 }
 
 export async function getAcarsLiveTraffic(): Promise<LiveMapAircraft[]> {

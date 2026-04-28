@@ -16,6 +16,7 @@ import {
 type RequestLike = {
   method: string;
   originalUrl: string;
+  url: string;
 };
 
 type ResponseLike = {
@@ -79,6 +80,18 @@ async function bootstrap(): Promise<void> {
       "X-RateLimit-Remaining",
       "X-RateLimit-Reset",
     ],
+  });
+  app.use((request: RequestLike, _response: ResponseLike, next: NextLike) => {
+    if (
+      request.url === "/acars" ||
+      request.url.startsWith("/acars/") ||
+      request.originalUrl === "/acars" ||
+      request.originalUrl.startsWith("/acars/")
+    ) {
+      request.url = `/api${request.url}`;
+    }
+
+    next();
   });
   app.use(
     (request: RequestLike, response: ResponseLike, next: NextLike) => {
