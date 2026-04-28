@@ -21,6 +21,7 @@ import type { UploadedAvatarFile } from "../../common/storage/avatar-upload.cons
 import { decimalToNumber } from "../../common/utils/decimal.utils.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type {
+  CleanupAdminAcarsTestDataDto,
   CreateAdminAircraftDto,
   CreateAdminHubDto,
   CreateAdminRouteDto,
@@ -31,6 +32,11 @@ import type {
   UpdateAdminHubDto,
   UpdateAdminRouteDto,
 } from "./dto/admin.dto.js";
+
+const ACARS_TEST_FLIGHT_NUMBERS = ["EZY1000"] as const;
+const ACARS_TEST_PILOT_NUMBERS = ["VEZY001"] as const;
+const ACARS_TEST_BOOKING_NOTE_PREFIX = "AUTO_SIMBRIEF_OFP";
+const ACARS_TEST_LOOKBACK_DAYS = 30;
 
 const adminAircraftInclude = {
   aircraftType: {
@@ -292,6 +298,315 @@ export class AdminService {
       totalRoutes,
       activeBookings,
       inProgressFlights,
+    };
+  }
+
+  public async cleanupAcarsTestData(
+    payload: CleanupAdminAcarsTestDataDto,
+    currentUser: AuthenticatedUser,
+  ) {
+    const lookbackStart = new Date(
+      Date.now() - ACARS_TEST_LOOKBACK_DAYS * 24 * 60 * 60 * 1000,
+    );
+    const cleanupWhere: Prisma.BookingWhereInput = {
+      OR: [
+        {
+          reservedFlightNumber: {
+            in: [...ACARS_TEST_FLIGHT_NUMBERS],
+          },
+        },
+        {
+          notes: {
+            startsWith: ACARS_TEST_BOOKING_NOTE_PREFIX,
+          },
+        },
+        {
+          AND: [
+            {
+              createdAt: {
+                gte: lookbackStart,
+              },
+            },
+            {
+              pilotProfile: {
+                is: {
+                  pilotNumber: {
+                    in: [...ACARS_TEST_PILOT_NUMBERS],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    const matchedBookings = await this.prisma.booking.findMany({
+      where: cleanupWhere,
+      select: {
+        id: true,
+        reservedFlightNumber: true,
+        notes: true,
+        flight: {
+          select: {
+            id: true,
+            flightNumber: true,
+            acarsSession: {
+              select: {
+                id: true,
+              },
+            },
+            pirep: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
+        pilotProfile: {
+          select: {
+            pilotNumber: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    const bookingIds = matchedBookings.map((booking) => booking.id);
+    const flightIds = Array.from(
+      new Set(
+        matchedBookings
+          .map((booking) => booking.flight?.id ?? null)
+          .filter((value): value is string => value !== null),
+      ),
+    );
+    const sessionIds = Array.from(
+      new Set(
+        matchedBookings
+          .map((booking) => booking.flight?.acarsSession?.id ?? null)
+          .filter((value): value is string => value !== null),
+      ),
+    );
+    const pirepIds = Array.from(
+      new Set(
+        matchedBookings
+          .map((booking) => booking.flight?.pirep?.id ?? null)
+          .filter((value): value is string => value !== null),
+      ),
+    );
+
+    const [telemetryPointsCount, violationsCount, flightEventsCount] =
+      await Promise.all([
+        sessionIds.length > 0
+          ? this.prisma.telemetryPoint.count({
+              where: {
+                sessionId: {
+                  in: sessionIds,
+                },
+              },
+            })
+          : Promise.resolve(0),
+        flightIds.length > 0 || sessionIds.length > 0 || pirepIds.length > 0
+          ? this.prisma.violation.count({
+              where: {
+                OR: [
+                  ...(flightIds.length > 0
+                    ? [
+                        {
+                          flightId: {
+                            in: flightIds,
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(sessionIds.length > 0
+                    ? [
+                        {
+                          sessionId: {
+                            in: sessionIds,
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(pirepIds.length > 0
+                    ? [
+                        {
+                          pirepId: {
+                            in: pirepIds,
+                          },
+                        },
+                      ]
+                    : []),
+                ],
+              },
+            })
+          : Promise.resolve(0),
+        flightIds.length > 0 || sessionIds.length > 0
+          ? this.prisma.flightEvent.count({
+              where: {
+                OR: [
+                  ...(flightIds.length > 0
+                    ? [
+                        {
+                          flightId: {
+                            in: flightIds,
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(sessionIds.length > 0
+                    ? [
+                        {
+                          sessionId: {
+                            in: sessionIds,
+                          },
+                        },
+                      ]
+                    : []),
+                ],
+              },
+            })
+          : Promise.resolve(0),
+      ]);
+
+    const summary = {
+      dryRun: payload.dryRun ?? false,
+      criteria: {
+        flightNumbers: [...ACARS_TEST_FLIGHT_NUMBERS],
+        pilotNumbers: [...ACARS_TEST_PILOT_NUMBERS],
+        bookingNotesPrefix: ACARS_TEST_BOOKING_NOTE_PREFIX,
+        createdAfter: lookbackStart.toISOString(),
+      },
+      counts: {
+        bookings: bookingIds.length,
+        flights: flightIds.length,
+        sessions: sessionIds.length,
+        pireps: pirepIds.length,
+        telemetryPoints: telemetryPointsCount,
+        flightEvents: flightEventsCount,
+        violations: violationsCount,
+      },
+      matches: matchedBookings.map((booking) => ({
+        bookingId: booking.id,
+        flightId: booking.flight?.id ?? null,
+        sessionId: booking.flight?.acarsSession?.id ?? null,
+        pirepId: booking.flight?.pirep?.id ?? null,
+        pilotNumber: booking.pilotProfile.pilotNumber,
+        flightNumber:
+          booking.flight?.flightNumber ?? booking.reservedFlightNumber,
+        bookingNotes: booking.notes,
+      })),
+    };
+
+    if (payload.dryRun || bookingIds.length === 0) {
+      logAdminAction("acars.cleanup.preview", currentUser.id, currentUser.id, {
+        ...summary.counts,
+        dryRun: summary.dryRun,
+      });
+      return summary;
+    }
+
+    const deleted = await this.prisma.$transaction(async (transaction) => {
+      const deletedViolations =
+        flightIds.length > 0 || sessionIds.length > 0 || pirepIds.length > 0
+          ? await transaction.violation.deleteMany({
+              where: {
+                OR: [
+                  ...(flightIds.length > 0
+                    ? [
+                        {
+                          flightId: {
+                            in: flightIds,
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(sessionIds.length > 0
+                    ? [
+                        {
+                          sessionId: {
+                            in: sessionIds,
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(pirepIds.length > 0
+                    ? [
+                        {
+                          pirepId: {
+                            in: pirepIds,
+                          },
+                        },
+                      ]
+                    : []),
+                ],
+              },
+            })
+          : { count: 0 };
+
+      const deletedFlightEvents =
+        flightIds.length > 0 || sessionIds.length > 0
+          ? await transaction.flightEvent.deleteMany({
+              where: {
+                OR: [
+                  ...(flightIds.length > 0
+                    ? [
+                        {
+                          flightId: {
+                            in: flightIds,
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(sessionIds.length > 0
+                    ? [
+                        {
+                          sessionId: {
+                            in: sessionIds,
+                          },
+                        },
+                      ]
+                    : []),
+                ],
+              },
+            })
+          : { count: 0 };
+
+      const deletedBookings = await transaction.booking.deleteMany({
+        where: {
+          id: {
+            in: bookingIds,
+          },
+        },
+      });
+
+      return {
+        deletedBookings: deletedBookings.count,
+        deletedFlightEvents: deletedFlightEvents.count,
+        deletedViolations: deletedViolations.count,
+      };
+    });
+
+    logAdminAction("acars.cleanup.execute", currentUser.id, currentUser.id, {
+      ...summary.counts,
+      deletedBookings: deleted.deletedBookings,
+      deletedFlightEvents: deleted.deletedFlightEvents,
+      deletedViolations: deleted.deletedViolations,
+    });
+
+    return {
+      ...summary,
+      deleted: {
+        bookings: deleted.deletedBookings,
+        flights: summary.counts.flights,
+        sessions: summary.counts.sessions,
+        pireps: summary.counts.pireps,
+        telemetryPoints: summary.counts.telemetryPoints,
+        flightEvents: deleted.deletedFlightEvents,
+        violations: deleted.deletedViolations,
+      },
     };
   }
 

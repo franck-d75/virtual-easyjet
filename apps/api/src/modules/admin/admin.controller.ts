@@ -23,6 +23,7 @@ import {
 } from "../../common/storage/avatar-upload.constants.js";
 import { AdminService } from "./admin.service.js";
 import {
+  CleanupAdminAcarsTestDataDto,
   CreateAdminAircraftDto,
   CreateAdminHubDto,
   CreateAdminRouteDto,
@@ -45,6 +46,14 @@ export class AdminController {
   @Get("stats")
   public getStats() {
     return this.adminService.getStats();
+  }
+
+  @Post("acars/cleanup-test-data")
+  public cleanupAcarsTestData(
+    @Body() payload: CleanupAdminAcarsTestDataDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.cleanupAcarsTestData(payload, currentUser);
   }
 
   @Get("reference-data")

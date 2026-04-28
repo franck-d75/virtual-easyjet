@@ -347,3 +347,9 @@ export class UpdateAdminUserDto {
   )
   public countryCode?: string | null;
 }
+
+export class CleanupAdminAcarsTestDataDto {
+  @IsOptional()
+  @IsBoolean()
+  public dryRun?: boolean;
+}

@@ -508,6 +508,39 @@ export interface AdminStatsResponse {
   inProgressFlights: number;
 }
 
+export interface AdminAcarsCleanupMatchResponse {
+  bookingId: string;
+  flightId: string | null;
+  sessionId: string | null;
+  pirepId: string | null;
+  pilotNumber: string;
+  flightNumber: string;
+  bookingNotes: string | null;
+}
+
+export interface AdminAcarsCleanupCountsResponse {
+  bookings: number;
+  flights: number;
+  sessions: number;
+  pireps: number;
+  telemetryPoints: number;
+  flightEvents: number;
+  violations: number;
+}
+
+export interface AdminAcarsCleanupResponse {
+  dryRun: boolean;
+  criteria: {
+    flightNumbers: string[];
+    pilotNumbers: string[];
+    bookingNotesPrefix: string;
+    createdAfter: string;
+  };
+  counts: AdminAcarsCleanupCountsResponse;
+  matches: AdminAcarsCleanupMatchResponse[];
+  deleted?: AdminAcarsCleanupCountsResponse;
+}
+
 export interface AdminUserSummaryResponse {
   id: string;
   email: string;

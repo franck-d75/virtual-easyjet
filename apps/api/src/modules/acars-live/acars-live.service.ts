@@ -16,7 +16,7 @@ const HIDDEN_ACARS_STATUSES: SessionStatus[] = [
   SessionStatus.ABORTED,
 ];
 
-const LIVE_SESSION_LOOKBACK_MS = 15 * 60 * 1000;
+const LIVE_SESSION_LOOKBACK_MS = 90 * 1000;
 
 const liveSessionSelect = {
   status: true,
@@ -78,6 +78,7 @@ export class AcarsLiveService {
       callsigns: liveFlights.map((flight) => flight.callsign),
       statuses: sessions.map((session) => session.status),
       phases: sessions.map((session) => session.detectedPhase),
+      lookbackSeconds: LIVE_SESSION_LOOKBACK_MS / 1000,
     });
 
     return liveFlights;

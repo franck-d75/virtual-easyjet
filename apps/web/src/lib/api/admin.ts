@@ -1,5 +1,6 @@
 import { apiRequest } from "./client";
 import type {
+  AdminAcarsCleanupResponse,
   AdminAircraftPayload,
   AdminAircraftImportFromSimbriefAirframePayload,
   AdminAircraftLinkSimbriefAirframePayload,
@@ -24,6 +25,20 @@ export async function getAdminStats(
     accessToken,
     cache: "no-store",
   });
+}
+
+export async function cleanupAdminAcarsTestData(
+  accessToken: string,
+): Promise<AdminAcarsCleanupResponse> {
+  return apiRequest<AdminAcarsCleanupResponse>(
+    "/admin/acars/cleanup-test-data",
+    {
+      accessToken,
+      method: "POST",
+      body: JSON.stringify({}),
+      cache: "no-store",
+    },
+  );
 }
 
 export async function getAdminReferenceData(

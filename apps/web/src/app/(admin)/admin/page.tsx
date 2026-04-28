@@ -1,6 +1,7 @@
 ﻿import type { JSX } from "react";
 import Link from "next/link";
 
+import { AdminAcarsCleanupCard } from "@/components/admin/admin-acars-cleanup-card";
 import { AdminStatsGrid } from "@/components/admin/admin-stats-grid";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -71,6 +72,7 @@ export default async function AdminDashboardPage(): Promise<JSX.Element> {
       <AdminStatsGrid stats={stats} />
 
       <section className="admin-grid">
+        <AdminAcarsCleanupCard />
         <Card>
           <span className="section-eyebrow">Comptes</span>
           <h2>Utilisateurs</h2>
