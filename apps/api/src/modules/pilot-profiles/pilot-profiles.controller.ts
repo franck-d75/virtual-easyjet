@@ -41,6 +41,11 @@ export class PilotProfilesController {
     return this.pilotProfilesService.getMySimbriefAirframes(user);
   }
 
+  @Post("me/resync-progress")
+  public resyncMyProgress(@CurrentUser() user: AuthenticatedUser) {
+    return this.pilotProfilesService.resyncMyProgress(user);
+  }
+
   @Post("me/simbrief/airframes/sync")
   public syncSimbriefAirframes(@CurrentUser() user: AuthenticatedUser) {
     return this.pilotProfilesService.syncMySimbriefAirframes(user);

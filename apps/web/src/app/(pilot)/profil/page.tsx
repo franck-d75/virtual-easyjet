@@ -1,5 +1,6 @@
 import type { JSX } from "react";
 
+import { ApiActionButton } from "@/components/pilot/api-action-button";
 import { ProfileCard } from "@/components/pilot/profile-card";
 import { SimbriefAirframesCard } from "@/components/pilot/simbrief-airframes-card";
 import { SimbriefLatestOfpCard } from "@/components/pilot/simbrief-latest-ofp-card";
@@ -200,6 +201,37 @@ export default async function ProfilePage(): Promise<JSX.Element> {
           initialAvatarUrl={profile.user.avatarUrl}
           initialSimbriefPilotId={profile.simbriefPilotId}
         />
+      </section>
+      <section className="section-band">
+        <div className="section-band__header">
+          <div>
+            <span className="section-eyebrow">Progression</span>
+            <h2>Heures et XP pilote</h2>
+          </div>
+          <p>
+            Si un vol terminé n&apos;a pas encore été crédité, ce recalcul
+            resynchronise vos heures, votre expérience et votre rang à partir
+            des vols déjà clôturés.
+          </p>
+        </div>
+
+        <Card className="ops-card">
+          <span className="section-eyebrow">Réparation ponctuelle</span>
+          <h2>Recalculer ma progression</h2>
+          <p>
+            Utilisez cette action pour recréditer proprement un vol déjà terminé,
+            comme votre vol d&apos;aujourd&apos;hui, sans modifier manuellement vos
+            données pilote.
+          </p>
+          <div className="inline-actions">
+            <ApiActionButton
+              endpoint="/api/pilot/profile/resync-progress"
+              label="Recalculer mes heures et mon XP"
+              pendingLabel="Recalcul en cours..."
+              successMessage="Votre progression pilote a été resynchronisée."
+            />
+          </div>
+        </Card>
       </section>
       <section className="section-band">
         <div className="section-band__header">

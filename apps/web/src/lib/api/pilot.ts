@@ -44,6 +44,34 @@ export async function updateMyPilotProfile(
   });
 }
 
+export async function resyncMyPilotProgress(
+  accessToken: string,
+): Promise<{
+  message: string;
+  progress: {
+    completedFlightsCount: number;
+    totalHoursFlownMinutes: number;
+    totalExperiencePoints: number;
+    promotedRankCode: string | null;
+  };
+  profile: PilotProfileResponse;
+}> {
+  return apiRequest<{
+    message: string;
+    progress: {
+      completedFlightsCount: number;
+      totalHoursFlownMinutes: number;
+      totalExperiencePoints: number;
+      promotedRankCode: string | null;
+    };
+    profile: PilotProfileResponse;
+  }>("/pilot-profiles/me/resync-progress", {
+    method: "POST",
+    accessToken,
+    cache: "no-store",
+  });
+}
+
 export async function getMyLatestSimbriefOfp(
   accessToken: string,
 ): Promise<SimbriefLatestOfpResponse> {

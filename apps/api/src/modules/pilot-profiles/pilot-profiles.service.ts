@@ -71,6 +71,13 @@ type ImportedRouteRecord = Prisma.RouteGetPayload<{
   include: typeof importedRouteInclude;
 }>;
 
+type ProgressSyncSummary = {
+  completedFlightsCount: number;
+  totalHoursFlownMinutes: number;
+  totalExperiencePoints: number;
+  promotedRankCode: string | null;
+};
+
 function getAvatarUrl(value: unknown): string | null {
   if (
     value &&
@@ -253,6 +260,33 @@ export class PilotProfilesService {
       airframes: currentAirframes.map((airframe) =>
         this.serializePersistedSimbriefAirframe(airframe),
       ),
+    };
+  }
+
+  public async resyncMyProgress(user: AuthenticatedUser) {
+    const pilotProfileId = getRequiredPilotProfileId(user);
+
+    const result = await this.prisma.$transaction(async (transaction) => {
+      const summary = await this.syncPilotProfileProgress(
+        transaction,
+        pilotProfileId,
+      );
+      const profile = await transaction.pilotProfile.findUniqueOrThrow({
+        where: { id: pilotProfileId },
+        include: pilotProfileInclude,
+      });
+
+      return {
+        summary,
+        profile: this.serializeProfile(profile),
+      };
+    });
+
+    return {
+      message:
+        "Les heures de vol, l'XP et le rang ont été recalculés à partir de vos vols terminés.",
+      progress: result.summary,
+      profile: result.profile,
     };
   }
 
@@ -908,6 +942,80 @@ export class PilotProfilesService {
     }
 
     return this.serializeProfile(profile);
+  }
+
+  private async syncPilotProfileProgress(
+    transaction: Prisma.TransactionClient,
+    pilotProfileId: string,
+  ): Promise<ProgressSyncSummary> {
+    const [pilotProfile, completedFlightsCount, completedFlightMinutes, activeRanks] =
+      await Promise.all([
+        transaction.pilotProfile.findUniqueOrThrow({
+          where: { id: pilotProfileId },
+          include: {
+            rank: true,
+          },
+        }),
+        transaction.flight.count({
+          where: {
+            pilotProfileId,
+            status: FlightStatus.COMPLETED,
+          },
+        }),
+        transaction.flight.aggregate({
+          where: {
+            pilotProfileId,
+            status: FlightStatus.COMPLETED,
+          },
+          _sum: {
+            durationMinutes: true,
+          },
+        }),
+        transaction.rank.findMany({
+          where: {
+            isActive: true,
+          },
+          orderBy: {
+            sortOrder: "asc",
+          },
+        }),
+      ]);
+
+    const totalHoursFlownMinutes = Math.max(
+      completedFlightMinutes._sum.durationMinutes ?? 0,
+      0,
+    );
+    const totalExperiencePoints = totalHoursFlownMinutes;
+    const highestEligibleRank =
+      activeRanks
+        .filter(
+          (rank) =>
+            rank.minFlights <= completedFlightsCount &&
+            rank.minHoursMinutes <= totalHoursFlownMinutes,
+        )
+        .sort((left, right) => right.sortOrder - left.sortOrder)[0] ?? null;
+    const currentRankSortOrder = pilotProfile.rank?.sortOrder ?? -1;
+    const nextRankId =
+      highestEligibleRank && highestEligibleRank.sortOrder > currentRankSortOrder
+        ? highestEligibleRank.id
+        : pilotProfile.rankId;
+
+    await transaction.pilotProfile.update({
+      where: { id: pilotProfileId },
+      data: {
+        hoursFlownMinutes: totalHoursFlownMinutes,
+        experiencePoints: totalExperiencePoints,
+        rankId: nextRankId,
+      },
+    });
+
+    return {
+      completedFlightsCount,
+      totalHoursFlownMinutes,
+      totalExperiencePoints,
+      promotedRankCode:
+        nextRankId === pilotProfile.rankId ? null : highestEligibleRank?.code ?? null,
+    };
   }
 
   private async buildAirportFallbackRoutePoints(

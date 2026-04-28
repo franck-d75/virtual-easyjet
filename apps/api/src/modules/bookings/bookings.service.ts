@@ -9,6 +9,7 @@ import {
 import {
   AircraftStatus,
   BookingStatus,
+  FlightStatus,
   Prisma,
 } from "@va/database";
 import type { AuthenticatedUser } from "@va/shared";
@@ -217,13 +218,29 @@ export class BookingsService {
     this.assertBookingOwnership(booking, requester);
     this.assertBookingIsCancellable(booking);
 
-    const cancelledBooking = await this.prisma.booking.update({
-      where: { id: booking.id },
-      data: {
-        status: BookingStatus.CANCELLED,
-        cancelledAt: new Date(),
-      },
-      include: bookingInclude,
+    const cancelledAt = new Date();
+    const cancelledBooking = await this.prisma.$transaction(async (transaction) => {
+      await transaction.booking.update({
+        where: { id: booking.id },
+        data: {
+          status: BookingStatus.CANCELLED,
+          cancelledAt,
+        },
+      });
+
+      if (booking.flight?.status === FlightStatus.PLANNED) {
+        await transaction.flight.update({
+          where: { id: booking.flight.id },
+          data: {
+            status: FlightStatus.CANCELLED,
+          },
+        });
+      }
+
+      return transaction.booking.findUniqueOrThrow({
+        where: { id: booking.id },
+        include: bookingInclude,
+      });
     });
 
     return this.serializeBooking(cancelledBooking);
@@ -241,7 +258,10 @@ export class BookingsService {
   }
 
   private assertBookingIsCancellable(booking: BookingRecord): void {
-    if (booking.flight) {
+    if (
+      booking.flight &&
+      booking.flight.status !== FlightStatus.PLANNED
+    ) {
       throw new ConflictException(
         "This booking already has a canonical flight and cannot be cancelled.",
       );

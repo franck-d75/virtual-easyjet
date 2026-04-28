@@ -357,6 +357,10 @@ export default async function BookingsPage(): Promise<JSX.Element> {
             bookings={bookings}
             simbriefMatches={bookingSimbriefMatches}
             renderActions={(booking) => {
+              const canCancelPlannedBooking =
+                booking.status === "RESERVED" &&
+                (booking.flight === null || booking.flight.status === "PLANNED");
+
               if (booking.status === "RESERVED" && booking.flight === null) {
                 return (
                   <div className="table-action-group">
@@ -373,6 +377,24 @@ export default async function BookingsPage(): Promise<JSX.Element> {
                       label="Annuler"
                       pendingLabel="Annulation..."
                       successMessage="Réservation annulée."
+                      variant="ghost"
+                    />
+                  </div>
+                );
+              }
+
+              if (canCancelPlannedBooking && booking.flight) {
+                return (
+                  <div className="table-action-group">
+                    <Button href={`/vols?flight=${booking.flight.id}`} variant="secondary">
+                      Voir le vol
+                    </Button>
+                    <ApiActionButton
+                      confirmMessage="Annuler cette réservation planifiée et le vol prêt associé ?"
+                      endpoint={`/api/pilot/bookings/${booking.id}/cancel`}
+                      label="Annuler"
+                      pendingLabel="Annulation..."
+                      successMessage="Réservation planifiée annulée."
                       variant="ghost"
                     />
                   </div>
