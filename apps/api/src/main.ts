@@ -17,6 +17,7 @@ type RequestLike = {
   method: string;
   originalUrl: string;
   url: string;
+  body?: unknown;
 };
 
 type ResponseLike = {
@@ -94,6 +95,22 @@ async function bootstrap(): Promise<void> {
         to: `/api${request.url}`,
       });
       request.url = `/api${request.url}`;
+    }
+
+    next();
+  });
+  app.use((request: RequestLike, _response: ResponseLike, next: NextLike) => {
+    if (
+      request.method === "POST" &&
+      (request.originalUrl === "/acars" ||
+        request.originalUrl.startsWith("/acars/") ||
+        request.url === "/api/acars" ||
+        request.url.startsWith("/api/acars/"))
+    ) {
+      console.info("ACARS POST received", {
+        route: request.originalUrl,
+        payload: request.body ?? null,
+      });
     }
 
     next();

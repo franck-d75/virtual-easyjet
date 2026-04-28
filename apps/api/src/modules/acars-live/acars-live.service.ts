@@ -19,6 +19,7 @@ const HIDDEN_ACARS_STATUSES: SessionStatus[] = [
 const LIVE_SESSION_LOOKBACK_MS = 15 * 60 * 1000;
 
 const liveSessionSelect = {
+  status: true,
   currentAltitudeFt: true,
   currentGroundspeedKts: true,
   currentHeadingDeg: true,
@@ -75,6 +76,8 @@ export class AcarsLiveService {
     console.info("[api] live map sessions returned count", {
       count: liveFlights.length,
       callsigns: liveFlights.map((flight) => flight.callsign),
+      statuses: sessions.map((session) => session.status),
+      phases: sessions.map((session) => session.detectedPhase),
     });
 
     return liveFlights;

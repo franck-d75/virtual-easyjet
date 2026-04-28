@@ -163,6 +163,15 @@ export class AcarsSessionsService {
         });
       });
 
+      console.info("[api] acars session created", {
+        sessionId: session.id,
+        flightId: session.flightId,
+        flightNumber: session.flight.flightNumber,
+        status: session.status,
+        detectedPhase: session.detectedPhase,
+        pilotProfileId,
+      });
+
       return this.serializeSession(session);
     } catch (error) {
       if (
