@@ -14,6 +14,7 @@ export interface PhaseDetectionInput {
 export const PHASE_DETECTION_THRESHOLDS = {
   groundspeedKts: {
     parkedMax: 1,
+    pushbackMin: 2.5,
     pushbackMax: 12,
     taxiMin: 8,
   },
@@ -126,15 +127,14 @@ function resolveCandidatePhase(input: PhaseDetectionInput): FlightPhase {
       (PUSHBACK_ENTRY_PHASES.includes(input.previousPhase) ||
         input.previousPhase === FlightPhase.PUSHBACK) &&
       input.groundspeedKts >
-        thresholds.groundspeedKts.parkedMax + 0.5 &&
+        thresholds.groundspeedKts.pushbackMin &&
       input.groundspeedKts <=
         thresholds.groundspeedKts.pushbackMax +
           thresholds.tolerance.groundspeedKts;
     const startedMovingFromGate =
       previousGroundspeedKts <=
         thresholds.groundspeedKts.parkedMax + 0.5 &&
-      input.groundspeedKts >
-        previousGroundspeedKts + 0.5;
+      input.groundspeedKts >= thresholds.groundspeedKts.pushbackMin;
 
     if (
       input.previousPhase === FlightPhase.PUSHBACK &&
@@ -145,10 +145,9 @@ function resolveCandidatePhase(input: PhaseDetectionInput): FlightPhase {
 
     if (
       departureSurfacePushbackEligible &&
-      (input.parkingBrake === false ||
-        startedMovingFromGate ||
-        input.groundspeedKts <
-          taxiSpeedThreshold)
+      startedMovingFromGate &&
+      input.groundspeedKts <
+        taxiSpeedThreshold
     ) {
       return FlightPhase.PUSHBACK;
     }

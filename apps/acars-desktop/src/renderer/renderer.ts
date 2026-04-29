@@ -654,7 +654,11 @@ function renderSession(): void {
     session?.eventSummary,
     "landingRateFpm",
   );
-  const passengersOnBoard = state.dispatch?.latestOfp?.passengers ?? null;
+  const plannedPassengerCount = state.dispatch?.latestOfp?.passengers ?? null;
+  const livePassengerCount = readEventSummaryNumber(
+    session?.eventSummary,
+    "livePassengerCount",
+  );
 
   if (!session) {
     sessionSummary.innerHTML = `
@@ -704,8 +708,12 @@ function renderSession(): void {
         <span class="metric-value">${escapeHtml(formatLandingRateFpm(landingRateFpm))}</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Passagers a bord</span>
-        <span class="metric-value">${passengersOnBoard ?? "n/d"}</span>
+        <span class="metric-label">Passagers prevus</span>
+        <span class="metric-value">${plannedPassengerCount ?? "n/d"}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Passagers live</span>
+        <span class="metric-value">${livePassengerCount ?? "n/d"}</span>
       </div>
     </div>
     ${

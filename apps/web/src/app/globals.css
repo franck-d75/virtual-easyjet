@@ -1661,6 +1661,7 @@ small {
 
 .live-map-legend__item small,
 .live-map-flight-item__header small {
+  display: block;
   color: var(--color-text-muted);
 }
 
@@ -1814,7 +1815,6 @@ small {
 .live-map-aircraft-tag__row {
   position: relative;
   z-index: 1;
-  grid-area: 1 / 1;
   color: #f8fafc;
   font-size: 0.68rem;
   font-weight: 800;
@@ -1825,21 +1825,30 @@ small {
   text-align: center;
 }
 
-.live-map-aircraft-tag--animated .live-map-aircraft-tag__row--primary {
-  animation: live-map-tag-swap-primary 2.8s steps(1, end) infinite;
-}
-
-.live-map-aircraft-tag--animated .live-map-aircraft-tag__row--secondary {
-  animation: live-map-tag-swap-secondary 2.8s steps(1, end) infinite;
-}
-
-.live-map-aircraft-tag:not(.live-map-aircraft-tag--animated)
-  .live-map-aircraft-tag__row--secondary {
-  display: none;
-}
-
 .live-map-route-line {
   filter: drop-shadow(0 0 12px rgba(125, 211, 252, 0.16));
+}
+
+.live-map-route-waypoint-shell {
+  background: transparent;
+  border: 0;
+}
+
+.live-map-route-waypoint-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.16rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(8, 15, 28, 0.82);
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  color: #dbeafe;
+  font-size: 0.52rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.28);
+  white-space: nowrap;
 }
 
 .live-map-canvas,
@@ -1933,34 +1942,6 @@ small {
 
   50% {
     opacity: 1;
-  }
-}
-
-@keyframes live-map-tag-swap-primary {
-  0%,
-  44% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  45%,
-  100% {
-    opacity: 0;
-    transform: translateY(-0.1rem);
-  }
-}
-
-@keyframes live-map-tag-swap-secondary {
-  0%,
-  44% {
-    opacity: 0;
-    transform: translateY(0.1rem);
-  }
-
-  45%,
-  100% {
-    opacity: 1;
-    transform: translateY(0);
   }
 }
 

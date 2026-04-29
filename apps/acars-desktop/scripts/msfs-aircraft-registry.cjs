@@ -21,6 +21,10 @@ function normalizeUpperText(value) {
   return normalizedValue.length > 0 ? normalizedValue.toUpperCase() : "";
 }
 
+function normalizeCompactText(value) {
+  return normalizeUpperText(value).replace(/[^A-Z0-9]/gu, "");
+}
+
 function uniquePaths(values) {
   return [...new Set(values.filter((value) => typeof value === "string" && value.length > 0))];
 }
@@ -339,6 +343,7 @@ function parseLiveryConfigEntry(content, filePath) {
 
 async function findAircraftConfigByTitle(aircraftTitle) {
   const normalizedTitle = normalizeText(aircraftTitle).toLowerCase();
+  const compactTitle = normalizeCompactText(aircraftTitle);
 
   if (!normalizedTitle) {
     return null;
@@ -361,6 +366,25 @@ async function findAircraftConfigByTitle(aircraftTitle) {
       if (matchedSection) {
         aircraftTitleMatchCache.set(normalizedTitle, matchedSection);
         return matchedSection;
+      }
+
+      const compactMatchedSection = sections.find((section) => {
+        const sectionCompactTitle = normalizeCompactText(section.title);
+
+        if (!sectionCompactTitle || !compactTitle) {
+          return false;
+        }
+
+        return (
+          sectionCompactTitle === compactTitle ||
+          sectionCompactTitle.includes(compactTitle) ||
+          compactTitle.includes(sectionCompactTitle)
+        );
+      });
+
+      if (compactMatchedSection) {
+        aircraftTitleMatchCache.set(normalizedTitle, compactMatchedSection);
+        return compactMatchedSection;
       }
     } catch {
       // Ignore unreadable aircraft.cfg files.

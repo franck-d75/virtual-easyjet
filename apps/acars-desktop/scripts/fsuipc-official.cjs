@@ -400,7 +400,11 @@ async function sampleClient(client, selectedMode) {
     atcId: aircraftRawAtcId,
   });
   const uiVariation = normalizeUiVariation(
-    fenixLivery?.name ?? aircraftConfig?.uiVariation ?? null,
+    fenixLivery?.name ??
+      aircraftConfig?.uiVariation ??
+      aircraftTitle ??
+      aircraftType ??
+      null,
   );
   const explicitLiveryRegistration =
     extractRegistrationsFromText(fenixLivery?.name ?? uiVariation)[0] ?? null;

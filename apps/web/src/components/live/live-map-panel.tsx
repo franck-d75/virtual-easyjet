@@ -84,6 +84,9 @@ export function LiveMapPanel({
   const [isImmersive, setIsImmersive] = useState(false);
   const [arePanelsVisible, setArePanelsVisible] = useState(true);
   const [isCompactViewport, setIsCompactViewport] = useState(false);
+  const [tagDisplayMode, setTagDisplayMode] = useState<"flight" | "pilot">(
+    "flight",
+  );
 
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -256,6 +259,18 @@ export function LiveMapPanel({
   });
 
   useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setTagDisplayMode((currentMode) =>
+        currentMode === "flight" ? "pilot" : "flight",
+      );
+    }, 2_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
     let isActive = true;
 
     async function loadSimbriefRoute(): Promise<void> {
@@ -363,6 +378,8 @@ export function LiveMapPanel({
         continue;
       }
 
+      const waypointKeys = new Set<string>();
+
       const routeLatLngs = route.points.map((point) => {
         const latLng: [number, number] = [point.lat, point.lon];
         routePoints.push(latLng);
@@ -387,6 +404,48 @@ export function LiveMapPanel({
         dashArray: route.mode === "DIRECT" ? "10 12" : undefined,
         className: "live-map-route-line",
       }).addTo(routeLayer);
+
+      if (route.mode === "WAYPOINTS") {
+        for (const point of route.points) {
+          const ident = point.ident?.trim() ?? "";
+
+          if (!ident) {
+            continue;
+          }
+
+          const waypointKey = `${ident}:${point.lat.toFixed(4)}:${point.lon.toFixed(4)}`;
+
+          if (waypointKeys.has(waypointKey)) {
+            continue;
+          }
+
+          waypointKeys.add(waypointKey);
+
+          L.circleMarker([point.lat, point.lon], {
+            radius: 3.5,
+            color: "rgba(125, 211, 252, 0.88)",
+            weight: 1,
+            fillColor: "#e0f2fe",
+            fillOpacity: 0.92,
+            interactive: false,
+            className: "live-map-route-waypoint-dot",
+          }).addTo(routeLayer);
+
+          L.marker([point.lat, point.lon], {
+            icon: L.divIcon({
+              className: "live-map-route-waypoint-shell",
+              iconSize: [56, 20],
+              iconAnchor: [-8, 10],
+              html: `<span class="live-map-route-waypoint-label">${escapeHtml(
+                ident,
+              )}</span>`,
+            }),
+            keyboard: false,
+            interactive: false,
+            zIndexOffset: 320,
+          }).addTo(routeLayer);
+        }
+      }
     }
 
     for (const flight of traffic) {
@@ -429,7 +488,7 @@ export function LiveMapPanel({
 
       marker.addTo(markersLayer);
 
-      const tagMarker = buildAircraftTagMarker(L, flight);
+      const tagMarker = buildAircraftTagMarker(L, flight, tagDisplayMode);
 
       if (tagMarker) {
         tagMarker.addTo(markersLayer);
@@ -450,7 +509,7 @@ export function LiveMapPanel({
       fitViewport(viewportPointsRef.current);
       hasAdjustedViewportRef.current = true;
     }
-  }, [displayedRoutes, fitViewport, traffic]);
+  }, [displayedRoutes, fitViewport, tagDisplayMode, traffic]);
 
   useEffect(() => {
     let active = true;
@@ -1006,6 +1065,7 @@ function buildMarkerIcon(
 function buildAircraftTagMarker(
   L: LeafletModule,
   flight: LiveMapAircraft,
+  tagDisplayMode: "flight" | "pilot",
 ): ReturnType<LeafletModule["marker"]> | null {
   const primaryLabel = flight.flightNumber ?? flight.callsign;
   const secondaryLabel = flight.pilotDisplayName?.trim() ?? null;
@@ -1014,25 +1074,19 @@ function buildAircraftTagMarker(
     return null;
   }
 
+  const displayedLabel =
+    tagDisplayMode === "pilot" && secondaryLabel ? secondaryLabel : primaryLabel;
+
   return L.marker([flight.lat, flight.lon], {
     icon: L.divIcon({
       className: "live-map-aircraft-tag-shell",
       iconSize: [188, 44],
       iconAnchor: [94, 54],
       html: `
-        <div class="live-map-aircraft-tag ${
-          secondaryLabel ? "live-map-aircraft-tag--animated" : ""
-        }">
-          <span class="live-map-aircraft-tag__row live-map-aircraft-tag__row--primary">
-            ${escapeHtml(primaryLabel)}
+        <div class="live-map-aircraft-tag">
+          <span class="live-map-aircraft-tag__row">
+            ${escapeHtml(displayedLabel)}
           </span>
-          ${
-            secondaryLabel
-              ? `<span class="live-map-aircraft-tag__row live-map-aircraft-tag__row--secondary">${escapeHtml(
-                  secondaryLabel,
-                )}</span>`
-              : ""
-          }
         </div>
       `,
     }),

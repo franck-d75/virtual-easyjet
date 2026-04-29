@@ -63,6 +63,7 @@ type MockSessionState = {
 };
 
 type TrackingTimer = ReturnType<typeof setInterval>;
+type PendingPromise = Promise<void>;
 
 type LatestOfpApiResponse = {
   status?: string;
@@ -720,6 +721,8 @@ export class DesktopService {
   );
   private trackingTimer: TrackingTimer | null = null;
   private telemetryWarmupPromise: Promise<void> | null = null;
+  private authRefreshPromise: PendingPromise | null = null;
+  private telemetryTickPromise: PendingPromise | null = null;
 
   public constructor() {
     this.log("desktop runtime config loaded", {
@@ -839,6 +842,7 @@ export class DesktopService {
     }
 
     this.authSession = null;
+    this.authRefreshPromise = null;
     this.resetMockState();
     this.telemetryResolutionContext = structuredClone(
       EMPTY_TELEMETRY_RESOLUTION_CONTEXT,
@@ -1208,6 +1212,18 @@ export class DesktopService {
   }
 
   private async pushLiveTelemetryTick(): Promise<void> {
+    if (this.telemetryTickPromise) {
+      return this.telemetryTickPromise;
+    }
+
+    this.telemetryTickPromise = this.pushLiveTelemetryTickInternal().finally(() => {
+      this.telemetryTickPromise = null;
+    });
+
+    return this.telemetryTickPromise;
+  }
+
+  private async pushLiveTelemetryTickInternal(): Promise<void> {
     const sessionId = this.trackingState.activeSessionId;
 
     if (!sessionId || this.trackingState.status !== "RUNNING") {
@@ -1401,6 +1417,19 @@ export class DesktopService {
       this.config.telemetryFallbackMode === "fsuipc"
     ) {
       this.fsuipcBridge.start();
+    }
+
+    if (this.trackingState.status === "RUNNING") {
+      return;
+    }
+
+    const currentSnapshot = this.getCurrentSimulatorSnapshot();
+
+    if (
+      this.isUsableTelemetrySnapshot(currentSnapshot) &&
+      this.isFreshSimulatorSample(currentSnapshot.lastSampleAt, 15_000)
+    ) {
+      return;
     }
 
     if (this.telemetryWarmupPromise) {
@@ -2102,24 +2131,46 @@ export class DesktopService {
       return;
     }
 
-    const currentSession = this.ensureAuthenticated();
-
-    try {
-      this.authSession = await this.requestJson<AuthSession>(
-        this.config.apiBaseUrl,
-        "/auth/refresh",
-        {
-          method: "POST",
-          body: {
-            refreshToken: currentSession.tokens.refreshToken,
-          },
-        },
-      );
-      this.log("desktop auth session refreshed");
-    } catch {
-      this.authSession = null;
-      throw new Error(INVALID_DESKTOP_AUTH_SESSION_MESSAGE);
+    if (this.authRefreshPromise) {
+      return this.authRefreshPromise;
     }
+
+    const refreshToken = this.ensureAuthenticated().tokens.refreshToken;
+
+    this.authRefreshPromise = (async () => {
+      try {
+        this.authSession = await this.requestJson<AuthSession>(
+          this.config.apiBaseUrl,
+          "/auth/refresh",
+          {
+            method: "POST",
+            body: {
+              refreshToken,
+            },
+          },
+        );
+        this.log("desktop auth session refreshed");
+      } catch (error) {
+        if (
+          error instanceof HttpError &&
+          (error.status === 401 || error.status === 403)
+        ) {
+          this.authSession = null;
+          throw new Error(INVALID_DESKTOP_AUTH_SESSION_MESSAGE);
+        }
+
+        this.log("desktop auth session refresh failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw new Error(
+          "Session refresh temporarily unavailable. ACARS will retry automatically.",
+        );
+      } finally {
+        this.authRefreshPromise = null;
+      }
+    })();
+
+    return this.authRefreshPromise;
   }
 
   private async authorizedRequestJson<T>(
@@ -2280,6 +2331,23 @@ export class DesktopService {
     } catch {
       return rawPayload;
     }
+  }
+
+  private isFreshSimulatorSample(
+    lastSampleAt: string | null | undefined,
+    maxAgeMs: number,
+  ): boolean {
+    if (!lastSampleAt) {
+      return false;
+    }
+
+    const parsedDate = Date.parse(lastSampleAt);
+
+    if (!Number.isFinite(parsedDate)) {
+      return false;
+    }
+
+    return Date.now() - parsedDate <= maxAgeMs;
   }
 
   private log(
