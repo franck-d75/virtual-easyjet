@@ -19,10 +19,10 @@ function HeroAircraftArtwork(): JSX.Element {
         alt=""
         aria-hidden="true"
         className="hero-aircraft__image"
-        height={855}
+        fill
         priority
-        src="/images/hero/easyjet-switzerland-a320-hb-jxb.png"
-        width={1780}
+        sizes="(max-width: 900px) 100vw, 66vw"
+        src="/images/hero/easyjet-switzerland-a320-hero-bg.png"
       />
     </div>
   );
