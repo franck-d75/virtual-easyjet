@@ -2,6 +2,11 @@ import { Dependencies, Injectable } from "@nestjs/common";
 import { FlightPhase, Prisma, SessionStatus } from "@va/database";
 import type { LiveMapAircraft, LiveMapPhase } from "@va/shared";
 
+import {
+  buildSimbriefRouteOverlaySettingKey,
+  normalizePersistedSimbriefRouteOverlay,
+  serializeSimbriefRouteOverlay,
+} from "../../common/integrations/simbrief/simbrief-route-overlay.js";
 import { decimalToNumber } from "../../common/utils/decimal.utils.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
@@ -30,6 +35,18 @@ const liveSessionSelect = {
   flight: {
     select: {
       flightNumber: true,
+      routeId: true,
+      pilotProfile: {
+        select: {
+          firstName: true,
+          lastName: true,
+          user: {
+            select: {
+              username: true,
+            },
+          },
+        },
+      },
       aircraft: {
         select: {
           registration: true,
@@ -82,7 +99,47 @@ export class AcarsLiveService {
       select: liveSessionSelect,
     });
 
-    const liveFlights = sessions.map((session) => this.serializeSession(session));
+    const routeIds = [...new Set(
+      sessions
+        .map((session) => session.flight.routeId)
+        .filter((routeId): routeId is string => typeof routeId === "string" && routeId.length > 0),
+    )];
+    const overlaySettings = routeIds.length
+      ? await this.prisma.setting.findMany({
+          where: {
+            key: {
+              in: routeIds.map((routeId) =>
+                buildSimbriefRouteOverlaySettingKey(routeId),
+              ),
+            },
+          },
+          select: {
+            key: true,
+            value: true,
+          },
+        })
+      : [];
+    const overlaysByRouteId = new Map(
+      overlaySettings.flatMap((setting) => {
+        const persistedOverlay = normalizePersistedSimbriefRouteOverlay(
+          setting.value,
+        );
+
+        if (!persistedOverlay) {
+          return [];
+        }
+
+        return [[persistedOverlay.routeId, serializeSimbriefRouteOverlay(persistedOverlay)] as const];
+      }),
+    );
+    const liveFlights = sessions.map((session) =>
+      this.serializeSession(
+        session,
+        session.flight.routeId
+          ? overlaysByRouteId.get(session.flight.routeId) ?? null
+          : null,
+      ),
+    );
 
     console.info("[api] live map sessions returned count", {
       count: liveFlights.length,
@@ -95,14 +152,26 @@ export class AcarsLiveService {
     return liveFlights;
   }
 
-  private serializeSession(session: LiveSessionRecord): LiveMapAircraft {
+  private serializeSession(
+    session: LiveSessionRecord,
+    simbriefRoute:
+      | ReturnType<typeof serializeSimbriefRouteOverlay>
+      | null = null,
+  ): LiveMapAircraft {
     const altitude = Math.max(session.currentAltitudeFt ?? 0, 0);
     const speed = Math.max(session.currentGroundspeedKts ?? 0, 0);
+    const firstName = session.flight.pilotProfile.firstName?.trim() ?? "";
+    const lastName = session.flight.pilotProfile.lastName?.trim() ?? "";
+    const pilotDisplayName =
+      firstName || lastName
+        ? `${firstName} ${lastName}`.trim()
+        : session.flight.pilotProfile.user.username ?? null;
 
     return {
       callsign: session.flight.flightNumber,
       flightNumber: session.flight.flightNumber,
       registration: session.flight.aircraft.registration,
+      pilotDisplayName,
       lat: decimalToNumber(session.currentLatitude) ?? 0,
       lon: decimalToNumber(session.currentLongitude) ?? 0,
       altitude,
@@ -124,6 +193,7 @@ export class AcarsLiveService {
           capturedAt: point.capturedAt.toISOString(),
         }))
         .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon)),
+      simbriefRoute,
     };
   }
 }

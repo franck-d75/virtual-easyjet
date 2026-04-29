@@ -46,6 +46,7 @@ export interface SimbriefLatestOfpPlanSummary {
   estimatedTimeEnroute: string | null;
   blockTimeMinutes: number | null;
   generatedAt: string | null;
+  passengers: number | null;
   aircraft: SimbriefLatestOfpAircraftSummary | null;
   routePoints: SimbriefLatestOfpRoutePointSummary[];
 }
@@ -410,6 +411,13 @@ export class SimbriefClient {
         ["times", "sched_time_block"],
       ]),
       generatedAt: readString(payload, ["params", "time_generated"]),
+      passengers: readInteger(payload, [
+        ["weights", "pax_count_actual"],
+        ["weights", "pax_count"],
+        ["weights", "passenger_count"],
+        ["general", "passengers"],
+        ["api_params", "pax"],
+      ]),
       aircraft,
       routePoints,
     };

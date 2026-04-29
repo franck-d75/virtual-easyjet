@@ -64,6 +64,12 @@ type ProgressSyncSummary = {
   promotedRankCode: string | null;
 };
 
+type LandingRateTelemetrySample = {
+  capturedAt: Date;
+  onGround: boolean;
+  verticalSpeedFpm: number | null;
+};
+
 const OFF_BLOCK_PHASES: FlightPhase[] = [
   FlightPhase.PUSHBACK,
   FlightPhase.TAXI_OUT,
@@ -466,11 +472,22 @@ export class AcarsSessionsService {
       const telemetryPointCount = await transaction.telemetryPoint.count({
         where: { sessionId: existingSession.id },
       });
+      const telemetrySamplesForLanding = await transaction.telemetryPoint.findMany({
+        where: { sessionId: existingSession.id },
+        orderBy: { capturedAt: "asc" },
+        select: {
+          capturedAt: true,
+          onGround: true,
+          verticalSpeedFpm: true,
+        },
+      });
+      const landingRateFpm = resolveLandingRateFpm(telemetrySamplesForLanding);
       const pirepSummary = {
         telemetryPointCount,
         finalParkingDetected,
         completionPhase: existingSession.detectedPhase,
         sessionCompletedAt: completedAt.toISOString(),
+        landingRateFpm,
       };
 
       await transaction.acarsSession.update({
@@ -807,4 +824,49 @@ export class AcarsSessionsService {
         : null,
     };
   }
+}
+
+function resolveLandingRateFpm(
+  samples: LandingRateTelemetrySample[],
+): number | null {
+  if (samples.length < 2) {
+    return null;
+  }
+
+  for (let index = 1; index < samples.length; index += 1) {
+    const previousSample = samples[index - 1];
+    const currentSample = samples[index];
+
+    if (
+      !previousSample ||
+      !currentSample ||
+      previousSample.onGround !== false ||
+      currentSample.onGround !== true
+    ) {
+      continue;
+    }
+
+    const candidateSamples = [currentSample, previousSample];
+
+    for (const sample of candidateSamples) {
+      if (
+        typeof sample.verticalSpeedFpm === "number" &&
+        Number.isFinite(sample.verticalSpeedFpm) &&
+        sample.verticalSpeedFpm < 0
+      ) {
+        return sample.verticalSpeedFpm;
+      }
+    }
+  }
+
+  const lastNegativeSample = [...samples]
+    .reverse()
+    .find(
+      (sample) =>
+        typeof sample.verticalSpeedFpm === "number" &&
+        Number.isFinite(sample.verticalSpeedFpm) &&
+        sample.verticalSpeedFpm < 0,
+    );
+
+  return lastNegativeSample?.verticalSpeedFpm ?? null;
 }

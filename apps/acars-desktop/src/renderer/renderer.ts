@@ -171,6 +171,25 @@ function formatFuelKg(value: number | null | undefined): string {
   return `${value.toFixed(0)} kg`;
 }
 
+function formatLandingRateFpm(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "n/d";
+  }
+
+  return `${Math.round(value)} ft/min`;
+}
+
+function readEventSummaryNumber(
+  summary: Record<string, unknown> | null | undefined,
+  key: string,
+): number | null {
+  const rawValue = summary?.[key];
+
+  return typeof rawValue === "number" && Number.isFinite(rawValue)
+    ? rawValue
+    : null;
+}
+
 function getTrackingTone(status: TelemetryTrackingState["status"]): PresentationTone {
   switch (status) {
     case "RUNNING":
@@ -631,16 +650,11 @@ function renderSession(): void {
   const tracking = state.tracking;
   const liveFuelKg =
     state.simulator?.telemetry?.fuelTotalKg ?? session?.latestTelemetry?.fuelTotalKg ?? null;
-  const fuelArrivalOrLiveKg = session?.fuel.arrivalFuelKg ?? liveFuelKg ?? null;
-  const fuelDepartureKg = session?.fuel.departureFuelKg ?? null;
-  const fuelArrivalKg = session?.fuel.arrivalFuelKg ?? null;
-  const fuelUsedKg =
-    typeof fuelDepartureKg === "number" &&
-    Number.isFinite(fuelDepartureKg) &&
-    typeof fuelArrivalOrLiveKg === "number" &&
-    Number.isFinite(fuelArrivalOrLiveKg)
-      ? Math.max(0, fuelDepartureKg - fuelArrivalOrLiveKg)
-      : null;
+  const landingRateFpm = readEventSummaryNumber(
+    session?.eventSummary,
+    "landingRateFpm",
+  );
+  const passengersOnBoard = state.dispatch?.latestOfp?.passengers ?? null;
 
   if (!session) {
     sessionSummary.innerHTML = `
@@ -674,14 +688,6 @@ function renderSession(): void {
     </div>
     <div class="summary-grid">
       <div class="metric">
-        <span class="metric-label">Latitude</span>
-        <span class="metric-value">${session.currentPosition.latitude ?? "n/d"}</span>
-      </div>
-      <div class="metric">
-        <span class="metric-label">Longitude</span>
-        <span class="metric-value">${session.currentPosition.longitude ?? "n/d"}</span>
-      </div>
-      <div class="metric">
         <span class="metric-label">Altitude</span>
         <span class="metric-value">${session.currentPosition.altitudeFt ?? "n/d"}</span>
       </div>
@@ -690,20 +696,16 @@ function renderSession(): void {
         <span class="metric-value">${session.currentPosition.groundspeedKts ?? "n/d"}</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Carburant depart</span>
-        <span class="metric-value">${escapeHtml(formatFuelKg(fuelDepartureKg))}</span>
-      </div>
-      <div class="metric">
         <span class="metric-label">Carburant live</span>
         <span class="metric-value">${escapeHtml(formatFuelKg(liveFuelKg))}</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Carburant arrivee</span>
-        <span class="metric-value">${escapeHtml(formatFuelKg(fuelArrivalKg))}</span>
+        <span class="metric-label">Landing rate</span>
+        <span class="metric-value">${escapeHtml(formatLandingRateFpm(landingRateFpm))}</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Consommation</span>
-        <span class="metric-value">${escapeHtml(formatFuelKg(fuelUsedKg))}</span>
+        <span class="metric-label">Passagers a bord</span>
+        <span class="metric-value">${passengersOnBoard ?? "n/d"}</span>
       </div>
     </div>
     ${
@@ -802,8 +804,14 @@ async function refreshRuntimeState(): Promise<void> {
   if (sessionId) {
     try {
       state.activeSession = await bridge.getSession(sessionId);
-    } catch {
-      state.activeSession = null;
+    } catch (error) {
+      appendLog(
+        `Session active non rafraichie : ${
+          error instanceof Error
+            ? error.message
+            : "Erreur de session temporaire."
+        }`,
+      );
     }
   }
 

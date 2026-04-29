@@ -78,6 +78,7 @@ type LatestOfpApiResponse = {
     distanceNm?: number | null;
     blockTimeMinutes?: number | null;
     estimatedTimeEnroute?: string | null;
+    passengers?: number | null;
     aircraft?: {
       icaoCode?: string | null;
       registration?: string | null;
@@ -1244,7 +1245,6 @@ export class DesktopService {
 
       this.trackingState = {
         ...this.trackingState,
-        status: "ERROR",
         lastError: message,
       };
       this.log("live telemetry tick failed", {
@@ -1558,6 +1558,11 @@ export class DesktopService {
       distanceNm: payload.plan?.distanceNm ?? null,
       blockTimeMinutes: payload.plan?.blockTimeMinutes ?? null,
       estimatedTimeEnroute: payload.plan?.estimatedTimeEnroute ?? null,
+      passengers:
+        typeof payload.plan?.passengers === "number" &&
+        Number.isFinite(payload.plan.passengers)
+          ? payload.plan.passengers
+          : null,
       aircraft: payload.plan?.aircraft
         ? {
             icaoCode: payload.plan.aircraft.icaoCode ?? null,
@@ -1813,7 +1818,11 @@ export class DesktopService {
         registrationSource,
         atcId: resolvedRegistration,
         rawAtcId: normalizeOptionalString(rawAircraft.rawAtcId),
-        liveryName,
+        liveryName:
+          liveryName ??
+          normalizeOptionalString(rawAircraft.title) ??
+          normalizeOptionalString(rawAircraft.model) ??
+          resolvedRegistration,
       },
     };
 

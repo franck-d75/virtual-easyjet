@@ -31,10 +31,34 @@ export interface LiveMapTrackPoint {
   capturedAt: string;
 }
 
+export type LiveMapSimbriefRoutePointSource =
+  | "ORIGIN"
+  | "NAVLOG"
+  | "DESTINATION";
+
+export interface LiveMapSimbriefRoutePoint {
+  ident: string | null;
+  lat: number;
+  lon: number;
+  source: LiveMapSimbriefRoutePointSource;
+}
+
+export interface LiveMapSimbriefRoute {
+  routeId: string | null;
+  callsign: string | null;
+  flightNumber: string | null;
+  departureIcao: string;
+  arrivalIcao: string;
+  route: string | null;
+  mode: "DIRECT" | "WAYPOINTS";
+  points: LiveMapSimbriefRoutePoint[];
+}
+
 export interface LiveMapAircraft {
   callsign: string;
   flightNumber?: string;
   registration?: string | null;
+  pilotDisplayName?: string | null;
   lat: number;
   lon: number;
   altitude: number;
@@ -43,6 +67,7 @@ export interface LiveMapAircraft {
   heading: number;
   onGround?: boolean | null;
   track?: LiveMapTrackPoint[];
+  simbriefRoute?: LiveMapSimbriefRoute | null;
 }
 
 export interface LiveFlightSnapshot {

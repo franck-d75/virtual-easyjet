@@ -198,6 +198,7 @@ export interface LatestOfpSummary {
   distanceNm: number | null;
   blockTimeMinutes: number | null;
   estimatedTimeEnroute: string | null;
+  passengers: number | null;
   aircraft: LatestOfpAircraftSummary | null;
 }
 
