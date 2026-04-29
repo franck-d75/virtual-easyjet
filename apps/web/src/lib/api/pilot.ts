@@ -8,6 +8,7 @@ import type {
   SimbriefAirframesResponse,
   SimbriefImportedRouteResponse,
   SimbriefLatestOfpResponse,
+  SimbriefRouteOverlayResponse,
   UserMeResponse,
 } from "./types";
 import { apiRequest } from "./client";
@@ -77,6 +78,18 @@ export async function getMyLatestSimbriefOfp(
 ): Promise<SimbriefLatestOfpResponse> {
   return apiRequest<SimbriefLatestOfpResponse>(
     "/pilot-profiles/me/simbrief/latest-ofp",
+    {
+      accessToken,
+      cache: "no-store",
+    },
+  );
+}
+
+export async function getMySimbriefRouteOverlay(
+  accessToken: string,
+): Promise<SimbriefRouteOverlayResponse | null> {
+  return apiRequest<SimbriefRouteOverlayResponse | null>(
+    "/pilot-profiles/me/simbrief/route-overlay",
     {
       accessToken,
       cache: "no-store",

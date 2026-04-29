@@ -139,6 +139,17 @@ export interface SimbriefLatestOfpRoutePointResponse {
   source: SimbriefLatestOfpRoutePointSource;
 }
 
+export interface SimbriefRouteOverlayResponse {
+  routeId: string | null;
+  callsign: string | null;
+  flightNumber: string | null;
+  departureIcao: string;
+  arrivalIcao: string;
+  route: string | null;
+  mode: "DIRECT" | "WAYPOINTS";
+  points: SimbriefLatestOfpRoutePointResponse[];
+}
+
 export interface SimbriefLatestOfpPlanResponse {
   callsign: string | null;
   flightNumber: string | null;

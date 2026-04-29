@@ -1,23 +1,19 @@
 import { ApiError } from "@/lib/api/client";
-import { getMyLatestSimbriefOfp } from "@/lib/api/pilot";
+import { getMySimbriefRouteOverlay } from "@/lib/api/pilot";
 import {
   createBackendErrorResponse,
   createBackendJsonResponse,
   executeWithBackendAccess,
 } from "@/lib/auth/backend-access";
 import { logWebError, logWebWarning } from "@/lib/observability/log";
-import { buildSimbriefRouteOverlay } from "@/lib/utils/simbrief-route";
 
 export async function GET() {
   try {
     const result = await executeWithBackendAccess((accessToken) =>
-      getMyLatestSimbriefOfp(accessToken),
+      getMySimbriefRouteOverlay(accessToken),
     );
 
-    return createBackendJsonResponse(
-      buildSimbriefRouteOverlay(result.data),
-      result.refreshedSession,
-    );
+    return createBackendJsonResponse(result.data, result.refreshedSession);
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       return createBackendJsonResponse(null);

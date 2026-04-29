@@ -36,6 +36,11 @@ export class PilotProfilesController {
     return this.pilotProfilesService.getMyLatestSimbriefOfp(user);
   }
 
+  @Get("me/simbrief/route-overlay")
+  public simbriefRouteOverlay(@CurrentUser() user: AuthenticatedUser) {
+    return this.pilotProfilesService.getMySimbriefRouteOverlay(user);
+  }
+
   @Get("me/simbrief/airframes")
   public simbriefAirframes(@CurrentUser() user: AuthenticatedUser) {
     return this.pilotProfilesService.getMySimbriefAirframes(user);

@@ -20,6 +20,13 @@ import {
   type SimbriefAirframeSummary,
   type SimbriefLatestOfpResult,
 } from "../../common/integrations/simbrief/simbrief.client.js";
+import {
+  buildSimbriefRouteOverlayFromPlan,
+  buildSimbriefRouteOverlaySettingKey,
+  normalizePersistedSimbriefRouteOverlay,
+  persistableSimbriefRouteOverlay,
+  serializeSimbriefRouteOverlay,
+} from "../../common/integrations/simbrief/simbrief-route-overlay.js";
 import { buildSimbriefFlightPlanLookup } from "../../common/integrations/simbrief/simbrief.utils.js";
 import {
   getRequiredPilotProfileId,
@@ -181,6 +188,46 @@ export class PilotProfilesService {
     };
 
     return this.attachLatestOfpAirframeMatch(enrichedLatestOfp, matchedAirframe);
+  }
+
+  public async getMySimbriefRouteOverlay(user: AuthenticatedUser) {
+    const profile = await this.getMySimbriefContext(user);
+
+    if (!profile) {
+      throw new NotFoundException("Pilot profile not found.");
+    }
+
+    const currentFlight = await this.findCurrentRouteOverlayFlight(profile.id);
+
+    if (currentFlight?.routeId) {
+      const persistedOverlay = await this.getStoredRouteOverlay(currentFlight.routeId);
+
+      if (persistedOverlay) {
+        return serializeSimbriefRouteOverlay(persistedOverlay);
+      }
+    }
+
+    const latestOfp = await this.getMyLatestSimbriefOfp(user);
+
+    if (latestOfp.status !== "AVAILABLE" || !latestOfp.plan) {
+      return null;
+    }
+
+    if (
+      currentFlight?.routeId &&
+      this.doesLatestOfpMatchFlight(latestOfp.plan, currentFlight)
+    ) {
+      const persistedOverlay = await this.storeRouteOverlayFromPlan(
+        currentFlight.routeId,
+        latestOfp.plan,
+      );
+
+      if (persistedOverlay) {
+        return serializeSimbriefRouteOverlay(persistedOverlay);
+      }
+    }
+
+    return buildSimbriefRouteOverlayFromPlan(null, latestOfp.plan);
   }
 
   public async getMySimbriefAirframes(user: AuthenticatedUser) {
@@ -498,6 +545,8 @@ export class PilotProfilesService {
           },
           include: importedRouteInclude,
         });
+
+    await this.storeRouteOverlayFromPlan(route.id, latestOfp.plan);
 
     return {
       action: existingRoute ? "updated" : "created",
@@ -1085,6 +1134,125 @@ export class PilotProfilesService {
     ];
   }
 
+  private async findCurrentRouteOverlayFlight(pilotProfileId: string) {
+    const activeFlight = await this.prisma.flight.findFirst({
+      where: {
+        pilotProfileId,
+        status: FlightStatus.IN_PROGRESS,
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      select: {
+        id: true,
+        routeId: true,
+        flightNumber: true,
+        departureAirport: {
+          select: {
+            icao: true,
+          },
+        },
+        arrivalAirport: {
+          select: {
+            icao: true,
+          },
+        },
+      },
+    });
+
+    if (activeFlight) {
+      return activeFlight;
+    }
+
+    return this.prisma.flight.findFirst({
+      where: {
+        pilotProfileId,
+        status: FlightStatus.PLANNED,
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      select: {
+        id: true,
+        routeId: true,
+        flightNumber: true,
+        departureAirport: {
+          select: {
+            icao: true,
+          },
+        },
+        arrivalAirport: {
+          select: {
+            icao: true,
+          },
+        },
+      },
+    });
+  }
+
+  private doesLatestOfpMatchFlight(
+    plan: NonNullable<SimbriefLatestOfpResult["plan"]>,
+    flight: Awaited<ReturnType<PilotProfilesService["findCurrentRouteOverlayFlight"]>>,
+  ) {
+    if (!flight) {
+      return false;
+    }
+
+    const normalizedPlanFlightNumber =
+      plan.flightNumber?.trim().toUpperCase() ??
+      plan.callsign?.trim().toUpperCase() ??
+      null;
+
+    return (
+      normalizedPlanFlightNumber === flight.flightNumber.trim().toUpperCase() &&
+      plan.departureIcao?.trim().toUpperCase() ===
+        flight.departureAirport.icao.trim().toUpperCase() &&
+      plan.arrivalIcao?.trim().toUpperCase() ===
+        flight.arrivalAirport.icao.trim().toUpperCase()
+    );
+  }
+
+  private async getStoredRouteOverlay(routeId: string) {
+    const setting = await this.prisma.setting.findUnique({
+      where: {
+        key: buildSimbriefRouteOverlaySettingKey(routeId),
+      },
+      select: {
+        value: true,
+      },
+    });
+
+    return normalizePersistedSimbriefRouteOverlay(setting?.value);
+  }
+
+  private async storeRouteOverlayFromPlan(
+    routeId: string,
+    plan: NonNullable<SimbriefLatestOfpResult["plan"]>,
+  ) {
+    const overlay = persistableSimbriefRouteOverlay(routeId, plan);
+
+    if (!overlay) {
+      return null;
+    }
+
+    await this.prisma.setting.upsert({
+      where: {
+        key: buildSimbriefRouteOverlaySettingKey(routeId),
+      },
+      update: {
+        value: overlay as unknown as Prisma.InputJsonValue,
+        isPublic: false,
+        description:
+          "Tracé détaillé SimBrief (navlog/dispatch) associé à une route importée.",
+      },
+      create: {
+        key: buildSimbriefRouteOverlaySettingKey(routeId),
+        value: overlay as unknown as Prisma.InputJsonValue,
+        isPublic: false,
+        description:
+          "Tracé détaillé SimBrief (navlog/dispatch) associé à une route importée.",
+      },
+    });
+
+    return overlay;
+  }
+
   private async listPersistedSimbriefAirframes(userId: string) {
     return this.prisma.simbriefAirframe.findMany({
       where: {
@@ -1274,13 +1442,13 @@ export class PilotProfilesService {
       notes: this.buildImportedRouteNotes(latestOfp.plan.route ?? null),
     } satisfies Omit<Prisma.RouteUncheckedCreateInput, "code">;
 
-    return existingRoute
-      ? this.prisma.route.update({
+    const route = existingRoute
+      ? await this.prisma.route.update({
           where: { id: existingRoute.id },
           data: routeData,
           include: importedRouteInclude,
         })
-      : this.prisma.route.create({
+      : await this.prisma.route.create({
           data: {
             code: await this.generateImportedRouteCode(
               normalizedFlightNumber,
@@ -1291,6 +1459,10 @@ export class PilotProfilesService {
           },
           include: importedRouteInclude,
         });
+
+    await this.storeRouteOverlayFromPlan(route.id, latestOfp.plan);
+
+    return route;
   }
 
   private buildPreparedSimbriefBookingNotes(
