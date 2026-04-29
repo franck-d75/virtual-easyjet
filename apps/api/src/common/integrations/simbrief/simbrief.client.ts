@@ -741,9 +741,10 @@ function buildAirportRoutePoint(
 function buildNavlogRoutePoints(
   payload: unknown,
 ): SimbriefLatestOfpRoutePointSummary[] {
-  const fixes = readPath(payload, ["navlog", "fix"]);
+  const rawNavlog = readPath(payload, ["navlog"]);
+  const fixes = normalizeNavlogFixes(rawNavlog);
 
-  if (!Array.isArray(fixes)) {
+  if (fixes.length === 0) {
     return [];
   }
 
@@ -782,8 +783,31 @@ function buildNavlogRoutePoints(
         lon,
         source: "NAVLOG" as const,
       },
-    ];
-  });
+      ];
+    });
+}
+
+function normalizeNavlogFixes(rawNavlog: unknown): unknown[] {
+  if (Array.isArray(rawNavlog)) {
+    return rawNavlog;
+  }
+
+  if (isJsonRecord(rawNavlog)) {
+    const explicitFixes = rawNavlog.fix;
+
+    if (Array.isArray(explicitFixes)) {
+      return explicitFixes;
+    }
+
+    return Object.entries(rawNavlog)
+      .filter(([key, value]) => /^\d+$/.test(key) && isJsonRecord(value))
+      .sort(
+        ([leftKey], [rightKey]) => Number.parseInt(leftKey, 10) - Number.parseInt(rightKey, 10),
+      )
+      .map(([, value]) => value);
+  }
+
+  return [];
 }
 
 function dedupeRoutePoints(

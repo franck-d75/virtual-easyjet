@@ -198,12 +198,18 @@ export class PilotProfilesService {
     }
 
     const currentFlight = await this.findCurrentRouteOverlayFlight(profile.id);
+    let directOverlayFallback: ReturnType<typeof serializeSimbriefRouteOverlay> | null =
+      null;
 
     if (currentFlight?.routeId) {
       const persistedOverlay = await this.getStoredRouteOverlay(currentFlight.routeId);
 
       if (persistedOverlay) {
-        return serializeSimbriefRouteOverlay(persistedOverlay);
+        if (persistedOverlay.mode === "WAYPOINTS") {
+          return serializeSimbriefRouteOverlay(persistedOverlay);
+        }
+
+        directOverlayFallback = serializeSimbriefRouteOverlay(persistedOverlay);
       }
     }
 
@@ -227,7 +233,13 @@ export class PilotProfilesService {
       }
     }
 
-    return buildSimbriefRouteOverlayFromPlan(null, latestOfp.plan);
+    const latestOverlay = buildSimbriefRouteOverlayFromPlan(null, latestOfp.plan);
+
+    if (latestOverlay?.mode === "WAYPOINTS") {
+      return latestOverlay;
+    }
+
+    return directOverlayFallback ?? latestOverlay;
   }
 
   public async getMySimbriefAirframes(user: AuthenticatedUser) {
