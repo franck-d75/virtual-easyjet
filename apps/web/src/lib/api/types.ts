@@ -55,6 +55,22 @@ export interface AdminRulesPayload {
   sections: RulesSectionResponse[];
 }
 
+export interface AdminSimbriefConfigResponse {
+  hasApiKey: boolean;
+  maskedApiKey: string | null;
+  updatedAt: string | null;
+  updatedBy: {
+    id: string;
+    username: string;
+    email?: string;
+  } | null;
+}
+
+export interface AdminSimbriefConfigPayload {
+  apiKey?: string | null;
+  clearApiKey?: boolean;
+}
+
 export interface UserRoleSummary {
   code: string;
   name: string;

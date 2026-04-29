@@ -30,6 +30,7 @@ import {
   ImportAdminAircraftFromSimbriefAirframeDto,
   LinkAdminAircraftSimbriefAirframeDto,
   ReviewAdminPirepDto,
+  UpdateAdminSimbriefConfigDto,
   UpdateAdminRulesDto,
   UpdateAdminUserDto,
   UpdateAdminAircraftDto,
@@ -76,6 +77,19 @@ export class AdminController {
   @Get("simbrief-airframes")
   public listSimbriefAirframes() {
     return this.adminService.listSimbriefAirframes();
+  }
+
+  @Get("simbrief-config")
+  public getSimbriefConfig() {
+    return this.adminService.getSimbriefConfig();
+  }
+
+  @Patch("simbrief-config")
+  public updateSimbriefConfig(
+    @Body() payload: UpdateAdminSimbriefConfigDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.adminService.updateSimbriefConfig(payload, currentUser);
   }
 
   @Get("rules")

@@ -426,3 +426,22 @@ export class UpdateAdminRulesDto {
   @Type(() => UpdateAdminRulesSectionDto)
   public sections!: UpdateAdminRulesSectionDto[];
 }
+
+export class UpdateAdminSimbriefConfigDto {
+  @IsOptional()
+  @IsString()
+  @Length(8, 256, {
+    message: "La clé API SimBrief doit contenir entre 8 et 256 caractères.",
+  })
+  @Matches(PLAIN_TEXT_REGEX, {
+    message: "La clé API SimBrief ne doit pas contenir de balises HTML.",
+  })
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim() : value,
+  )
+  public apiKey?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  public clearApiKey?: boolean;
+}

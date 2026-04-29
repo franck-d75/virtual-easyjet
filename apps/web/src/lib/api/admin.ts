@@ -4,6 +4,8 @@ import type {
   AdminAircraftPayload,
   AdminAircraftImportFromSimbriefAirframePayload,
   AdminAircraftLinkSimbriefAirframePayload,
+  AdminSimbriefConfigPayload,
+  AdminSimbriefConfigResponse,
   AdminAircraftTypeOptionResponse,
   AdminRulesPayload,
   AdminPirepResponse,
@@ -191,6 +193,27 @@ export async function getAdminRules(
 ): Promise<RulesContentResponse> {
   return apiRequest<RulesContentResponse>("/admin/rules", {
     accessToken,
+    cache: "no-store",
+  });
+}
+
+export async function getAdminSimbriefConfig(
+  accessToken: string,
+): Promise<AdminSimbriefConfigResponse> {
+  return apiRequest<AdminSimbriefConfigResponse>("/admin/simbrief-config", {
+    accessToken,
+    cache: "no-store",
+  });
+}
+
+export async function updateAdminSimbriefConfig(
+  accessToken: string,
+  payload: AdminSimbriefConfigPayload,
+): Promise<AdminSimbriefConfigResponse> {
+  return apiRequest<AdminSimbriefConfigResponse>("/admin/simbrief-config", {
+    accessToken,
+    method: "PATCH",
+    body: JSON.stringify(payload),
     cache: "no-store",
   });
 }

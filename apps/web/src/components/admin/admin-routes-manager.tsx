@@ -2,6 +2,7 @@
 
 import type { FormEvent, JSX } from "react";
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import type {
   AdminReferenceDataResponse,
   AdminRoutePayload,
   RouteResponse,
+  SimbriefImportedRouteResponse,
 } from "@/lib/api/types";
 
 import {
@@ -47,7 +49,8 @@ function createInitialRouteForm(
     code: "",
     flightNumber: "",
     departureAirportId: referenceData.airports[0]?.id ?? "",
-    arrivalAirportId: referenceData.airports[1]?.id ?? referenceData.airports[0]?.id ?? "",
+    arrivalAirportId:
+      referenceData.airports[1]?.id ?? referenceData.airports[0]?.id ?? "",
     departureHubId: "",
     arrivalHubId: "",
     aircraftTypeId: "",
@@ -62,7 +65,9 @@ function normalizeReferenceData(
   referenceData: AdminReferenceDataResponse | null | undefined,
 ): AdminReferenceDataResponse {
   return {
-    airports: Array.isArray(referenceData?.airports) ? referenceData.airports : [],
+    airports: Array.isArray(referenceData?.airports)
+      ? referenceData.airports
+      : [],
     hubs: Array.isArray(referenceData?.hubs) ? referenceData.hubs : [],
     aircraftTypes: Array.isArray(referenceData?.aircraftTypes)
       ? referenceData.aircraftTypes
@@ -77,10 +82,23 @@ function sortRoutes(items: RouteResponse[]): RouteResponse[] {
   return [...items].sort((left, right) => left.code.localeCompare(right.code));
 }
 
+function upsertRoute(items: RouteResponse[], savedRoute: RouteResponse): RouteResponse[] {
+  const existingIndex = items.findIndex((item) => item.id === savedRoute.id);
+
+  if (existingIndex === -1) {
+    return sortRoutes([...items, savedRoute]);
+  }
+
+  return sortRoutes(
+    items.map((item) => (item.id === savedRoute.id ? savedRoute : item)),
+  );
+}
+
 export function AdminRoutesManager({
   initialRoutes,
   referenceData,
 }: AdminRoutesManagerProps): JSX.Element {
+  const router = useRouter();
   const safeReferenceData = normalizeReferenceData(referenceData);
   const [items, setItems] = useState(() =>
     sortRoutes(Array.isArray(initialRoutes) ? initialRoutes : []),
@@ -91,6 +109,7 @@ export function AdminRoutesManager({
     createInitialRouteForm(safeReferenceData),
   );
   const [isPending, startTransition] = useTransition();
+  const [isImportingSimbrief, setIsImportingSimbrief] = useState(false);
 
   function resetForm(): void {
     setEditingId(null);
@@ -127,7 +146,9 @@ export function AdminRoutesManager({
       notes: formState.notes.trim() || null,
     };
 
-    const endpoint = editingId ? `/api/admin/routes/${editingId}` : "/api/admin/routes";
+    const endpoint = editingId
+      ? `/api/admin/routes/${editingId}`
+      : "/api/admin/routes";
     const response = await fetch(endpoint, {
       method: editingId ? "PATCH" : "POST",
       credentials: "include",
@@ -147,7 +168,10 @@ export function AdminRoutesManager({
 
       setFeedback({
         tone: "danger",
-        message: extractApiMessage(responsePayload, "Impossible d’enregistrer cette route."),
+        message: extractApiMessage(
+          responsePayload,
+          "Impossible d'enregistrer cette route.",
+        ),
       });
       return;
     }
@@ -155,19 +179,62 @@ export function AdminRoutesManager({
     const savedRoute = responsePayload as RouteResponse;
 
     startTransition(() => {
-      setItems((currentValue) => {
-        const nextItems = editingId
-          ? currentValue.map((item) => (item.id === editingId ? savedRoute : item))
-          : [...currentValue, savedRoute];
-
-        return sortRoutes(nextItems);
-      });
+      setItems((currentValue) => upsertRoute(currentValue, savedRoute));
       setFeedback({
         tone: "success",
-        message: editingId ? "Route mise à jour." : "Route créée avec succès.",
+        message: editingId
+          ? "Route mise a jour."
+          : "Route creee avec succes.",
       });
       resetForm();
     });
+  }
+
+  async function handleImportSimbriefRoute(): Promise<void> {
+    setFeedback(null);
+    setIsImportingSimbrief(true);
+
+    try {
+      const response = await fetch("/api/pilot/simbrief/import-route", {
+        method: "POST",
+        credentials: "include",
+      });
+
+      const rawPayload = await response.text();
+      const responsePayload = rawPayload ? parseJsonPayload(rawPayload) : null;
+
+      if (!response.ok) {
+        if (handleAdminUnauthorized(response)) {
+          return;
+        }
+
+        setFeedback({
+          tone: "danger",
+          message: extractApiMessage(
+            responsePayload,
+            "Impossible d'importer une route depuis SimBrief.",
+          ),
+        });
+        return;
+      }
+
+      const importedRoutePayload = responsePayload as SimbriefImportedRouteResponse;
+      setItems((currentValue) =>
+        upsertRoute(currentValue, importedRoutePayload.route),
+      );
+      setFeedback({
+        tone: "success",
+        message:
+          importedRoutePayload.message ||
+          "La route SimBrief a ete importee avec succes.",
+      });
+      resetForm();
+      startTransition(() => {
+        router.refresh();
+      });
+    } finally {
+      setIsImportingSimbrief(false);
+    }
   }
 
   async function handleDelete(id: string): Promise<void> {
@@ -191,7 +258,10 @@ export function AdminRoutesManager({
 
       setFeedback({
         tone: "danger",
-        message: extractApiMessage(responsePayload, "Impossible de supprimer cette route."),
+        message: extractApiMessage(
+          responsePayload,
+          "Impossible de supprimer cette route.",
+        ),
       });
       return;
     }
@@ -203,7 +273,7 @@ export function AdminRoutesManager({
       }
       setFeedback({
         tone: "success",
-        message: "Route supprimée.",
+        message: "Route supprimee.",
       });
     });
   }
@@ -234,8 +304,23 @@ export function AdminRoutesManager({
             <span className="section-eyebrow">Gestion routes</span>
             <h2>{editingId ? "Modifier une route" : "Ajouter une route"}</h2>
           </div>
-          <p>Définissez le couple départ/arrivée, le vol et les contraintes d’exploitation.</p>
+          <div className="admin-page-actions">
+            <Button
+              disabled={isImportingSimbrief || isPending}
+              onClick={() => void handleImportSimbriefRoute()}
+              variant="secondary"
+            >
+              {isImportingSimbrief
+                ? "Import SimBrief..."
+                : "Importer depuis SimBrief"}
+            </Button>
+          </div>
         </div>
+        <p>
+          Definissez le couple depart/arrivee, le vol et les contraintes
+          d'exploitation. Vous pouvez aussi importer directement le dernier OFP
+          SimBrief du pilote admin.
+        </p>
 
         <form className="auth-form admin-form-grid" onSubmit={handleSubmit}>
           <div className="field">
@@ -243,7 +328,7 @@ export function AdminRoutesManager({
             <input
               id="route-code"
               onChange={(event) => updateFormState("code", event.target.value)}
-              placeholder="AFR100"
+              placeholder="EZY1000"
               required
               type="text"
               value={formState.code}
@@ -251,11 +336,13 @@ export function AdminRoutesManager({
           </div>
 
           <div className="field">
-            <label htmlFor="route-flight-number">Numéro de vol</label>
+            <label htmlFor="route-flight-number">Numero de vol</label>
             <input
               id="route-flight-number"
-              onChange={(event) => updateFormState("flightNumber", event.target.value)}
-              placeholder="AFR100"
+              onChange={(event) =>
+                updateFormState("flightNumber", event.target.value)
+              }
+              placeholder="EZY1000"
               required
               type="text"
               value={formState.flightNumber}
@@ -263,10 +350,12 @@ export function AdminRoutesManager({
           </div>
 
           <div className="field">
-            <label htmlFor="route-departure-airport">Départ</label>
+            <label htmlFor="route-departure-airport">Depart</label>
             <select
               id="route-departure-airport"
-              onChange={(event) => updateFormState("departureAirportId", event.target.value)}
+              onChange={(event) =>
+                updateFormState("departureAirportId", event.target.value)
+              }
               required
               value={formState.departureAirportId}
             >
@@ -279,10 +368,12 @@ export function AdminRoutesManager({
           </div>
 
           <div className="field">
-            <label htmlFor="route-arrival-airport">Arrivée</label>
+            <label htmlFor="route-arrival-airport">Arrivee</label>
             <select
               id="route-arrival-airport"
-              onChange={(event) => updateFormState("arrivalAirportId", event.target.value)}
+              onChange={(event) =>
+                updateFormState("arrivalAirportId", event.target.value)
+              }
               required
               value={formState.arrivalAirportId}
             >
@@ -295,10 +386,12 @@ export function AdminRoutesManager({
           </div>
 
           <div className="field">
-            <label htmlFor="route-departure-hub">Hub départ</label>
+            <label htmlFor="route-departure-hub">Hub depart</label>
             <select
               id="route-departure-hub"
-              onChange={(event) => updateFormState("departureHubId", event.target.value)}
+              onChange={(event) =>
+                updateFormState("departureHubId", event.target.value)
+              }
               value={formState.departureHubId}
             >
               <option value="">Aucun hub</option>
@@ -311,10 +404,12 @@ export function AdminRoutesManager({
           </div>
 
           <div className="field">
-            <label htmlFor="route-arrival-hub">Hub arrivée</label>
+            <label htmlFor="route-arrival-hub">Hub arrivee</label>
             <select
               id="route-arrival-hub"
-              onChange={(event) => updateFormState("arrivalHubId", event.target.value)}
+              onChange={(event) =>
+                updateFormState("arrivalHubId", event.target.value)
+              }
               value={formState.arrivalHubId}
             >
               <option value="">Aucun hub</option>
@@ -330,10 +425,12 @@ export function AdminRoutesManager({
             <label htmlFor="route-aircraft-type">Type appareil</label>
             <select
               id="route-aircraft-type"
-              onChange={(event) => updateFormState("aircraftTypeId", event.target.value)}
+              onChange={(event) =>
+                updateFormState("aircraftTypeId", event.target.value)
+              }
               value={formState.aircraftTypeId}
             >
-              <option value="">Aucun type imposé</option>
+              <option value="">Aucun type impose</option>
               {safeReferenceData.aircraftTypes.map((aircraftType) => (
                 <option key={aircraftType.id} value={aircraftType.id}>
                   {aircraftType.icaoCode} · {aircraftType.name}
@@ -347,7 +444,9 @@ export function AdminRoutesManager({
             <input
               id="route-distance"
               min={0}
-              onChange={(event) => updateFormState("distanceNm", event.target.value)}
+              onChange={(event) =>
+                updateFormState("distanceNm", event.target.value)
+              }
               type="number"
               value={formState.distanceNm}
             />
@@ -358,7 +457,9 @@ export function AdminRoutesManager({
             <input
               id="route-block-time"
               min={0}
-              onChange={(event) => updateFormState("blockTimeMinutes", event.target.value)}
+              onChange={(event) =>
+                updateFormState("blockTimeMinutes", event.target.value)
+              }
               type="number"
               value={formState.blockTimeMinutes}
             />
@@ -367,7 +468,9 @@ export function AdminRoutesManager({
           <label className="admin-checkbox">
             <input
               checked={formState.isActive}
-              onChange={(event) => updateFormState("isActive", event.target.checked)}
+              onChange={(event) =>
+                updateFormState("isActive", event.target.checked)
+              }
               type="checkbox"
             />
             Route active
@@ -390,12 +493,12 @@ export function AdminRoutesManager({
           ) : null}
 
           <div className="admin-form-actions">
-            <Button disabled={isPending} type="submit">
+            <Button disabled={isPending || isImportingSimbrief} type="submit">
               {isPending
                 ? "Enregistrement..."
                 : editingId
-                  ? "Mettre à jour"
-                  : "Créer la route"}
+                  ? "Mettre a jour"
+                  : "Creer la route"}
             </Button>
             {editingId ? (
               <Button onClick={resetForm} type="button" variant="ghost">
@@ -410,15 +513,15 @@ export function AdminRoutesManager({
         <div className="admin-card-head">
           <div>
             <span className="section-eyebrow">Catalogue</span>
-            <h2>Routes publiées</h2>
+            <h2>Routes publiees</h2>
           </div>
-          <p>{items.length} route(s) configurée(s).</p>
+          <p>{items.length} route(s) configuree(s).</p>
         </div>
 
         {items.length === 0 ? (
           <EmptyState
-            description="Créez votre première rotation pour alimenter l’exploitation."
-            title="Aucune route enregistrée"
+            description="Creez votre premiere rotation ou importez-la depuis SimBrief."
+            title="Aucune route enregistree"
           />
         ) : (
           <DataTable
@@ -455,7 +558,7 @@ export function AdminRoutesManager({
               },
               {
                 id: "status",
-                header: "État",
+                header: "Etat",
                 render: (item) => (
                   <Badge
                     label={item.isActive ? "Active" : "Inactive"}
@@ -472,7 +575,10 @@ export function AdminRoutesManager({
                     <Button onClick={() => handleEdit(item)} variant="ghost">
                       Modifier
                     </Button>
-                    <Button onClick={() => handleDelete(item.id)} variant="secondary">
+                    <Button
+                      onClick={() => handleDelete(item.id)}
+                      variant="secondary"
+                    >
                       Supprimer
                     </Button>
                   </div>

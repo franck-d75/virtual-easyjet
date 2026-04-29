@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Dependencies,
   ForbiddenException,
@@ -19,6 +20,11 @@ import type { AuthenticatedUser } from "@va/shared";
 
 import { AvatarStorageService } from "../../common/storage/avatar-storage.service.js";
 import type { UploadedAvatarFile } from "../../common/storage/avatar-upload.constants.js";
+import {
+  maskSecret,
+  normalizePrivateSimbriefConfig,
+  PRIVATE_SIMBRIEF_CONFIG_SETTING_KEY,
+} from "../../common/integrations/simbrief/simbrief-admin-config.js";
 import { decimalToNumber } from "../../common/utils/decimal.utils.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import {
@@ -33,6 +39,7 @@ import type {
   ImportAdminAircraftFromSimbriefAirframeDto,
   LinkAdminAircraftSimbriefAirframeDto,
   ReviewAdminPirepDto,
+  UpdateAdminSimbriefConfigDto,
   UpdateAdminRulesDto,
   UpdateAdminUserDto,
   UpdateAdminAircraftDto,
@@ -769,6 +776,116 @@ export class AdminService {
       this.logAdminDatasetError("SimBrief airframes", error);
       return [];
     }
+  }
+
+  public async getSimbriefConfig() {
+    const setting = await this.prisma.setting.findUnique({
+      where: {
+        key: PRIVATE_SIMBRIEF_CONFIG_SETTING_KEY,
+      },
+      include: {
+        updatedBy: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    const config = normalizePrivateSimbriefConfig(setting?.value);
+
+    return {
+      hasApiKey: Boolean(config.apiKey),
+      maskedApiKey: maskSecret(config.apiKey),
+      updatedAt: setting?.updatedAt.toISOString() ?? null,
+      updatedBy: setting?.updatedBy ?? null,
+    };
+  }
+
+  public async updateSimbriefConfig(
+    payload: UpdateAdminSimbriefConfigDto,
+    currentUser: AuthenticatedUser,
+  ) {
+    const normalizedApiKey = payload.apiKey?.trim() ?? "";
+
+    if (payload.clearApiKey) {
+      await this.prisma.setting.deleteMany({
+        where: {
+          key: PRIVATE_SIMBRIEF_CONFIG_SETTING_KEY,
+        },
+      });
+
+      logAdminAction(
+        "simbrief.config.clear",
+        currentUser.id,
+        PRIVATE_SIMBRIEF_CONFIG_SETTING_KEY,
+      );
+
+      return {
+        hasApiKey: false,
+        maskedApiKey: null,
+        updatedAt: null,
+        updatedBy: null,
+      };
+    }
+
+    if (normalizedApiKey.length === 0) {
+      throw new BadRequestException(
+        "Renseignez une clé API SimBrief ou utilisez l'action d'effacement.",
+      );
+    }
+
+    const setting = await this.prisma.setting.upsert({
+      where: {
+        key: PRIVATE_SIMBRIEF_CONFIG_SETTING_KEY,
+      },
+      update: {
+        value: {
+          apiKey: normalizedApiKey,
+        } satisfies Prisma.InputJsonValue,
+        isPublic: false,
+        description:
+          "Clé API SimBrief privée stockée côté serveur pour les intégrations de dispatch et d'import.",
+        updatedById: currentUser.id,
+      },
+      create: {
+        key: PRIVATE_SIMBRIEF_CONFIG_SETTING_KEY,
+        value: {
+          apiKey: normalizedApiKey,
+        } satisfies Prisma.InputJsonValue,
+        isPublic: false,
+        description:
+          "Clé API SimBrief privée stockée côté serveur pour les intégrations de dispatch et d'import.",
+        updatedById: currentUser.id,
+      },
+      include: {
+        updatedBy: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    logAdminAction(
+      "simbrief.config.update",
+      currentUser.id,
+      PRIVATE_SIMBRIEF_CONFIG_SETTING_KEY,
+      {
+        hasApiKey: true,
+      },
+    );
+
+    return {
+      hasApiKey: true,
+      maskedApiKey: maskSecret(normalizedApiKey),
+      updatedAt: setting.updatedAt.toISOString(),
+      updatedBy: setting.updatedBy,
+    };
   }
 
   public async getRules() {
