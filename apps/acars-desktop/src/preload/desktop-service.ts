@@ -4,6 +4,7 @@ import {
   normalizeAcarsBaseUrl,
   normalizeBaseUrl,
 } from "../shared/defaults.js";
+import { appendDesktopDiagnostic } from "../shared/desktop-diagnostics.js";
 import { createMockTelemetrySequence } from "../shared/mock-telemetry.js";
 import { FsuipcBridge } from "./fsuipc-bridge.js";
 import { SimConnectBridge } from "./simconnect-bridge.js";
@@ -2285,6 +2286,8 @@ export class DesktopService {
     message: string,
     details?: Record<string, unknown>,
   ): void {
+    appendDesktopDiagnostic("desktop-service", "info", message, details);
+
     if (details) {
       console.info("[desktop-service]", message, details);
       return;

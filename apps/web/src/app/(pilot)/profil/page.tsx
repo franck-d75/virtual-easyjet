@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 
 import { ApiActionButton } from "@/components/pilot/api-action-button";
+import { BrowserDiagnosticsCard } from "@/components/pilot/browser-diagnostics-card";
 import { ProfileCard } from "@/components/pilot/profile-card";
 import { SimbriefAirframesCard } from "@/components/pilot/simbrief-airframes-card";
 import { SimbriefLatestOfpCard } from "@/components/pilot/simbrief-latest-ofp-card";
@@ -232,6 +233,20 @@ export default async function ProfilePage(): Promise<JSX.Element> {
             />
           </div>
         </Card>
+      </section>
+      <section className="section-band">
+        <div className="section-band__header">
+          <div>
+            <span className="section-eyebrow">Diagnostic</span>
+            <h2>Traces locales du site</h2>
+          </div>
+          <p>
+            Exportez ici le journal local du navigateur pour nous aider à
+            reproduire et corriger plus vite les futurs incidents web.
+          </p>
+        </div>
+
+        <BrowserDiagnosticsCard />
       </section>
       <section className="section-band">
         <div className="section-band__header">

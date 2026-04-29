@@ -2,6 +2,7 @@ import type { JSX, ReactNode } from "react";
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
 
+import { BrowserDiagnosticsBootstrap } from "@/components/diagnostics/browser-diagnostics-bootstrap";
 import { APP_DESCRIPTION, APP_NAME, getAppBaseUrl } from "@/lib/config/env";
 
 import "leaflet/dist/leaflet.css";
@@ -38,6 +39,7 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body className={`${bodyFont.variable} ${headingFont.variable}`}>
+        <BrowserDiagnosticsBootstrap />
         {children}
       </body>
     </html>

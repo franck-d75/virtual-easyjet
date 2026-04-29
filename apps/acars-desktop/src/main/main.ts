@@ -3,6 +3,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { DesktopService } from "../preload/desktop-service.js";
+import {
+  appendDesktopDiagnostic,
+  getDesktopDiagnosticsLogPath,
+} from "../shared/desktop-diagnostics.js";
 
 const desktopService = new DesktopService();
 let bridgeHandlersRegistered = false;
@@ -15,6 +19,7 @@ function registerDesktopBridgeHandlers(): void {
 
   ipcMain.on("acarsDesktop:preload-log", (_event, level: string, message: string) => {
     const prefix = `[preload] ${message}`;
+    appendDesktopDiagnostic("preload", level === "error" ? "error" : "info", message);
 
     if (level === "error") {
       console.error(prefix);
@@ -75,6 +80,7 @@ function registerDesktopBridgeHandlers(): void {
 
   bridgeHandlersRegistered = true;
   console.info("[main] acarsDesktop IPC bridge handlers registered.");
+  appendDesktopDiagnostic("main", "info", "acarsDesktop IPC bridge handlers registered");
 }
 
 function resolveDesktopAssetPaths(): {
@@ -145,6 +151,10 @@ function createWindow(): void {
     nodeIntegration: false,
     sandbox: false,
   });
+  appendDesktopDiagnostic("main", "info", "BrowserWindow created", {
+    preloadPath,
+    rendererHtmlPath,
+  });
 
   mainWindow.webContents.setWindowOpenHandler(() => ({
     action: "deny",
@@ -159,6 +169,11 @@ function createWindow(): void {
         line,
         sourceId,
       });
+      appendDesktopDiagnostic("renderer", "info", message, {
+        level,
+        line,
+        sourceId,
+      });
     },
   );
 
@@ -170,6 +185,11 @@ function createWindow(): void {
         errorDescription,
         validatedUrl,
       });
+      appendDesktopDiagnostic("main", "error", "Renderer failed to load", {
+        errorCode,
+        errorDescription,
+        validatedUrl,
+      });
     },
   );
 
@@ -177,6 +197,9 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  appendDesktopDiagnostic("main", "info", "Desktop diagnostics activated", {
+    logPath: getDesktopDiagnosticsLogPath(),
+  });
   registerDesktopBridgeHandlers();
   createWindow();
 
