@@ -1,10 +1,12 @@
 import { Controller, Dependencies, Get, Param } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 
+import { Public } from "../../common/decorators/public.decorator.js";
 import { RanksService } from "./ranks.service.js";
 
 @ApiTags("ranks")
 @ApiBearerAuth()
+@Public()
 @Controller("ranks")
 @Dependencies(RanksService)
 export class RanksController {
@@ -20,4 +22,3 @@ export class RanksController {
     return this.ranksService.findByCode(code);
   }
 }
-
