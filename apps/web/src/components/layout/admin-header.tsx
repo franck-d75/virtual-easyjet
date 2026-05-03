@@ -74,7 +74,9 @@ export function AdminHeader({
               <small>Accès administrateur</small>
             </div>
           </div>
-          <LogoutButton />
+          <div className="pilot-chip__actions">
+            <LogoutButton />
+          </div>
         </div>
       </div>
     </header>
