@@ -7,6 +7,7 @@ import { APP_DESCRIPTION, APP_NAME, getAppBaseUrl } from "@/lib/config/env";
 
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
+import "./header-chip.css";
 
 const bodyFont = IBM_Plex_Sans({
   subsets: ["latin"],
