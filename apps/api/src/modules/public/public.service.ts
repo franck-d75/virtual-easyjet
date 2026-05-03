@@ -81,22 +81,6 @@ export class PublicService {
       this.prisma.pilotProfile.count({
         where: {
           status: PilotStatus.ACTIVE,
-          OR: [
-            {
-              flights: {
-                some: {
-                  status: FlightStatus.COMPLETED,
-                },
-              },
-            },
-            {
-              pireps: {
-                some: {
-                  status: PirepStatus.ACCEPTED,
-                },
-              },
-            },
-          ],
         },
       }),
       this.prisma.flight.count({
@@ -291,4 +275,3 @@ export class PublicService {
     };
   }
 }
-
