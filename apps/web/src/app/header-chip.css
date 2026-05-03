@@ -1,0 +1,53 @@
+.pilot-chip {
+  min-width: 0;
+  max-width: min(100%, 30rem);
+}
+
+.pilot-chip__identity {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pilot-chip__avatar {
+  flex: 0 0 auto;
+}
+
+.pilot-chip__copy {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pilot-chip__eyebrow,
+.pilot-chip strong,
+.pilot-chip small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pilot-chip__actions,
+.pilot-chip .button {
+  flex: 0 0 auto;
+}
+
+.pilot-chip__actions {
+  min-width: 0;
+}
+
+.pilot-chip .button {
+  width: auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .pilot-chip__actions {
+    width: auto;
+  }
+
+  .pilot-chip .button {
+    width: auto;
+  }
+}
