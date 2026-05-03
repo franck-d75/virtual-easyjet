@@ -75,12 +75,28 @@ export class PublicService {
     const [
       activePilots,
       completedFlights,
-      activePilotHoursAggregate,
+      completedFlightAggregate,
       validatedPireps,
     ] = await Promise.all([
       this.prisma.pilotProfile.count({
         where: {
           status: PilotStatus.ACTIVE,
+          OR: [
+            {
+              flights: {
+                some: {
+                  status: FlightStatus.COMPLETED,
+                },
+              },
+            },
+            {
+              pireps: {
+                some: {
+                  status: PirepStatus.ACCEPTED,
+                },
+              },
+            },
+          ],
         },
       }),
       this.prisma.flight.count({
@@ -88,12 +104,12 @@ export class PublicService {
           status: FlightStatus.COMPLETED,
         },
       }),
-      this.prisma.pilotProfile.aggregate({
+      this.prisma.flight.aggregate({
         where: {
-          status: PilotStatus.ACTIVE,
+          status: FlightStatus.COMPLETED,
         },
         _sum: {
-          hoursFlownMinutes: true,
+          durationMinutes: true,
         },
       }),
       this.prisma.pirep.count({
@@ -103,8 +119,7 @@ export class PublicService {
       }),
     ]);
 
-    const totalFlightMinutes =
-      activePilotHoursAggregate._sum.hoursFlownMinutes ?? 0;
+    const totalFlightMinutes = completedFlightAggregate._sum.durationMinutes ?? 0;
 
     return {
       activePilots,
