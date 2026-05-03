@@ -74,12 +74,14 @@ export function PilotHeader({
         <div className="pilot-chip">
           <div className="pilot-chip__identity">
             <UserAvatar avatarUrl={avatarUrl} name={pilotName} size="sm" />
-            <div>
+            <div className="pilot-chip__copy">
               <strong>{pilotName}</strong>
               <small>{identityCaption}</small>
             </div>
           </div>
-          <LogoutButton />
+          <div className="pilot-chip__actions">
+            <LogoutButton />
+          </div>
         </div>
       </div>
     </header>
