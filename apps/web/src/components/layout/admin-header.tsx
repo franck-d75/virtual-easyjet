@@ -78,7 +78,7 @@ export function AdminHeader({
           <div className="pilot-chip__actions">
             <Link
               className="button button--secondary"
-              href="/dashboard"
+              href="/"
               prefetch={false}
             >
               Mode pilote
