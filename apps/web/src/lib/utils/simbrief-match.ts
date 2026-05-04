@@ -42,7 +42,7 @@ export function buildBookingSimbriefCandidate(
   return {
     id: booking.id,
     label: booking.reservedFlightNumber,
-    href: booking.flight ? `/vols?flight=${booking.flight.id}` : "/bookings",
+    href: booking.flight ? `/vols?flight=${booking.flight.id}` : "/reservation",
     departureIcao: booking.departureAirport.icao,
     arrivalIcao: booking.arrivalAirport.icao,
     identifiers: [

@@ -1,12 +1,25 @@
 import { NextResponse } from "next/server";
 
-import { createBooking } from "@/lib/api/pilot";
+import { createBooking, getMyBookings } from "@/lib/api/pilot";
 import {
   createBackendErrorResponse,
   createBackendJsonResponse,
   executeWithBackendAccess,
 } from "@/lib/auth/backend-access";
 import { logWebError } from "@/lib/observability/log";
+
+export async function GET() {
+  try {
+    const result = await executeWithBackendAccess((accessToken) =>
+      getMyBookings(accessToken),
+    );
+
+    return createBackendJsonResponse(result.data, result.refreshedSession);
+  } catch (error) {
+    logWebError("pilot bookings fetch failed", error);
+    return createBackendErrorResponse(error);
+  }
+}
 
 export async function POST(request: Request) {
   try {

@@ -17,6 +17,7 @@ type ApiActionButtonProps = {
   className?: string;
   disabled?: boolean;
   confirmMessage?: string;
+  redirectTo?: string;
 };
 
 type ActionFeedback = {
@@ -54,9 +55,11 @@ export function ApiActionButton({
   className,
   disabled = false,
   confirmMessage,
+  redirectTo,
 }: ApiActionButtonProps): JSX.Element {
   const router = useRouter();
   const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   async function handleClick(): Promise<void> {
@@ -65,6 +68,7 @@ export function ApiActionButton({
     }
 
     setFeedback(null);
+    setIsSubmitting(true);
 
     const requestInit: RequestInit = {
       method: "POST",
@@ -77,12 +81,24 @@ export function ApiActionButton({
       requestInit.body = JSON.stringify(body);
     }
 
-    const response = await fetch(endpoint, requestInit);
+    let response: Response;
+
+    try {
+      response = await fetch(endpoint, requestInit);
+    } catch {
+      setIsSubmitting(false);
+      setFeedback({
+        tone: "danger",
+        message: "Action impossible pour le moment.",
+      });
+      return;
+    }
 
     const rawPayload = await response.text();
     const payload = rawPayload.length > 0 ? parsePayload(rawPayload) : null;
 
     if (!response.ok) {
+      setIsSubmitting(false);
       setFeedback({
         tone: "danger",
         message: extractMessage(payload, "Action impossible pour le moment."),
@@ -95,21 +111,26 @@ export function ApiActionButton({
       message: successMessage ?? "Action effectuée avec succès.",
     });
     startTransition(() => {
+      if (redirectTo) {
+        router.push(redirectTo);
+      }
+
       router.refresh();
     });
+    setIsSubmitting(false);
   }
 
   return (
     <div className={cn("action-stack", className)}>
       <Button
-        disabled={disabled || isPending}
+        disabled={disabled || isSubmitting || isPending}
         onClick={() => {
           void handleClick();
         }}
         type="button"
         variant={variant}
       >
-        {isPending ? pendingLabel : label}
+        {isSubmitting || isPending ? pendingLabel : label}
       </Button>
       {feedback ? (
         <p
