@@ -10,6 +10,8 @@ const ACTIVE_ACARS_STATUSES: SessionStatus[] = [
 ];
 
 const liveSessionSelect = {
+  arrivalFuelKg: true,
+  eventSummary: true,
   currentAltitudeFt: true,
   currentGroundspeedKts: true,
   currentHeadingDeg: true,
@@ -27,6 +29,22 @@ const liveSessionSelect = {
 type LiveSessionRecord = Prisma.AcarsSessionGetPayload<{
   select: typeof liveSessionSelect;
 }>;
+
+function readEventSummaryNumber(
+  summary: Prisma.JsonValue | null,
+  key: string,
+): number | null {
+  if (
+    typeof summary !== "object" ||
+    summary === null ||
+    Array.isArray(summary)
+  ) {
+    return null;
+  }
+
+  const value = (summary as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
 
 @Injectable()
 @Dependencies(PrismaService)
@@ -59,7 +77,14 @@ export class AcarsLiveService {
 
     console.info("[acars] live map sessions returned count", {
       count: liveFlights.length,
-      callsigns: liveFlights.map((flight) => flight.callsign),
+      flights: liveFlights.map((flight) => ({
+        callsign: flight.callsign,
+        phase: flight.phase,
+        altitudeFt: flight.altitude,
+        speedKts: flight.speed,
+        fuelTotalKg: flight.fuelTotalKg ?? null,
+        passengersLive: flight.passengersLive ?? null,
+      })),
     });
 
     return liveFlights;
@@ -75,6 +100,11 @@ export class AcarsLiveService {
       lon: decimalToNumber(session.currentLongitude) ?? 0,
       altitude,
       speed,
+      fuelTotalKg: decimalToNumber(session.arrivalFuelKg),
+      passengersLive: readEventSummaryNumber(
+        session.eventSummary,
+        "livePassengerCount",
+      ),
       heading: normalizeHeading(session.currentHeadingDeg),
       phase: deriveLiveMapPhase(
         altitude,

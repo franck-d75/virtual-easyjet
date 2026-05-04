@@ -175,6 +175,7 @@ const EMPTY_TELEMETRY_RESOLUTION_CONTEXT: TelemetryResolutionContext = {
   latestOfp: null,
   simbriefAirframes: [],
 };
+const ESTIMATED_PASSENGER_WEIGHT_KG = 84;
 
 function normalizeOptionalString(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -219,6 +220,23 @@ function normalizeRegistration(value: string | null | undefined): string | null 
   }
 
   return value!.trim().toUpperCase();
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function clampPassengerCount(
+  value: number,
+  plannedPassengerCount: number | null,
+): number {
+  const normalizedValue = Math.max(0, Math.round(value));
+
+  if (isFiniteNumber(plannedPassengerCount)) {
+    return Math.min(normalizedValue, plannedPassengerCount);
+  }
+
+  return Math.min(normalizedValue, 999);
 }
 
 function extractRegistrationFromDebugText(value: string | null | undefined): string | null {
@@ -761,6 +779,9 @@ export class DesktopService {
         groundspeedKts: snapshot.telemetry.groundspeedKts,
         headingDeg: snapshot.telemetry.headingDeg,
         fuelTotalKg: snapshot.telemetry.fuelTotalKg ?? null,
+        parkingBrake: snapshot.telemetry.parkingBrake ?? null,
+        passengersLive: snapshot.telemetry.passengersLive ?? null,
+        passengerSource: snapshot.telemetry.passengerSource ?? null,
         fuelSource:
           snapshot.dataSource === "fsuipc" || snapshot.dataSource === "simconnect"
             ? snapshot.dataSource.toUpperCase()
@@ -1241,13 +1262,50 @@ export class DesktopService {
     }
 
     try {
-      await this.authorizedAcarsRequestJson<SessionSummary>(
+      const simulatorSnapshot = this.getCurrentSimulatorSnapshot();
+
+      this.log("acars telemetry concordance send", {
+        sessionId,
+        dataSource: simulatorSnapshot.dataSource,
+        aircraftDisplayName: simulatorSnapshot.aircraft?.displayName ?? null,
+        aircraftRegistration: simulatorSnapshot.aircraft?.registration ?? null,
+        aircraftLivery: simulatorSnapshot.aircraft?.liveryName ?? null,
+        latestOfpFlightNumber:
+          this.telemetryResolutionContext.latestOfp?.flightNumber ?? null,
+        latestOfpRegistration:
+          this.telemetryResolutionContext.latestOfp?.aircraft?.registration ?? null,
+        latitude: telemetry.latitude,
+        longitude: telemetry.longitude,
+        altitudeFt: telemetry.altitudeFt,
+        groundspeedKts: telemetry.groundspeedKts,
+        onGround: telemetry.onGround,
+        parkingBrake: telemetry.parkingBrake ?? null,
+        fuelTotalKg: telemetry.fuelTotalKg ?? null,
+        passengersLive: telemetry.passengersLive ?? null,
+        passengerSource: telemetry.passengerSource ?? null,
+      });
+
+      const session = await this.authorizedAcarsRequestJson<SessionSummary>(
         `/sessions/${encodeURIComponent(sessionId)}/telemetry`,
         {
           method: "POST",
           body: telemetry,
         },
       );
+
+      this.log("acars telemetry concordance ack", {
+        sessionId: session.id,
+        flightNumber: session.flight.flightNumber,
+        detectedPhase: session.detectedPhase,
+        liveMapAltitudeFt: session.currentPosition.altitudeFt ?? null,
+        liveMapGroundspeedKts: session.currentPosition.groundspeedKts ?? null,
+        liveMapOnGround: session.currentPosition.onGround ?? null,
+        sessionFuelKg: session.fuel.arrivalFuelKg ?? null,
+        livePassengerCount:
+          typeof session.eventSummary?.livePassengerCount === "number"
+            ? session.eventSummary.livePassengerCount
+            : null,
+      });
 
       this.trackingState = {
         ...this.trackingState,
@@ -1367,6 +1425,9 @@ export class DesktopService {
       altitudeFt: enrichedSnapshot.telemetry?.altitudeFt ?? null,
       groundspeedKts: enrichedSnapshot.telemetry?.groundspeedKts ?? null,
       headingDeg: enrichedSnapshot.telemetry?.headingDeg ?? null,
+      parkingBrake: enrichedSnapshot.telemetry?.parkingBrake ?? null,
+      passengersLive: enrichedSnapshot.telemetry?.passengersLive ?? null,
+      passengerSource: enrichedSnapshot.telemetry?.passengerSource ?? null,
     });
 
     for (const listener of [...this.simulatorUpdateListeners]) {
@@ -1477,7 +1538,12 @@ export class DesktopService {
     const primaryTelemetry = await primaryBridge.sampleTelemetry();
 
     if (primaryTelemetry) {
-      return primaryTelemetry;
+      const fallbackTelemetry = await this.sampleSupplementalTelemetry(fallbackBridge);
+      return this.enrichTelemetryWithFlightContext(
+        fallbackTelemetry
+          ? this.mergeTelemetrySamples(primaryTelemetry, fallbackTelemetry)
+          : primaryTelemetry,
+      );
     }
 
     if (!fallbackBridge) {
@@ -1485,7 +1551,120 @@ export class DesktopService {
     }
 
     await fallbackBridge.connect();
-    return fallbackBridge.sampleTelemetry();
+    const fallbackTelemetry = await fallbackBridge.sampleTelemetry();
+    return fallbackTelemetry
+      ? this.enrichTelemetryWithFlightContext(fallbackTelemetry)
+      : null;
+  }
+
+  private async sampleSupplementalTelemetry(
+    bridge: LiveTelemetryBridge | null,
+  ): Promise<TelemetryInput | null> {
+    if (!bridge) {
+      return null;
+    }
+
+    try {
+      await bridge.connect();
+      return bridge.sampleTelemetry();
+    } catch (error) {
+      this.log("supplemental telemetry sample skipped", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  private mergeTelemetrySamples(
+    primaryTelemetry: TelemetryInput,
+    supplementalTelemetry: TelemetryInput,
+  ): TelemetryInput {
+    const mergedTelemetry: TelemetryInput = {
+      ...primaryTelemetry,
+    };
+
+    if (
+      !isFiniteNumber(mergedTelemetry.fuelTotalKg) &&
+      isFiniteNumber(supplementalTelemetry.fuelTotalKg)
+    ) {
+      mergedTelemetry.fuelTotalKg = supplementalTelemetry.fuelTotalKg;
+    }
+
+    if (
+      typeof mergedTelemetry.parkingBrake !== "boolean" &&
+      typeof supplementalTelemetry.parkingBrake === "boolean"
+    ) {
+      mergedTelemetry.parkingBrake = supplementalTelemetry.parkingBrake;
+    }
+
+    if (
+      !isFiniteNumber(mergedTelemetry.passengersLive) &&
+      isFiniteNumber(supplementalTelemetry.passengersLive)
+    ) {
+      mergedTelemetry.passengersLive = supplementalTelemetry.passengersLive;
+      mergedTelemetry.passengerSource =
+        supplementalTelemetry.passengerSource ?? "supplemental";
+    }
+
+    if (
+      !isFiniteNumber(mergedTelemetry.payloadPassengerWeightKg) &&
+      isFiniteNumber(supplementalTelemetry.payloadPassengerWeightKg)
+    ) {
+      mergedTelemetry.payloadPassengerWeightKg =
+        supplementalTelemetry.payloadPassengerWeightKg;
+    }
+
+    if (
+      !isFiniteNumber(mergedTelemetry.payloadTotalWeightKg) &&
+      isFiniteNumber(supplementalTelemetry.payloadTotalWeightKg)
+    ) {
+      mergedTelemetry.payloadTotalWeightKg = supplementalTelemetry.payloadTotalWeightKg;
+    }
+
+    return mergedTelemetry;
+  }
+
+  private enrichTelemetryWithFlightContext(
+    telemetry: TelemetryInput,
+  ): TelemetryInput {
+    const latestOfp = this.telemetryResolutionContext.latestOfp;
+    const plannedPassengerCount = isFiniteNumber(latestOfp?.passengers)
+      ? latestOfp.passengers
+      : null;
+    const enrichedTelemetry: TelemetryInput = {
+      ...telemetry,
+    };
+
+    if (!isFiniteNumber(enrichedTelemetry.passengersLive)) {
+      const passengerWeightKg = isFiniteNumber(
+        enrichedTelemetry.payloadPassengerWeightKg,
+      )
+        ? enrichedTelemetry.payloadPassengerWeightKg
+        : isFiniteNumber(enrichedTelemetry.payloadTotalWeightKg)
+          ? enrichedTelemetry.payloadTotalWeightKg
+          : null;
+
+      if (isFiniteNumber(passengerWeightKg) && passengerWeightKg > 0) {
+        enrichedTelemetry.passengersLive = clampPassengerCount(
+          passengerWeightKg / ESTIMATED_PASSENGER_WEIGHT_KG,
+          plannedPassengerCount,
+        );
+        enrichedTelemetry.passengerSource = isFiniteNumber(
+          enrichedTelemetry.payloadPassengerWeightKg,
+        )
+          ? "simconnect_payload_weight"
+          : "simconnect_payload_total";
+      }
+    } else {
+      enrichedTelemetry.passengersLive = clampPassengerCount(
+        enrichedTelemetry.passengersLive,
+        plannedPassengerCount,
+      );
+      enrichedTelemetry.passengerSource =
+        enrichedTelemetry.passengerSource ?? "simconnect_payload_objects";
+    }
+
+    return enrichedTelemetry;
   }
 
   private async prepareFlightFromLatestOfp(payload: {
@@ -1769,8 +1948,15 @@ export class DesktopService {
   }
 
   private enrichSimulatorSnapshot(snapshot: SimulatorSnapshot): SimulatorSnapshot {
+    const enrichedTelemetry = snapshot.telemetry
+      ? this.enrichTelemetryWithFlightContext(snapshot.telemetry)
+      : null;
+
     if (!snapshot.aircraft) {
-      return cloneValue(snapshot);
+      return cloneValue({
+        ...snapshot,
+        telemetry: enrichedTelemetry,
+      });
     }
 
     const latestOfp = this.telemetryResolutionContext.latestOfp;
@@ -1790,6 +1976,23 @@ export class DesktopService {
       resolvedRegistration,
       icaoCode,
     );
+
+    if (latestOfpRegistration) {
+      const latestOfpAirframe = this.findSimbriefAirframeByRegistration(
+        latestOfpRegistration,
+        icaoCode,
+      );
+
+      resolvedRegistration = latestOfpRegistration;
+      registrationSource = "latest_ofp";
+      matchedAirframe = latestOfpAirframe ?? matchedAirframe;
+      liveryName =
+        latestOfpAirframe?.name ??
+        (latestOfpRegistration && icaoCode
+          ? `${latestOfpRegistration} - ${icaoCode}`
+          : latestOfpRegistration) ??
+        liveryName;
+    }
 
     if (matchedAirframe) {
       icaoCode =
@@ -1836,6 +2039,7 @@ export class DesktopService {
 
     const enrichedSnapshot: SimulatorSnapshot = {
       ...snapshot,
+      telemetry: enrichedTelemetry,
       aircraft: {
         ...rawAircraft,
         displayName:

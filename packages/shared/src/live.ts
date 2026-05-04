@@ -63,6 +63,8 @@ export interface LiveMapAircraft {
   lon: number;
   altitude: number;
   speed: number;
+  fuelTotalKg?: number | null;
+  passengersLive?: number | null;
   phase: LiveMapPhase;
   heading: number;
   onGround?: boolean | null;

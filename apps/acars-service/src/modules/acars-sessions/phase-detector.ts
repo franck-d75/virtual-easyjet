@@ -3,6 +3,8 @@ import { FlightPhase } from "@va/database";
 export interface PhaseDetectionInput {
   previousPhase: FlightPhase;
   previousOnGround: boolean | null;
+  previousGroundspeedKts: number | null;
+  previousParkingBrake: boolean | null;
   onGround: boolean;
   groundspeedKts: number;
   altitudeFt: number;
@@ -13,8 +15,9 @@ export interface PhaseDetectionInput {
 export const PHASE_DETECTION_THRESHOLDS = {
   groundspeedKts: {
     parkedMax: 1,
-    pushbackMax: 5,
-    taxiMin: 5,
+    pushbackMin: 2.5,
+    pushbackMax: 12,
+    taxiMin: 8,
   },
   altitudeFt: {
     takeoffMax: 1_500,
@@ -101,6 +104,11 @@ function isPostArrivalPhase(phase: FlightPhase): boolean {
 
 function resolveCandidatePhase(input: PhaseDetectionInput): FlightPhase {
   const thresholds = PHASE_DETECTION_THRESHOLDS;
+  const previousGroundspeedKts = Math.max(input.previousGroundspeedKts ?? 0, 0);
+  const taxiSpeedThreshold =
+    thresholds.groundspeedKts.taxiMin + thresholds.tolerance.groundspeedKts;
+  const wasParkingBrakeReleased =
+    input.previousParkingBrake === true && input.parkingBrake === false;
 
   if (input.previousPhase === FlightPhase.COMPLETED) {
     return FlightPhase.COMPLETED;
@@ -111,38 +119,75 @@ function resolveCandidatePhase(input: PhaseDetectionInput): FlightPhase {
       return FlightPhase.LANDING;
     }
 
-    if (
-      input.groundspeedKts <=
-        thresholds.groundspeedKts.parkedMax + thresholds.tolerance.groundspeedKts &&
-      input.parkingBrake === true
-    ) {
-      return isPostArrivalPhase(input.previousPhase)
-        ? FlightPhase.ARRIVAL_PARKING
-        : FlightPhase.DEPARTURE_PARKING;
-    }
-
     if (isPostArrivalPhase(input.previousPhase)) {
       return input.groundspeedKts >=
-        thresholds.groundspeedKts.taxiMin + thresholds.tolerance.groundspeedKts
+        taxiSpeedThreshold
         ? FlightPhase.TAXI_IN
         : FlightPhase.ARRIVAL_PARKING;
     }
 
     if (
-      PUSHBACK_ENTRY_PHASES.includes(input.previousPhase) &&
-      input.parkingBrake === false &&
-      input.groundspeedKts <=
-        thresholds.groundspeedKts.pushbackMax +
-          thresholds.tolerance.groundspeedKts
+      input.previousPhase === FlightPhase.PUSHBACK &&
+      input.parkingBrake === true &&
+      input.groundspeedKts <= thresholds.groundspeedKts.parkedMax + 0.5
     ) {
       return FlightPhase.PUSHBACK;
     }
 
     if (
-      input.groundspeedKts >=
-      thresholds.groundspeedKts.taxiMin + thresholds.tolerance.groundspeedKts
+      PUSHBACK_ENTRY_PHASES.includes(input.previousPhase) &&
+      input.parkingBrake === false &&
+      (wasParkingBrakeReleased || input.groundspeedKts < taxiSpeedThreshold)
+    ) {
+      return FlightPhase.PUSHBACK;
+    }
+
+    if (
+      input.previousPhase === FlightPhase.PUSHBACK &&
+      input.previousParkingBrake === true &&
+      input.parkingBrake === false
     ) {
       return FlightPhase.TAXI_OUT;
+    }
+
+    const departureSurfacePushbackEligible =
+      (PUSHBACK_ENTRY_PHASES.includes(input.previousPhase) ||
+        input.previousPhase === FlightPhase.PUSHBACK) &&
+      input.groundspeedKts >
+        thresholds.groundspeedKts.pushbackMin &&
+      input.groundspeedKts <=
+        thresholds.groundspeedKts.pushbackMax +
+          thresholds.tolerance.groundspeedKts;
+    const startedMovingFromGate =
+      previousGroundspeedKts <=
+        thresholds.groundspeedKts.parkedMax + 0.5 &&
+      input.groundspeedKts >= thresholds.groundspeedKts.pushbackMin;
+
+    if (
+      input.previousPhase === FlightPhase.PUSHBACK &&
+      input.groundspeedKts >= taxiSpeedThreshold
+    ) {
+      return FlightPhase.TAXI_OUT;
+    }
+
+    if (
+      departureSurfacePushbackEligible &&
+      startedMovingFromGate &&
+      input.groundspeedKts <
+        taxiSpeedThreshold
+    ) {
+      return FlightPhase.PUSHBACK;
+    }
+
+    if (input.groundspeedKts >= taxiSpeedThreshold) {
+      return FlightPhase.TAXI_OUT;
+    }
+
+    if (
+      input.groundspeedKts <= thresholds.groundspeedKts.parkedMax + 0.5 &&
+      input.parkingBrake === true
+    ) {
+      return FlightPhase.DEPARTURE_PARKING;
     }
 
     return input.previousPhase === FlightPhase.PRE_FLIGHT

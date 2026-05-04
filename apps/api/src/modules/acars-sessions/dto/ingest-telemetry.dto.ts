@@ -7,7 +7,9 @@ import {
   IsLongitude,
   IsNumber,
   IsOptional,
+  IsString,
   Max,
+  MaxLength,
   Min,
 } from "class-validator";
 
@@ -79,4 +81,28 @@ export class IngestTelemetryDto {
   )
   @IsBoolean()
   public parkingBrake?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(999)
+  public passengersLive?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(48)
+  public passengerSource?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  public payloadPassengerWeightKg?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  public payloadTotalWeightKg?: number;
 }

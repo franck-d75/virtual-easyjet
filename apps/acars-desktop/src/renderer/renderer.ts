@@ -168,7 +168,41 @@ function formatFuelKg(value: number | null | undefined): string {
     return "n/d";
   }
 
-  return `${value.toFixed(0)} kg`;
+  return `${Math.ceil(Math.max(value, 0) / 10) * 10} kg`;
+}
+
+function resolvePlannedAircraftDisplay(): {
+  atcId: string | null;
+  icaoCode: string | null;
+  liveryName: string | null;
+  registration: string | null;
+} {
+  const activeAircraft = state.activeSession?.flight.aircraft ?? null;
+  const ofpAircraft = state.dispatch?.latestOfp?.aircraft ?? null;
+  const simulatorAircraft = state.simulator?.aircraft ?? null;
+  const registration =
+    activeAircraft?.registration ??
+    ofpAircraft?.registration ??
+    simulatorAircraft?.registration ??
+    null;
+  const icaoCode =
+    activeAircraft?.aircraftType.icaoCode ??
+    ofpAircraft?.icaoCode ??
+    simulatorAircraft?.icaoCode ??
+    null;
+  const liveryName =
+    activeAircraft
+      ? `${activeAircraft.registration} - ${activeAircraft.aircraftType.icaoCode}`
+      : registration && icaoCode
+        ? `${registration} - ${icaoCode}`
+        : simulatorAircraft?.liveryName ?? null;
+
+  return {
+    atcId: registration ?? simulatorAircraft?.atcId ?? null,
+    icaoCode,
+    liveryName,
+    registration,
+  };
 }
 
 function formatLandingRateFpm(value: number | null | undefined): string {
@@ -559,6 +593,7 @@ function renderFlights(flights: FlightSummary[]): void {
 
 function renderSimulator(): void {
   const simulator = state.simulator;
+  const plannedAircraft = resolvePlannedAircraftDisplay();
 
   if (!simulator) {
     simulatorSummary.innerHTML = `
@@ -593,19 +628,19 @@ function renderSimulator(): void {
       </div>
       <div class="metric">
         <span class="metric-label">Type ICAO</span>
-        <span class="metric-value">${escapeHtml(simulator.aircraft?.icaoCode ?? "n/d")}</span>
+        <span class="metric-value">${escapeHtml(plannedAircraft.icaoCode ?? "n/d")}</span>
       </div>
       <div class="metric">
         <span class="metric-label">Immatriculation reelle</span>
-        <span class="metric-value">${escapeHtml(simulator.aircraft?.registration ?? "n/d")}</span>
+        <span class="metric-value">${escapeHtml(plannedAircraft.registration ?? "n/d")}</span>
       </div>
       <div class="metric">
         <span class="metric-label">ATC ID</span>
-        <span class="metric-value">${escapeHtml(simulator.aircraft?.atcId ?? "n/d")}</span>
+        <span class="metric-value">${escapeHtml(plannedAircraft.atcId ?? "n/d")}</span>
       </div>
       <div class="metric">
         <span class="metric-label">Livree / variation</span>
-        <span class="metric-value">${escapeHtml(simulator.aircraft?.liveryName ?? "n/d")}</span>
+        <span class="metric-value">${escapeHtml(plannedAircraft.liveryName ?? "n/d")}</span>
       </div>
       <div class="metric">
         <span class="metric-label">Cap</span>
@@ -655,10 +690,12 @@ function renderSession(): void {
     "landingRateFpm",
   );
   const plannedPassengerCount = state.dispatch?.latestOfp?.passengers ?? null;
-  const livePassengerCount = readEventSummaryNumber(
-    session?.eventSummary,
-    "livePassengerCount",
-  );
+  const livePassengerCount =
+    state.simulator?.telemetry?.passengersLive ??
+    readEventSummaryNumber(
+      session?.eventSummary,
+      "livePassengerCount",
+    );
 
   if (!session) {
     sessionSummary.innerHTML = `
@@ -714,6 +751,16 @@ function renderSession(): void {
       <div class="metric">
         <span class="metric-label">Passagers live</span>
         <span class="metric-value">${livePassengerCount ?? "n/d"}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Source passagers</span>
+        <span class="metric-value">${escapeHtml(
+          (state.simulator?.telemetry?.passengerSource ??
+            (typeof session?.eventSummary?.livePassengerSource === "string"
+              ? session.eventSummary.livePassengerSource
+              : null)) ??
+            "n/d",
+        )}</span>
       </div>
     </div>
     ${
@@ -786,6 +833,9 @@ function applySimulatorUpdate(simulator: SimulatorSnapshot): void {
       groundspeedKts: simulator.telemetry.groundspeedKts,
       headingDeg: simulator.telemetry.headingDeg,
       fuelTotalKg: simulator.telemetry.fuelTotalKg ?? null,
+      parkingBrake: simulator.telemetry.parkingBrake ?? null,
+      passengersLive: simulator.telemetry.passengersLive ?? null,
+      passengerSource: simulator.telemetry.passengerSource ?? null,
       aircraftDisplayName: simulator.aircraft?.displayName ?? null,
       aircraftIcao: simulator.aircraft?.icaoCode ?? null,
       aircraftLivery: simulator.aircraft?.liveryName ?? null,

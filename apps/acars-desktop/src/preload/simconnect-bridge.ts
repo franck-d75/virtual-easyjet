@@ -1,6 +1,16 @@
 import type { DesktopConfig, SimulatorSnapshot, TelemetryInput } from "../shared/types.js";
 
 const CONNECT_RETRY_INTERVAL_SECONDS = 5;
+const KILOGRAMS_PER_POUND = 0.45359237;
+const PAYLOAD_STATION_INDEXES = Array.from({ length: 15 }, (_, index) => index + 1);
+const PASSENGER_STATION_NAME_PATTERN =
+  /\b(PAX|PASSENGER|PASSENGERS|CABIN|SEAT|SEATS|ROW)\b/iu;
+
+const PAYLOAD_STATION_SIMVARS = PAYLOAD_STATION_INDEXES.flatMap((index) => [
+  `PAYLOAD STATION NAME:${index}`,
+  `PAYLOAD STATION WEIGHT:${index}`,
+  `PAYLOAD STATION NUM SIMOBJECTS:${index}`,
+]);
 
 const DEFAULT_SIMULATOR_SNAPSHOT: SimulatorSnapshot = {
   status: "UNAVAILABLE",
@@ -98,6 +108,12 @@ function roundInteger(value: number | null): number | null {
   return typeof value === "number" ? Math.round(value) : null;
 }
 
+function roundKilograms(value: number | null): number | null {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.round(value * 100) / 100)
+    : null;
+}
+
 function looksLikeRegistration(value: string | null): boolean {
   if (!value) {
     return false;
@@ -183,6 +199,54 @@ function detectAircraftDisplayName(
   return icaoCode;
 }
 
+function isPassengerPayloadStation(name: string | null): boolean {
+  return Boolean(name && PASSENGER_STATION_NAME_PATTERN.test(name));
+}
+
+function buildPayloadSummary(payload: Record<string, unknown>): {
+  passengerObjectCount: number | null;
+  passengerStationWeightKg: number | null;
+  totalPayloadWeightKg: number | null;
+} {
+  const rawStationCount = readNumber(payload, "PAYLOAD STATION COUNT");
+  const stationCount =
+    typeof rawStationCount === "number"
+      ? Math.min(Math.max(Math.round(rawStationCount), 0), PAYLOAD_STATION_INDEXES.length)
+      : PAYLOAD_STATION_INDEXES.length;
+  let totalPayloadWeightKg = 0;
+  let passengerStationWeightKg = 0;
+  let passengerObjectCount = 0;
+
+  for (const index of PAYLOAD_STATION_INDEXES.slice(0, stationCount)) {
+    const stationName = readString(payload, `PAYLOAD STATION NAME:${index}`);
+    const stationWeightPounds = readNumber(payload, `PAYLOAD STATION WEIGHT:${index}`);
+    const stationObjectCount = readNumber(
+      payload,
+      `PAYLOAD STATION NUM SIMOBJECTS:${index}`,
+    );
+    const stationWeightKg =
+      typeof stationWeightPounds === "number"
+        ? stationWeightPounds * KILOGRAMS_PER_POUND
+        : 0;
+
+    totalPayloadWeightKg += Math.max(stationWeightKg, 0);
+
+    if (isPassengerPayloadStation(stationName)) {
+      passengerStationWeightKg += Math.max(stationWeightKg, 0);
+
+      if (typeof stationObjectCount === "number" && stationObjectCount > 0) {
+        passengerObjectCount += Math.round(stationObjectCount);
+      }
+    }
+  }
+
+  return {
+    passengerObjectCount: passengerObjectCount > 0 ? passengerObjectCount : null,
+    passengerStationWeightKg: roundKilograms(passengerStationWeightKg),
+    totalPayloadWeightKg: roundKilograms(totalPayloadWeightKg),
+  };
+}
+
 function buildTelemetrySample(payload: Record<string, unknown>): TelemetryInput | null {
   const latitude = readNumber(payload, "PLANE LATITUDE", "GPS POSITION LAT");
   const longitude = readNumber(payload, "PLANE LONGITUDE", "GPS POSITION LON");
@@ -223,15 +287,35 @@ function buildTelemetrySample(payload: Record<string, unknown>): TelemetryInput 
     onGround,
   };
 
-  const fuelTotalKg = readNumber(payload, "FUEL TOTAL QUANTITY WEIGHT");
+  const fuelTotalPounds = readNumber(payload, "FUEL TOTAL QUANTITY WEIGHT");
   const parkingBrake = readBoolean(payload, "BRAKE PARKING POSITION");
+  const payloadSummary = buildPayloadSummary(payload);
 
-  if (typeof fuelTotalKg === "number") {
-    telemetry.fuelTotalKg = Math.max(0, Math.round(fuelTotalKg * 100) / 100);
+  if (typeof fuelTotalPounds === "number") {
+    const roundedFuelTotalKg = roundKilograms(
+      fuelTotalPounds * KILOGRAMS_PER_POUND,
+    );
+
+    if (roundedFuelTotalKg !== null) {
+      telemetry.fuelTotalKg = roundedFuelTotalKg;
+    }
   }
 
   if (typeof parkingBrake === "boolean") {
     telemetry.parkingBrake = parkingBrake;
+  }
+
+  if (payloadSummary.passengerObjectCount !== null) {
+    telemetry.passengersLive = payloadSummary.passengerObjectCount;
+    telemetry.passengerSource = "simconnect_payload_objects";
+  }
+
+  if (payloadSummary.passengerStationWeightKg !== null) {
+    telemetry.payloadPassengerWeightKg = payloadSummary.passengerStationWeightKg;
+  }
+
+  if (payloadSummary.totalPayloadWeightKg !== null) {
+    telemetry.payloadTotalWeightKg = payloadSummary.totalPayloadWeightKg;
   }
 
   return telemetry;
@@ -278,6 +362,8 @@ export class SimConnectBridge {
         "SIM ON GROUND",
         "BRAKE PARKING POSITION",
         "FUEL TOTAL QUANTITY WEIGHT",
+        "PAYLOAD STATION COUNT",
+        ...PAYLOAD_STATION_SIMVARS,
         "ATC ID",
         "ATC MODEL",
         "TITLE",

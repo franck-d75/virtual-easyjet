@@ -224,6 +224,10 @@ export interface TelemetryInput {
   gearPercent?: number;
   flapsPercent?: number;
   parkingBrake?: boolean;
+  passengersLive?: number;
+  passengerSource?: string;
+  payloadPassengerWeightKg?: number;
+  payloadTotalWeightKg?: number;
 }
 
 export interface MockTelemetryStep {

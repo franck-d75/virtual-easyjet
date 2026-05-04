@@ -76,6 +76,48 @@ const TAKEOFF_PHASES: FlightPhase[] = [
   FlightPhase.CRUISE,
 ];
 
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function buildTelemetryEventSummary(
+  existingSummary: Prisma.JsonValue | null,
+  payload: IngestTelemetryDto,
+  capturedAt: Date,
+): Prisma.InputJsonObject | null {
+  const nextSummary: Record<string, unknown> = isJsonObject(existingSummary)
+    ? { ...existingSummary }
+    : {};
+  let hasTelemetrySummary = false;
+
+  if (typeof payload.passengersLive === "number" && Number.isFinite(payload.passengersLive)) {
+    nextSummary.livePassengerCount = Math.max(0, Math.round(payload.passengersLive));
+    nextSummary.livePassengerSource = payload.passengerSource ?? "telemetry";
+    nextSummary.livePassengerUpdatedAt = capturedAt.toISOString();
+    hasTelemetrySummary = true;
+  }
+
+  if (
+    typeof payload.payloadPassengerWeightKg === "number" &&
+    Number.isFinite(payload.payloadPassengerWeightKg)
+  ) {
+    nextSummary.payloadPassengerWeightKg = payload.payloadPassengerWeightKg;
+    hasTelemetrySummary = true;
+  }
+
+  if (
+    typeof payload.payloadTotalWeightKg === "number" &&
+    Number.isFinite(payload.payloadTotalWeightKg)
+  ) {
+    nextSummary.payloadTotalWeightKg = payload.payloadTotalWeightKg;
+    hasTelemetrySummary = true;
+  }
+
+  return hasTelemetrySummary
+    ? (nextSummary as Prisma.InputJsonObject)
+    : null;
+}
+
 @Injectable()
 @Dependencies(PrismaService)
 export class AcarsSessionsService {
@@ -209,6 +251,10 @@ export class AcarsSessionsService {
       altitudeFt: payload.altitudeFt,
       groundspeedKts: payload.groundspeedKts,
       onGround: payload.onGround,
+      parkingBrake: payload.parkingBrake ?? null,
+      fuelTotalKg: payload.fuelTotalKg ?? null,
+      passengersLive: payload.passengersLive ?? null,
+      passengerSource: payload.passengerSource ?? null,
       capturedAt: payload.capturedAt ?? null,
     });
 
@@ -237,6 +283,8 @@ export class AcarsSessionsService {
       const nextPhase = detectFlightPhase({
         previousPhase: existingSession.detectedPhase,
         previousOnGround: existingSession.currentOnGround,
+        previousGroundspeedKts: existingSession.currentGroundspeedKts,
+        previousParkingBrake: existingSession.telemetryPoints[0]?.parkingBrake ?? null,
         onGround: payload.onGround,
         groundspeedKts: payload.groundspeedKts,
         altitudeFt: payload.altitudeFt,
@@ -277,9 +325,18 @@ export class AcarsSessionsService {
         currentOnGround: payload.onGround,
         arrivalFuelKg: payload.fuelTotalKg ?? existingSession.arrivalFuelKg,
       };
+      const telemetryEventSummary = buildTelemetryEventSummary(
+        existingSession.eventSummary,
+        payload,
+        capturedAt,
+      );
 
       if (existingSession.departureFuelKg === null && payload.fuelTotalKg !== undefined) {
         acarsUpdate.departureFuelKg = payload.fuelTotalKg;
+      }
+
+      if (telemetryEventSummary) {
+        acarsUpdate.eventSummary = telemetryEventSummary;
       }
 
       await transaction.acarsSession.update({
@@ -343,6 +400,20 @@ export class AcarsSessionsService {
           },
         });
       }
+
+      console.info("[acars] acars phase concordance", {
+        sessionId: existingSession.id,
+        flightNumber: existingSession.flight.flightNumber,
+        previousPhase: existingSession.detectedPhase,
+        nextPhase,
+        previousParkingBrake: existingSession.telemetryPoints[0]?.parkingBrake ?? null,
+        parkingBrake: payload.parkingBrake ?? null,
+        previousGroundspeedKts: existingSession.currentGroundspeedKts ?? null,
+        groundspeedKts: payload.groundspeedKts,
+        altitudeFt: payload.altitudeFt,
+        fuelTotalKg: payload.fuelTotalKg ?? null,
+        passengersLive: payload.passengersLive ?? null,
+      });
 
       return transaction.acarsSession.findUniqueOrThrow({
         where: { id: existingSession.id },
@@ -449,7 +520,11 @@ export class AcarsSessionsService {
       const telemetryPointCount = await transaction.telemetryPoint.count({
         where: { sessionId: existingSession.id },
       });
+      const previousEventSummary = isJsonObject(existingSession.eventSummary)
+        ? existingSession.eventSummary
+        : {};
       const pirepSummary = {
+        ...previousEventSummary,
         telemetryPointCount,
         finalParkingDetected,
         completionPhase: existingSession.detectedPhase,

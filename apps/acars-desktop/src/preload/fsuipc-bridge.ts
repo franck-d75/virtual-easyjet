@@ -321,6 +321,8 @@ export class FsuipcBridge {
             groundspeedKts: parsedLine.data.telemetry?.groundspeedKts ?? null,
             headingDeg: parsedLine.data.telemetry?.headingDeg ?? null,
             fuelTotalKg: parsedLine.data.telemetry?.fuelTotalKg ?? null,
+            parkingBrake: parsedLine.data.telemetry?.parkingBrake ?? null,
+            passengersLive: parsedLine.data.telemetry?.passengersLive ?? null,
             fuelSource: parsedLine.data.telemetry ? "FSUIPC" : null,
           });
 

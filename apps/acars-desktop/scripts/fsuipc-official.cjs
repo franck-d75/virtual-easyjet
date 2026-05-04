@@ -233,6 +233,7 @@ function buildTelemetrySample(payload) {
   const onGroundFlag = readNumber(payload, "onGroundFlag");
   const indicatedAirspeedRaw = readNumber(payload, "indicatedAirspeedRaw");
   const fuelTotalWeightPounds = readNumber(payload, "fuelTotalWeightPounds");
+  const parkingBrakeRaw = readNumber(payload, "parkingBrakeRaw");
 
   const altitudeFt = roundInteger(
     typeof altitudeMeters === "number" ? altitudeMeters * FEET_PER_METER : null,
@@ -258,6 +259,8 @@ function buildTelemetrySample(payload) {
       : null;
   const onGround =
     typeof onGroundFlag === "number" ? onGroundFlag >= 1 : null;
+  const parkingBrake =
+    typeof parkingBrakeRaw === "number" ? parkingBrakeRaw > 0 : null;
 
   if (
     latitude === null ||
@@ -285,6 +288,7 @@ function buildTelemetrySample(payload) {
       verticalSpeedFpm,
       onGround,
       fuelTotalKg: fuelTotalKg ?? undefined,
+      parkingBrake: parkingBrake ?? undefined,
     },
     indicatedAirspeedKts,
   };
@@ -309,6 +313,7 @@ function registerOffsets(targetClient) {
   targetClient.add("verticalSpeedRaw", 0x030c, fsuipc.Type.Int32);
   targetClient.add("indicatedAirspeedRaw", 0x02bc, fsuipc.Type.Int32);
   targetClient.add("fuelTotalWeightPounds", 0x126c, fsuipc.Type.UInt32);
+  targetClient.add("parkingBrakeRaw", 0x0bc8, fsuipc.Type.Int16);
 
   targetClient[REGISTERED_FLAG] = true;
 }

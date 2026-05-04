@@ -216,6 +216,18 @@ export function LiveMapPanel({
 
     try {
       const nextTraffic = await getAcarsLiveTraffic();
+      console.info("[web] live map traffic concordance", {
+        count: nextTraffic.length,
+        flights: nextTraffic.map((flight) => ({
+          callsign: flight.callsign,
+          phase: flight.phase,
+          altitudeFt: flight.altitude,
+          speedKts: flight.speed,
+          fuelTotalKg: flight.fuelTotalKg ?? null,
+          passengersLive: flight.passengersLive ?? null,
+          registration: flight.registration ?? null,
+        })),
+      });
       setTraffic(nextTraffic);
       setError(null);
       setLastUpdatedAt(new Date().toISOString());
@@ -921,6 +933,14 @@ export function LiveMapPanel({
                               <span>Vitesse</span>
                               <strong>{formatSpeed(flight.speed)}</strong>
                             </div>
+                            <div>
+                              <span>Carburant</span>
+                              <strong>{formatFuelKg(flight.fuelTotalKg)}</strong>
+                            </div>
+                            <div>
+                              <span>Passagers</span>
+                              <strong>{formatPassengerCount(flight.passengersLive)}</strong>
+                            </div>
                           </div>
                         </li>
                       );
@@ -1040,12 +1060,24 @@ function formatSpeed(speed: number): string {
   return `${speed.toLocaleString("fr-FR")} kt`;
 }
 
-function formatRadarAltitude(altitude: number): string {
-  if (altitude < 1000) {
-    return `${Math.round(altitude).toLocaleString("fr-FR")} ft`;
+function formatFuelKg(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "n/d";
   }
 
-  return `FL${Math.round(altitude / 100).toString().padStart(3, "0")}`;
+  return `${(Math.ceil(Math.max(value, 0) / 10) * 10).toLocaleString("fr-FR")} kg`;
+}
+
+function formatPassengerCount(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "n/d";
+  }
+
+  return Math.max(0, Math.round(value)).toLocaleString("fr-FR");
+}
+
+function formatRadarAltitude(altitude: number): string {
+  return formatAltitude(Math.round(altitude));
 }
 
 function formatTime(value: string | null): string {
@@ -1236,6 +1268,8 @@ function buildPopupMarkup(flight: LiveMapAircraft): string {
     '<div class="live-map-popup__metrics">',
     `<div><span>Altitude</span><strong>${escapeHtml(formatAltitude(flight.altitude))}</strong></div>`,
     `<div><span>Vitesse</span><strong>${escapeHtml(formatSpeed(flight.speed))}</strong></div>`,
+    `<div><span>Carburant</span><strong>${escapeHtml(formatFuelKg(flight.fuelTotalKg))}</strong></div>`,
+    `<div><span>Passagers</span><strong>${escapeHtml(formatPassengerCount(flight.passengersLive))}</strong></div>`,
     `<div><span>Latitude</span><strong>${escapeHtml(flight.lat.toFixed(3))}</strong></div>`,
     `<div><span>Longitude</span><strong>${escapeHtml(flight.lon.toFixed(3))}</strong></div>`,
     "</div>",

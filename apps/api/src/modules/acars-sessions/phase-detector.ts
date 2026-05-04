@@ -4,6 +4,7 @@ export interface PhaseDetectionInput {
   previousPhase: FlightPhase;
   previousOnGround: boolean | null;
   previousGroundspeedKts: number | null;
+  previousParkingBrake: boolean | null;
   onGround: boolean;
   groundspeedKts: number;
   altitudeFt: number;
@@ -104,6 +105,10 @@ function isPostArrivalPhase(phase: FlightPhase): boolean {
 function resolveCandidatePhase(input: PhaseDetectionInput): FlightPhase {
   const thresholds = PHASE_DETECTION_THRESHOLDS;
   const previousGroundspeedKts = Math.max(input.previousGroundspeedKts ?? 0, 0);
+  const taxiSpeedThreshold =
+    thresholds.groundspeedKts.taxiMin + thresholds.tolerance.groundspeedKts;
+  const wasParkingBrakeReleased =
+    input.previousParkingBrake === true && input.parkingBrake === false;
 
   if (input.previousPhase === FlightPhase.COMPLETED) {
     return FlightPhase.COMPLETED;
@@ -116,13 +121,35 @@ function resolveCandidatePhase(input: PhaseDetectionInput): FlightPhase {
 
     if (isPostArrivalPhase(input.previousPhase)) {
       return input.groundspeedKts >=
-        thresholds.groundspeedKts.taxiMin + thresholds.tolerance.groundspeedKts
+        taxiSpeedThreshold
         ? FlightPhase.TAXI_IN
         : FlightPhase.ARRIVAL_PARKING;
     }
 
-    const taxiSpeedThreshold =
-      thresholds.groundspeedKts.taxiMin + thresholds.tolerance.groundspeedKts;
+    if (
+      input.previousPhase === FlightPhase.PUSHBACK &&
+      input.parkingBrake === true &&
+      input.groundspeedKts <= thresholds.groundspeedKts.parkedMax + 0.5
+    ) {
+      return FlightPhase.PUSHBACK;
+    }
+
+    if (
+      PUSHBACK_ENTRY_PHASES.includes(input.previousPhase) &&
+      input.parkingBrake === false &&
+      (wasParkingBrakeReleased || input.groundspeedKts < taxiSpeedThreshold)
+    ) {
+      return FlightPhase.PUSHBACK;
+    }
+
+    if (
+      input.previousPhase === FlightPhase.PUSHBACK &&
+      input.previousParkingBrake === true &&
+      input.parkingBrake === false
+    ) {
+      return FlightPhase.TAXI_OUT;
+    }
+
     const departureSurfacePushbackEligible =
       (PUSHBACK_ENTRY_PHASES.includes(input.previousPhase) ||
         input.previousPhase === FlightPhase.PUSHBACK) &&
