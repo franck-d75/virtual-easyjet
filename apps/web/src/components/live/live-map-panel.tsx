@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import type { LayerGroup, Map as LeafletMap } from "leaflet";
 import type { JSX, ReactNode } from "react";
@@ -17,7 +17,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { getAcarsLiveTraffic } from "@/lib/api/public";
 import { logWebWarning } from "@/lib/observability/log";
-import type { SimbriefRouteOverlay } from "@/lib/utils/simbrief-route";
 import { cn } from "@/lib/utils/cn";
 
 const DEFAULT_MAP_CENTER: [number, number] = [50.1109, 8.6821];
@@ -38,7 +37,7 @@ type LiveMapPanelProps = {
   initialTraffic: LiveMapAircraft[];
   initialError: string | null;
   initialFetchedAt: string | null;
-  initialSimbriefRoute: SimbriefRouteOverlay | null;
+  initialSimbriefRoute?: unknown;
 };
 
 type LeafletModule = typeof import("leaflet");
@@ -63,9 +62,7 @@ type OverlayPanelProps = {
   children: ReactNode;
 };
 
-type DisplayedSimbriefRoute =
-  | NonNullable<LiveMapAircraft["simbriefRoute"]>
-  | SimbriefRouteOverlay;
+type DisplayedSimbriefRoute = NonNullable<LiveMapAircraft["simbriefRoute"]>;
 
 let rotatedMarkerPluginPromise: Promise<void> | null = null;
 
@@ -73,20 +70,16 @@ export function LiveMapPanel({
   initialTraffic,
   initialError,
   initialFetchedAt,
-  initialSimbriefRoute,
 }: LiveMapPanelProps): JSX.Element {
   const [traffic, setTraffic] = useState(initialTraffic);
   const [error, setError] = useState(initialError);
-  const [simbriefRoute, setSimbriefRoute] = useState(initialSimbriefRoute);
+  const [hoveredFlightKey, setHoveredFlightKey] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState(initialFetchedAt);
   const [isImmersive, setIsImmersive] = useState(false);
   const [arePanelsVisible, setArePanelsVisible] = useState(true);
   const [isCompactViewport, setIsCompactViewport] = useState(false);
-  const [tagDisplayMode, setTagDisplayMode] = useState<"flight" | "pilot">(
-    "flight",
-  );
 
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -125,38 +118,45 @@ export function LiveMapPanel({
     }),
     [airborneCount, parkedCount, pushbackCount, taxiCount],
   );
-  const displayedRoutes = useMemo(() => {
-    const uniqueRoutes = new Map<string, DisplayedSimbriefRoute>();
-
-    for (const flight of traffic) {
-      const route = flight.simbriefRoute;
-
-      if (!route || route.points.length < 2) {
-        continue;
-      }
-
-      uniqueRoutes.set(buildRouteOverlayKey(route), route);
-    }
-
-    if (uniqueRoutes.size === 0 && simbriefRoute && simbriefRoute.points.length >= 2) {
-      uniqueRoutes.set(buildRouteOverlayKey(simbriefRoute), simbriefRoute);
-    }
-
-    return [...uniqueRoutes.values()];
-  }, [simbriefRoute, traffic]);
-  const primaryDisplayedRoute = displayedRoutes[0] ?? null;
-  const routeLabel = primaryDisplayedRoute
-    ? displayedRoutes.length === 1
-      ? `${primaryDisplayedRoute.departureIcao} → ${primaryDisplayedRoute.arrivalIcao}`
-      : `${displayedRoutes.length} routes SimBrief actives`
-    : "Aucune route SimBrief";
-  const routeDetail = primaryDisplayedRoute
-    ? displayedRoutes.length === 1
-      ? primaryDisplayedRoute.mode === "WAYPOINTS"
-        ? "Tracé complet du dispatch SimBrief."
-        : "Tracé direct de secours entre départ et arrivée."
-      : "Dispatchs SimBrief complets affichés pour les vols actifs."
-    : "Aucun OFP exploitable n’est disponible pour superposer une route.";
+  const routeCapableTrafficCount = useMemo(
+    () =>
+      traffic.filter((flight) => isDisplayableRoute(flight.simbriefRoute)).length,
+    [traffic],
+  );
+  const hoveredFlight = useMemo(
+    () =>
+      hoveredFlightKey
+        ? traffic.find((flight) => buildFlightOverlayKey(flight) === hoveredFlightKey) ??
+          null
+        : null,
+    [hoveredFlightKey, traffic],
+  );
+  const hoveredRoute =
+    hoveredFlight && isDisplayableRoute(hoveredFlight.simbriefRoute)
+      ? hoveredFlight.simbriefRoute
+      : null;
+  const displayedRoutes = useMemo(
+    () => (hoveredRoute ? [hoveredRoute] : []),
+    [hoveredRoute],
+  );
+  const routeLabel =
+    traffic.length === 0
+      ? "Aucun trafic ACARS"
+      : hoveredRoute
+        ? `${hoveredRoute.departureIcao} → ${hoveredRoute.arrivalIcao}`
+        : routeCapableTrafficCount > 0
+          ? "Masquée jusqu’au survol"
+          : "Aucune route active";
+  const routeDetail =
+    traffic.length === 0
+      ? "Aucun avion connecté à ACARS, aucune route n’est affichée."
+      : hoveredRoute
+        ? hoveredRoute.mode === "WAYPOINTS"
+          ? "Route SimBrief révélée uniquement pour l’avion survolé."
+          : "Route directe de secours révélée uniquement pour l’avion survolé."
+        : routeCapableTrafficCount > 0
+          ? "Survolez un avion pour révéler temporairement son tracé de navigation."
+          : "Les vols visibles n’ont pas encore de route SimBrief exploitable.";
 
   const fitViewport = useEffectEvent((points?: [number, number][]): void => {
     const map = mapRef.current;
@@ -259,47 +259,13 @@ export function LiveMapPanel({
   });
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setTagDisplayMode((currentMode) =>
-        currentMode === "flight" ? "pilot" : "flight",
-      );
-    }, 2_000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, []);
-
-  useEffect(() => {
-    let isActive = true;
-
-    async function loadSimbriefRoute(): Promise<void> {
-      try {
-        const response = await fetch("/api/pilot/simbrief/route-overlay", {
-          method: "GET",
-          cache: "no-store",
-        });
-
-        if (!response.ok) {
-          return;
-        }
-
-        const payload = (await response.json()) as SimbriefRouteOverlay | null;
-
-        if (isActive) {
-          setSimbriefRoute(payload);
-        }
-      } catch (routeError) {
-        logWebWarning("live map SimBrief route overlay fetch failed", routeError);
-      }
+    if (
+      hoveredFlightKey &&
+      !traffic.some((flight) => buildFlightOverlayKey(flight) === hoveredFlightKey)
+    ) {
+      setHoveredFlightKey(null);
     }
-
-    void loadSimbriefRoute();
-
-    return () => {
-      isActive = false;
-    };
-  }, []);
+  }, [hoveredFlightKey, traffic]);
 
   useEffect(() => {
     let isMounted = true;
@@ -357,7 +323,6 @@ export function LiveMapPanel({
     if (
       !leafletRef.current ||
       !mapRef.current ||
-      !markersLayerRef.current ||
       !routeLayerRef.current
     ) {
       return;
@@ -366,12 +331,13 @@ export function LiveMapPanel({
     const L = leafletRef.current;
     const map = mapRef.current;
     const routeLayer = routeLayerRef.current;
-    const markersLayer = markersLayerRef.current;
-    const trafficPoints: [number, number][] = [];
+    const trafficPoints = traffic.map((flight) => [flight.lat, flight.lon] as [
+      number,
+      number,
+    ]);
     const routePoints: [number, number][] = [];
 
     routeLayer.clearLayers();
-    markersLayer.clearLayers();
 
     for (const route of displayedRoutes) {
       if (route.points.length < 2) {
@@ -448,7 +414,43 @@ export function LiveMapPanel({
       }
     }
 
+    viewportPointsRef.current = [...routePoints, ...trafficPoints];
+
+    if (viewportPointsRef.current.length === 0) {
+      map.setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
+      hasAdjustedViewportRef.current = false;
+      return;
+    }
+
+    if (!hasAdjustedViewportRef.current) {
+      fitViewport(viewportPointsRef.current);
+      hasAdjustedViewportRef.current = true;
+    }
+  }, [displayedRoutes, fitViewport, traffic]);
+
+  useEffect(() => {
+    if (!leafletRef.current || !markersLayerRef.current) {
+      return;
+    }
+
+    const L = leafletRef.current;
+    const markersLayer = markersLayerRef.current;
+
+    markersLayer.clearLayers();
+
     for (const flight of traffic) {
+      const flightKey = buildFlightOverlayKey(flight);
+      const revealRoute = () => {
+        if (isDisplayableRoute(flight.simbriefRoute)) {
+          setHoveredFlightKey(flightKey);
+        }
+      };
+      const hideRoute = () => {
+        setHoveredFlightKey((currentKey) =>
+          currentKey === flightKey ? null : currentKey,
+        );
+      };
+
       if ((flight.track?.length ?? 0) >= 2) {
         const trackLatLngs = flight.track!.map((point) => [
           point.lat,
@@ -485,31 +487,26 @@ export function LiveMapPanel({
       marker.bindPopup(buildPopupMarkup(flight), {
         className: "live-map-popup",
       });
+      marker.on("mouseover", revealRoute);
+      marker.on("mouseout", hideRoute);
+      marker.on("popupopen", revealRoute);
+      marker.on("popupclose", hideRoute);
 
       marker.addTo(markersLayer);
 
-      const tagMarker = buildAircraftTagMarker(L, flight, tagDisplayMode);
+      const tagMarker = buildAircraftTagMarker(L, flight);
 
       if (tagMarker) {
+        tagMarker.on("mouseover", revealRoute);
+        tagMarker.on("mouseout", hideRoute);
+        tagMarker.on("click", () => {
+          revealRoute();
+          marker.openPopup();
+        });
         tagMarker.addTo(markersLayer);
       }
-
-      trafficPoints.push([flight.lat, flight.lon]);
     }
-
-    viewportPointsRef.current = [...routePoints, ...trafficPoints];
-
-    if (viewportPointsRef.current.length === 0) {
-      map.setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
-      hasAdjustedViewportRef.current = false;
-      return;
-    }
-
-    if (!hasAdjustedViewportRef.current) {
-      fitViewport(viewportPointsRef.current);
-      hasAdjustedViewportRef.current = true;
-    }
-  }, [displayedRoutes, fitViewport, tagDisplayMode, traffic]);
+  }, [traffic]);
 
   useEffect(() => {
     let active = true;
@@ -758,7 +755,7 @@ export function LiveMapPanel({
               </div>
             ) : null}
 
-            {isMapReady && traffic.length === 0 && simbriefRoute === null ? (
+            {isMapReady && traffic.length === 0 ? (
               <div className="live-map-overlay live-map-overlay--notice">
                 <EmptyState
                   action={
@@ -872,7 +869,7 @@ export function LiveMapPanel({
                   <div className="live-map-legend__item">
                     <span className="live-map-route-swatch" aria-hidden="true" />
                     <div>
-                      <strong>Route SimBrief</strong>
+                      <strong>Route sur survol</strong>
                       <small>{routeDetail}</small>
                     </div>
                   </div>
@@ -1043,6 +1040,14 @@ function formatSpeed(speed: number): string {
   return `${speed.toLocaleString("fr-FR")} kt`;
 }
 
+function formatRadarAltitude(altitude: number): string {
+  if (altitude < 1000) {
+    return `${Math.round(altitude).toLocaleString("fr-FR")} ft`;
+  }
+
+  return `FL${Math.round(altitude / 100).toString().padStart(3, "0")}`;
+}
+
 function formatTime(value: string | null): string {
   if (!value) {
     return "Aucune synchro";
@@ -1065,48 +1070,53 @@ function buildMarkerIcon(
 function buildAircraftTagMarker(
   L: LeafletModule,
   flight: LiveMapAircraft,
-  tagDisplayMode: "flight" | "pilot",
 ): ReturnType<LeafletModule["marker"]> | null {
   const primaryLabel = flight.flightNumber ?? flight.callsign;
-  const secondaryLabel = flight.pilotDisplayName?.trim() ?? null;
 
   if (!primaryLabel) {
     return null;
   }
 
-  const displayedLabel =
-    tagDisplayMode === "pilot" && secondaryLabel ? secondaryLabel : primaryLabel;
+  const presentation = getPhasePresentation(flight.phase);
+  const hasRoute = isDisplayableRoute(flight.simbriefRoute);
 
   return L.marker([flight.lat, flight.lon], {
     icon: L.divIcon({
       className: "live-map-aircraft-tag-shell",
-      iconSize: [188, 44],
-      iconAnchor: [94, 54],
+      iconSize: [148, 52],
+      iconAnchor: [-10, 42],
       html: `
-        <div class="live-map-aircraft-tag">
+        <div class="live-map-aircraft-tag ${presentation.phaseClassName}${
+          hasRoute ? " live-map-aircraft-tag--route-available" : ""
+        }">
           <span class="live-map-aircraft-tag__row">
-            ${escapeHtml(displayedLabel)}
+            ${escapeHtml(primaryLabel)}
+          </span>
+          <span class="live-map-aircraft-tag__meta">
+            ${escapeHtml(formatRadarAltitude(flight.altitude))} · ${escapeHtml(
+              formatSpeed(flight.speed),
+            )}
           </span>
         </div>
       `,
     }),
     keyboard: false,
-    interactive: false,
+    interactive: true,
     zIndexOffset: 900,
   });
 }
 
-function buildRouteOverlayKey(route: DisplayedSimbriefRoute): string {
-  if ("routeId" in route && route.routeId) {
-    return route.routeId;
-  }
+function isDisplayableRoute(
+  route: LiveMapAircraft["simbriefRoute"],
+): route is DisplayedSimbriefRoute {
+  return Boolean(route && route.points.length >= 2);
+}
 
+function buildFlightOverlayKey(flight: LiveMapAircraft): string {
   return [
-    route.flightNumber ?? route.callsign ?? "route",
-    route.departureIcao,
-    route.arrivalIcao,
-    route.route ?? route.mode,
-    String(route.points.length),
+    flight.callsign,
+    flight.flightNumber ?? "",
+    flight.registration ?? "",
   ].join(":");
 }
 
@@ -1225,4 +1235,3 @@ function escapeHtml(value: string): string {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
-
