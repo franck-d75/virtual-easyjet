@@ -9,6 +9,7 @@ import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import "./header-chip.css";
 import "./live-map-radar.css";
+import "./fluid-screen.css";
 
 const bodyFont = IBM_Plex_Sans({
   subsets: ["latin"],
