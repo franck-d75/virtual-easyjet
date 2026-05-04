@@ -26,6 +26,7 @@ type PilotHeaderProps = {
   pilotNumber: string;
   avatarUrl?: string | null;
   isAdmin?: boolean;
+  hasActiveBooking?: boolean;
 };
 
 export function PilotHeader({
@@ -33,11 +34,20 @@ export function PilotHeader({
   pilotNumber,
   avatarUrl = null,
   isAdmin = false,
+  hasActiveBooking = false,
 }: PilotHeaderProps): JSX.Element {
   const pathname = usePathname();
+  const reservationLinks = hasActiveBooking
+    ? [{ href: "/reservation", label: "Réservation" }]
+    : [];
+  const pilotNavigationLinks = [
+    ...pilotLinks.slice(0, 3),
+    ...reservationLinks,
+    ...pilotLinks.slice(3),
+  ];
   const navigationLinks = isAdmin
-    ? [...pilotLinks, { href: "/admin", label: "Administration" }]
-    : pilotLinks;
+    ? [...pilotNavigationLinks, { href: "/admin", label: "Administration" }]
+    : pilotNavigationLinks;
   const normalizedPilotName = pilotName.trim().toLowerCase();
   const normalizedPilotNumber = pilotNumber.trim().toLowerCase();
   const identityCaption =

@@ -9,7 +9,8 @@ import { LogoutButton } from "@/components/auth/logout-button";
 import { BrandBadge } from "@/components/layout/brand-badge";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { APP_NAME } from "@/lib/config/env";
-import type { UserMeResponse } from "@/lib/api/types";
+import type { BookingResponse, UserMeResponse } from "@/lib/api/types";
+import { isActiveBooking } from "@/lib/utils/booking-opportunities";
 import { cn } from "@/lib/utils/cn";
 
 const publicLinks = [
@@ -27,7 +28,11 @@ const publicLinks = [
 type SessionState =
   | { status: "loading"; user: null }
   | { status: "guest"; user: null }
-  | { status: "authenticated"; user: UserMeResponse };
+  | {
+      status: "authenticated";
+      user: UserMeResponse;
+      hasActiveBooking: boolean;
+    };
 
 function getDisplayName(user: UserMeResponse): string {
   if (user.pilotProfile) {
@@ -57,6 +62,10 @@ function getSecondaryLabel(user: UserMeResponse): string {
   }
 
   return "Compte pilote";
+}
+
+function hasActiveReservation(bookings: BookingResponse[]): boolean {
+  return bookings.some(isActiveBooking);
 }
 
 export function PublicHeader(): JSX.Element {
@@ -96,9 +105,34 @@ export function PublicHeader(): JSX.Element {
         };
 
         if (payload.authenticated && payload.user) {
+          let hasActiveBooking = false;
+
+          if (payload.user.pilotProfile) {
+            try {
+              const bookingsResponse = await fetch("/api/pilot/bookings", {
+                method: "GET",
+                cache: "no-store",
+                credentials: "include",
+              });
+
+              if (bookingsResponse.ok) {
+                const bookings =
+                  (await bookingsResponse.json()) as BookingResponse[];
+                hasActiveBooking = hasActiveReservation(bookings);
+              }
+            } catch {
+              hasActiveBooking = false;
+            }
+          }
+
+          if (!active) {
+            return;
+          }
+
           setSessionState({
             status: "authenticated",
             user: payload.user,
+            hasActiveBooking,
           });
           return;
         }
@@ -126,6 +160,15 @@ export function PublicHeader(): JSX.Element {
     };
   }, [pathname]);
 
+  const navigationLinks =
+    sessionState.status === "authenticated" && sessionState.hasActiveBooking
+      ? [
+          ...publicLinks.slice(0, 5),
+          { href: "/reservation", label: "Réservation" },
+          ...publicLinks.slice(5),
+        ]
+      : publicLinks;
+
   return (
     <header className={cn("site-header", isLiveMap && "site-header--compact")}>
       <div
@@ -143,7 +186,7 @@ export function PublicHeader(): JSX.Element {
         </Link>
 
         <nav className="site-nav" aria-label="Navigation publique">
-          {publicLinks.map((link) => {
+          {navigationLinks.map((link) => {
             const isActive =
               link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
 
