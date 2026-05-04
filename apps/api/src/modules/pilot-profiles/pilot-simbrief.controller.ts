@@ -4,6 +4,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { AuthenticatedUser } from "@va/shared";
 
 import { CurrentUser } from "../../common/decorators/current-user.decorator.js";
+import { BuildMySimbriefDispatchUrlDto } from "./dto/build-my-simbrief-dispatch-url.dto.js";
 import { CreateMySimbriefAirframeDto } from "./dto/create-my-simbrief-airframe.dto.js";
 import { PrepareMySimbriefFlightDto } from "./dto/prepare-my-simbrief-flight.dto.js";
 import { PilotProfilesService } from "./pilot-profiles.service.js";
@@ -54,6 +55,18 @@ export class PilotSimbriefController {
   })
   public importRoute(@CurrentUser() user: AuthenticatedUser) {
     return this.pilotProfilesService.importMySimbriefRoute(user);
+  }
+
+  @Post("dispatch-url")
+  @ApiOperation({
+    summary:
+      "Construit l'URL SimBrief pre-remplie pour generer l'OFP d'une reservation.",
+  })
+  public buildDispatchUrl(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() payload: BuildMySimbriefDispatchUrlDto,
+  ) {
+    return this.pilotProfilesService.buildMySimbriefDispatchUrl(user, payload);
   }
 
   @Post("prepare-flight")

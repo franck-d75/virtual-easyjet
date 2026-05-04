@@ -48,6 +48,7 @@ const bookingInclude = {
         },
       },
       hub: true,
+      simbriefAirframe: true,
     },
   },
   departureAirport: true,
@@ -484,6 +485,16 @@ export class BookingsService {
           icaoCode: booking.aircraft.aircraftType.icaoCode,
           name: booking.aircraft.aircraftType.name,
         },
+        simbriefAirframe: booking.aircraft.simbriefAirframe
+          ? {
+              id: booking.aircraft.simbriefAirframe.id,
+              simbriefAirframeId:
+                booking.aircraft.simbriefAirframe.simbriefAirframeId,
+              name: booking.aircraft.simbriefAirframe.name,
+              aircraftIcao: booking.aircraft.simbriefAirframe.aircraftIcao,
+              registration: booking.aircraft.simbriefAirframe.registration,
+            }
+          : null,
       },
       departureAirport: {
         id: booking.departureAirport.id,

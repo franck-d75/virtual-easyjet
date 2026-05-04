@@ -6,7 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   AircraftStatus,
   BookingStatus,
@@ -21,6 +21,10 @@ import {
   type SimbriefLatestOfpResult,
 } from "../../common/integrations/simbrief/simbrief.client.js";
 import {
+  normalizePrivateSimbriefConfig,
+  PRIVATE_SIMBRIEF_CONFIG_SETTING_KEY,
+} from "../../common/integrations/simbrief/simbrief-admin-config.js";
+import {
   buildSimbriefRouteOverlayFromPlan,
   buildSimbriefRouteOverlaySettingKey,
   normalizePersistedSimbriefRouteOverlay,
@@ -34,6 +38,7 @@ import {
 } from "../../common/utils/authenticated-user.utils.js";
 import { decimalToNumber } from "../../common/utils/decimal.utils.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import type { BuildMySimbriefDispatchUrlDto } from "./dto/build-my-simbrief-dispatch-url.dto.js";
 import type { CreateMySimbriefAirframeDto } from "./dto/create-my-simbrief-airframe.dto.js";
 import type { PrepareMySimbriefFlightDto } from "./dto/prepare-my-simbrief-flight.dto.js";
 import type { UpdateMyPilotProfileDto } from "./dto/update-my-pilot-profile.dto.js";
@@ -58,9 +63,30 @@ const simbriefAirframeInclude = {
   },
 } satisfies Prisma.SimbriefAirframeInclude;
 
+const simbriefDispatchBookingInclude = {
+  aircraft: {
+    include: {
+      aircraftType: true,
+      simbriefAirframe: true,
+    },
+  },
+  departureAirport: true,
+  arrivalAirport: true,
+  route: true,
+  flight: true,
+} satisfies Prisma.BookingInclude;
+
 type SimbriefAirframeRecord = Prisma.SimbriefAirframeGetPayload<{
   include: typeof simbriefAirframeInclude;
 }>;
+
+type SimbriefDispatchBookingRecord = Prisma.BookingGetPayload<{
+  include: typeof simbriefDispatchBookingInclude;
+}>;
+
+const SIMBRIEF_DISPATCH_API_URL =
+  "https://www.simbrief.com/ofp/ofp.loader.api.php";
+const DEFAULT_SIMBRIEF_AIRLINE_CODE = "EZS";
 
 const importedRouteInclude = {
   departureAirport: true,
@@ -132,6 +158,30 @@ function readSimbriefAirframeMetadata(rawJson: unknown): SimbriefAirframeMetadat
   };
 }
 
+function splitSimbriefFlightNumber(value: string): {
+  airline: string;
+  number: string;
+} {
+  const normalizedValue = value.trim().toUpperCase();
+  const match = normalizedValue.match(/^([A-Z]{2,3})([0-9A-Z]+)$/);
+
+  if (!match) {
+    return {
+      airline: DEFAULT_SIMBRIEF_AIRLINE_CODE,
+      number: normalizedValue,
+    };
+  }
+
+  return {
+    airline: match[1] ?? DEFAULT_SIMBRIEF_AIRLINE_CODE,
+    number: match[2] ?? normalizedValue,
+  };
+}
+
+function buildSimbriefStaticId(bookingId: string): string {
+  return `VEZY_${bookingId}`.replace(/[^A-Z0-9_]/gi, "_").toUpperCase();
+}
+
 @Injectable()
 @Dependencies(PrismaService, SimbriefClient)
 export class PilotProfilesService {
@@ -145,7 +195,10 @@ export class PilotProfilesService {
     return this.findById(pilotProfileId, user);
   }
 
-  public async getMyLatestSimbriefOfp(user: AuthenticatedUser) {
+  public async getMyLatestSimbriefOfp(
+    user: AuthenticatedUser,
+    staticId?: string | null,
+  ) {
     const profile = await this.getMySimbriefContext(user);
 
     if (!profile) {
@@ -154,6 +207,7 @@ export class PilotProfilesService {
 
     const latestOfp = await this.simbriefClient.getLatestOfp(
       profile.simbriefPilotId,
+      staticId,
     );
 
     if (latestOfp.status !== "AVAILABLE" || !latestOfp.plan) {
@@ -566,6 +620,79 @@ export class PilotProfilesService {
         ? "La route SimBrief existante a été mise à jour."
         : "La route SimBrief a été créée avec succès.",
       route: this.serializeImportedRoute(route),
+    };
+  }
+
+  public async buildMySimbriefDispatchUrl(
+    user: AuthenticatedUser,
+    payload: BuildMySimbriefDispatchUrlDto,
+  ) {
+    const profile = await this.getMySimbriefContext(user);
+
+    if (!profile) {
+      throw new NotFoundException("Pilot profile not found.");
+    }
+
+    if (!profile.simbriefPilotId) {
+      throw new BadRequestException(
+        "Configurez d'abord votre SimBrief Pilot ID dans votre profil.",
+      );
+    }
+
+    const bookingId = payload.bookingId?.trim();
+
+    if (!bookingId) {
+      throw new BadRequestException("La reservation est requise.");
+    }
+
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: simbriefDispatchBookingInclude,
+    });
+
+    if (!booking) {
+      throw new NotFoundException("Reservation introuvable.");
+    }
+
+    this.assertSimbriefDispatchBookingUsable(profile.id, booking);
+
+    const dispatchParams = this.buildSimbriefDispatchParams(
+      profile.simbriefPilotId,
+      booking,
+    );
+    const staticId = dispatchParams.get("static_id") ?? "";
+    const apiKey = await this.getPrivateSimbriefApiKey();
+    const returnUrl = this.normalizeSimbriefReturnUrl(payload.returnUrl);
+
+    if (!apiKey) {
+      throw new BadRequestException(
+        "Configurez d'abord la cle API SimBrief dans l'administration.",
+      );
+    }
+
+    if (!returnUrl) {
+      throw new BadRequestException(
+        "Une page de retour valide est requise pour generer via SimBrief.",
+      );
+    }
+
+    const timestamp = Math.floor(Date.now() / 1_000).toString();
+    const origin = dispatchParams.get("orig") ?? "";
+    const destination = dispatchParams.get("dest") ?? "";
+    const type = dispatchParams.get("type") ?? "";
+    const apicode = createHash("md5")
+      .update(`${apiKey}${origin}${destination}${type}${timestamp}${returnUrl}`)
+      .digest("hex");
+    const signedParams = new URLSearchParams(dispatchParams);
+    signedParams.set("timestamp", timestamp);
+    signedParams.set("outputpage", returnUrl);
+    signedParams.set("apicode", apicode);
+
+    return {
+      url: `${SIMBRIEF_DISPATCH_API_URL}?${signedParams.toString()}`,
+      mode: "api" as const,
+      staticId,
+      aircraftTypeInput: type,
     };
   }
 
@@ -1273,6 +1400,92 @@ export class PilotProfilesService {
       orderBy: [{ registration: "asc" }, { name: "asc" }],
       include: simbriefAirframeInclude,
     });
+  }
+
+  private assertSimbriefDispatchBookingUsable(
+    pilotProfileId: string,
+    booking: SimbriefDispatchBookingRecord,
+  ): void {
+    if (booking.pilotProfileId !== pilotProfileId) {
+      throw new ForbiddenException("Cette reservation appartient a un autre pilote.");
+    }
+
+    if (booking.status === BookingStatus.CANCELLED) {
+      throw new BadRequestException("Cette reservation est deja annulee.");
+    }
+
+    if (booking.status === BookingStatus.EXPIRED) {
+      throw new BadRequestException("Cette reservation est expiree.");
+    }
+
+    if (booking.flight) {
+      throw new BadRequestException("Un vol ACARS existe deja pour cette reservation.");
+    }
+  }
+
+  private buildSimbriefDispatchParams(
+    simbriefPilotId: string,
+    booking: SimbriefDispatchBookingRecord,
+  ): URLSearchParams {
+    const departureIcao = booking.departureAirport.icao.trim().toUpperCase();
+    const arrivalIcao = booking.arrivalAirport.icao.trim().toUpperCase();
+    const flightNumber = booking.reservedFlightNumber.trim().toUpperCase();
+    const flightNumberParts = splitSimbriefFlightNumber(flightNumber);
+    const aircraftTypeInput =
+      booking.aircraft.simbriefAirframe?.simbriefAirframeId?.trim() ||
+      booking.aircraft.aircraftType.icaoCode.trim().toUpperCase();
+    const params = new URLSearchParams({
+      userid: simbriefPilotId.trim(),
+      static_id: buildSimbriefStaticId(booking.id),
+      airline: flightNumberParts.airline,
+      fltnum: flightNumberParts.number,
+      callsign: flightNumber,
+      orig: departureIcao,
+      dest: arrivalIcao,
+      type: aircraftTypeInput,
+      reg: booking.aircraft.registration.trim().toUpperCase(),
+      units: "KGS",
+      navlog: "1",
+      planformat: "LIDO",
+    });
+
+    if (booking.route?.blockTimeMinutes) {
+      const hours = Math.floor(booking.route.blockTimeMinutes / 60);
+      const minutes = booking.route.blockTimeMinutes % 60;
+      params.set("steh", hours.toString());
+      params.set("stem", minutes.toString());
+    }
+
+    return params;
+  }
+
+  private async getPrivateSimbriefApiKey(): Promise<string | null> {
+    const setting = await this.prisma.setting.findUnique({
+      where: {
+        key: PRIVATE_SIMBRIEF_CONFIG_SETTING_KEY,
+      },
+      select: {
+        value: true,
+      },
+    });
+    return normalizePrivateSimbriefConfig(setting?.value).apiKey;
+  }
+
+  private normalizeSimbriefReturnUrl(value: string | null | undefined) {
+    const rawValue = value?.trim() ?? "";
+
+    if (rawValue.length === 0) {
+      return null;
+    }
+
+    try {
+      const parsedUrl = new URL(rawValue);
+      return parsedUrl.protocol === "https:" || parsedUrl.protocol === "http:"
+        ? parsedUrl.toString()
+        : null;
+    } catch {
+      return null;
+    }
   }
 
   private async getMySimbriefContext(user: AuthenticatedUser) {

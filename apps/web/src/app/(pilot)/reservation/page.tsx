@@ -2,6 +2,7 @@ import type { JSX } from "react";
 import { redirect } from "next/navigation";
 
 import { ApiActionButton } from "@/components/pilot/api-action-button";
+import { SimbriefDispatchButton } from "@/components/pilot/simbrief-dispatch-button";
 import { SimbriefMatchOverviewCard } from "@/components/pilot/simbrief-match-overview-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,9 +82,9 @@ export default async function ReservationPage(): Promise<JSX.Element> {
         <span className="section-eyebrow">Réservation</span>
         <h1>{featuredBooking.reservedFlightNumber}</h1>
         <p>
-          Votre vol est réservé. Préparez maintenant la liaison SimBrief pour
-          créer le vol exploitable dans ACARS, puis ouvrez-le depuis la page
-          Vols.
+          Votre vol est réservé. Ouvrez SimBrief depuis cette page, générez le
+          nouvel OFP avec la météo et les pistes du moment, puis laissez le site
+          importer le plan correspondant pour ACARS.
         </p>
       </section>
 
@@ -153,20 +154,23 @@ export default async function ReservationPage(): Promise<JSX.Element> {
             {featuredBooking.flight ? (
               buildFlightLink(featuredBooking)
             ) : (
-              <ApiActionButton
-                body={{
-                  bookingId: featuredBooking.id,
-                  detectedRegistration: featuredBooking.aircraft.registration,
-                  detectedAircraftIcao:
-                    featuredBooking.aircraft.aircraftType.icaoCode,
-                }}
-                endpoint="/api/pilot/simbrief/prepare-flight"
-                label="Générer via SimBrief"
-                pendingLabel="Génération SimBrief..."
-                successMessage="Vol SimBrief prêt pour ACARS."
-                variant="primary"
+              <SimbriefDispatchButton
+                aircraftIcao={featuredBooking.aircraft.aircraftType.icaoCode}
+                aircraftRegistration={featuredBooking.aircraft.registration}
+                bookingId={featuredBooking.id}
               />
             )}
+            {!featuredBooking.flight && featuredBooking.status === "RESERVED" ? (
+              <ApiActionButton
+                confirmMessage="Annuler cette réservation ?"
+                endpoint={`/api/pilot/bookings/${featuredBooking.id}/cancel`}
+                label="Annuler la réservation"
+                pendingLabel="Annulation..."
+                redirectTo="/routes"
+                successMessage="Réservation annulée."
+                variant="ghost"
+              />
+            ) : null}
             <Button href="/routes" variant="ghost">
               Retour aux routes
             </Button>
@@ -185,9 +189,10 @@ export default async function ReservationPage(): Promise<JSX.Element> {
             />
           </div>
           <p>
-            Le bouton SimBrief utilise votre dernier OFP disponible. Il doit
-            correspondre à cette réservation pour que le vol ACARS soit créé
-            proprement.
+            Le bouton SimBrief ouvre une fenêtre de dispatch préremplie avec la
+            rotation réservée et l'appareil affecté. Après génération, le site
+            contrôle que le dernier OFP correspond bien avant de créer le vol
+            ACARS.
           </p>
           <div className="definition-grid">
             <div>

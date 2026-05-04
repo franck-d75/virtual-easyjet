@@ -109,6 +109,7 @@ export interface UserMeResponse {
 
 export interface SimbriefLookupResponse {
   pilotId: string;
+  staticId: string | null;
   latestOfpJsonUrl: string;
   latestOfpXmlUrl: string;
 }
@@ -254,6 +255,7 @@ export interface PrepareSimbriefFlightPayload {
   bookingId?: string | null;
   detectedRegistration?: string | null;
   detectedAircraftIcao?: string | null;
+  waitForMatch?: boolean;
 }
 
 export interface PreparedSimbriefFlightResponse {
@@ -278,6 +280,24 @@ export interface PreparedSimbriefFlightResponse {
       name: string;
     };
   };
+}
+
+export interface PendingSimbriefFlightResponse {
+  action: "pending";
+  message: string;
+  status: "PENDING";
+  bookingId: string;
+}
+
+export type SimbriefPrepareFlightResponse =
+  | PreparedSimbriefFlightResponse
+  | PendingSimbriefFlightResponse;
+
+export interface SimbriefDispatchUrlResponse {
+  url: string;
+  mode: "api" | "custom";
+  staticId: string;
+  aircraftTypeInput: string;
 }
 
 export interface PilotProfileResponse {
@@ -497,6 +517,13 @@ export interface BookingResponse {
       icaoCode: string;
       name: string;
     };
+    simbriefAirframe: {
+      id: string;
+      simbriefAirframeId: string;
+      name: string;
+      aircraftIcao: string;
+      registration: string | null;
+    } | null;
   };
   departureAirport: {
     id: string;

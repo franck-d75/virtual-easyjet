@@ -6,6 +6,7 @@ import type {
   PilotProfileResponse,
   SimbriefAirframeResponse,
   SimbriefAirframesResponse,
+  SimbriefDispatchUrlResponse,
   SimbriefImportedRouteResponse,
   SimbriefLatestOfpResponse,
   SimbriefRouteOverlayResponse,
@@ -75,9 +76,13 @@ export async function resyncMyPilotProgress(
 
 export async function getMyLatestSimbriefOfp(
   accessToken: string,
+  options: { staticId?: string | null } = {},
 ): Promise<SimbriefLatestOfpResponse> {
+  const staticId = options.staticId?.trim();
+  const query = staticId ? `?staticId=${encodeURIComponent(staticId)}` : "";
+
   return apiRequest<SimbriefLatestOfpResponse>(
-    "/pilot-profiles/me/simbrief/latest-ofp",
+    `/pilot-profiles/me/simbrief/latest-ofp${query}`,
     {
       accessToken,
       cache: "no-store",
@@ -134,6 +139,18 @@ export async function importMySimbriefRoute(
   return apiRequest<SimbriefImportedRouteResponse>("/pilot/simbrief/import-route", {
     accessToken,
     method: "POST",
+    cache: "no-store",
+  });
+}
+
+export async function buildMySimbriefDispatchUrl(
+  accessToken: string,
+  payload: { bookingId: string; returnUrl?: string },
+): Promise<SimbriefDispatchUrlResponse> {
+  return apiRequest<SimbriefDispatchUrlResponse>("/pilot/simbrief/dispatch-url", {
+    method: "POST",
+    accessToken,
+    body: JSON.stringify(payload),
     cache: "no-store",
   });
 }

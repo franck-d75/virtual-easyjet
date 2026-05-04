@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 
@@ -32,8 +33,11 @@ export class PilotProfilesController {
   }
 
   @Get("me/simbrief/latest-ofp")
-  public latestSimbriefOfp(@CurrentUser() user: AuthenticatedUser) {
-    return this.pilotProfilesService.getMyLatestSimbriefOfp(user);
+  public latestSimbriefOfp(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("staticId") staticId?: string,
+  ) {
+    return this.pilotProfilesService.getMyLatestSimbriefOfp(user, staticId);
   }
 
   @Get("me/simbrief/route-overlay")

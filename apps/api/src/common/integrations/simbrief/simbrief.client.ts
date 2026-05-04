@@ -101,8 +101,10 @@ type SimbriefPayloadResult = SimbriefHttpResult & {
 export class SimbriefClient {
   public async getLatestOfp(
     pilotId: string | null | undefined,
+    staticId?: string | null,
   ): Promise<SimbriefLatestOfpResult> {
     const normalizedPilotId = pilotId?.trim() ?? "";
+    const normalizedStaticId = staticId?.trim() ?? "";
     const fetchedAt = new Date().toISOString();
 
     if (normalizedPilotId.length === 0) {
@@ -117,7 +119,10 @@ export class SimbriefClient {
       };
     }
 
-    const source = buildSimbriefFlightPlanLookup(normalizedPilotId);
+    const source = buildSimbriefFlightPlanLookup(
+      normalizedPilotId,
+      normalizedStaticId.length > 0 ? normalizedStaticId : null,
+    );
 
     try {
       const response = await this.fetchSimbriefJson(source.latestOfpJsonUrl);

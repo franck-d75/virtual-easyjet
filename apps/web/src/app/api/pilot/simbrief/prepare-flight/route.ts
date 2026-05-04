@@ -2,6 +2,7 @@ import { createFlight, getMyBookings, getMyLatestSimbriefOfp } from "@/lib/api/p
 import { ApiError } from "@/lib/api/client";
 import type {
   BookingResponse,
+  PendingSimbriefFlightResponse,
   PrepareSimbriefFlightPayload,
   PreparedSimbriefFlightResponse,
   SimbriefLatestOfpResponse,
@@ -39,6 +40,7 @@ async function readPayload(request: Request): Promise<PrepareSimbriefFlightPaylo
     bookingId: normalizeOptionalString(payload.bookingId),
     detectedRegistration: normalizeOptionalString(payload.detectedRegistration),
     detectedAircraftIcao: normalizeOptionalString(payload.detectedAircraftIcao),
+    waitForMatch: payload.waitForMatch === true,
   };
 }
 
@@ -64,6 +66,10 @@ function findLinkedSimbriefAircraftId(
   return latestOfp.plan?.aircraft?.matchedAirframe?.linkedAircraft?.id ?? undefined;
 }
 
+function buildSimbriefStaticId(bookingId: string): string {
+  return `VEZY_${bookingId}`.replace(/[^A-Z0-9_]/gi, "_").toUpperCase();
+}
+
 export async function POST(request: Request) {
   try {
     const payload = await readPayload(request);
@@ -74,11 +80,11 @@ export async function POST(request: Request) {
     }
 
     const result = await executeWithBackendAccess(async (accessToken) => {
-      const [bookings, latestOfp] = await Promise.all([
-        getMyBookings(accessToken),
-        getMyLatestSimbriefOfp(accessToken),
-      ]);
+      const bookings = await getMyBookings(accessToken);
       const booking = findRequestedBooking(bookings, bookingId);
+      const latestOfp = await getMyLatestSimbriefOfp(accessToken, {
+        staticId: buildSimbriefStaticId(booking.id),
+      });
 
       if (booking.flight) {
         return {
@@ -113,6 +119,15 @@ export async function POST(request: Request) {
       );
 
       if (simbriefMatch.status !== "MATCHED") {
+        if (payload.waitForMatch) {
+          return {
+            action: "pending",
+            message: simbriefMatch.detail,
+            status: "PENDING",
+            bookingId: booking.id,
+          } satisfies PendingSimbriefFlightResponse;
+        }
+
         throw new ApiError(simbriefMatch.detail, 400, simbriefMatch);
       }
 
