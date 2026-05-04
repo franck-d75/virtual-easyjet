@@ -65,7 +65,7 @@ export function getAppBaseUrl(): string {
 }
 
 export function getAcarsCurrentVersion(): string {
-  return process.env.NEXT_PUBLIC_ACARS_CURRENT_VERSION ?? "0.1.0";
+  return process.env.NEXT_PUBLIC_ACARS_CURRENT_VERSION ?? "0.1.2";
 }
 
 export function isProductionEnvironment(): boolean {

@@ -75,6 +75,16 @@ export default async function ReservationPage(): Promise<JSX.Element> {
     [buildBookingSimbriefCandidate(featuredBooking)],
     "réservation active",
   );
+  const estimatedBlockTimeMinutes =
+    featuredBooking.route?.blockTimeMinutes ??
+    (simbriefSummary.status === "MATCHED"
+      ? latestSimbriefOfp.plan?.blockTimeMinutes ?? null
+      : null);
+  const canCancelFeaturedBooking =
+    (featuredBooking.status === "RESERVED" ||
+      featuredBooking.status === "IN_PROGRESS") &&
+    (!featuredBooking.flight ||
+      ["PLANNED", "IN_PROGRESS"].includes(featuredBooking.flight.status));
 
   return (
     <>
@@ -136,9 +146,7 @@ export default async function ReservationPage(): Promise<JSX.Element> {
             </div>
             <div>
               <span>Temps bloc estimé</span>
-              <strong>
-                {formatDurationMinutes(featuredBooking.route?.blockTimeMinutes ?? null)}
-              </strong>
+              <strong>{formatDurationMinutes(estimatedBlockTimeMinutes)}</strong>
             </div>
             <div>
               <span>Vol ACARS</span>
@@ -160,7 +168,7 @@ export default async function ReservationPage(): Promise<JSX.Element> {
                 bookingId={featuredBooking.id}
               />
             )}
-            {!featuredBooking.flight && featuredBooking.status === "RESERVED" ? (
+            {canCancelFeaturedBooking ? (
               <ApiActionButton
                 confirmMessage="Annuler cette réservation ?"
                 endpoint={`/api/pilot/bookings/${featuredBooking.id}/cancel`}

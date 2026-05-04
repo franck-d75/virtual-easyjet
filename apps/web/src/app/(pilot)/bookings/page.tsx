@@ -314,9 +314,11 @@ export default async function BookingsPage(): Promise<JSX.Element> {
             bookings={visibleBookings}
             simbriefMatches={bookingSimbriefMatches}
             renderActions={(booking) => {
-              const canCancelPlannedBooking =
-                booking.status === "RESERVED" &&
-                (booking.flight === null || booking.flight.status === "PLANNED");
+              const canCancelReadyBooking =
+                (booking.status === "RESERVED" ||
+                  booking.status === "IN_PROGRESS") &&
+                (booking.flight === null ||
+                  ["PLANNED", "IN_PROGRESS"].includes(booking.flight.status));
 
               if (booking.status === "RESERVED" && booking.flight === null) {
                 return (
@@ -340,7 +342,7 @@ export default async function BookingsPage(): Promise<JSX.Element> {
                 );
               }
 
-              if (canCancelPlannedBooking && booking.flight) {
+              if (canCancelReadyBooking && booking.flight) {
                 return (
                   <div className="table-action-group">
                     <Button href={`/vols?flight=${booking.flight.id}`} variant="secondary">

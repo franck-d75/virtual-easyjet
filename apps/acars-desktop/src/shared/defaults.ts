@@ -3,7 +3,7 @@ import type { DesktopConfig, TelemetryInput } from "./types.js";
 export const DEFAULT_DESKTOP_CONFIG: DesktopConfig = {
   apiBaseUrl: "https://api.virtual-easyjet.fr/api",
   acarsBaseUrl: "https://api.virtual-easyjet.fr/acars",
-  clientVersion: "0.1.1",
+  clientVersion: "0.1.2",
   simulatorProvider: "MSFS2024_FSUIPC7",
   backendMode: "live",
   telemetryMode: "fsuipc",

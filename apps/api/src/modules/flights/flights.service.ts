@@ -173,7 +173,7 @@ export class FlightsService {
           departureAirportId: booking.departureAirportId,
           arrivalAirportId: booking.arrivalAirportId,
           flightNumber: booking.reservedFlightNumber,
-          status: FlightStatus.IN_PROGRESS,
+          status: FlightStatus.PLANNED,
           plannedOffBlockAt: booking.bookedFor,
         },
       });
@@ -181,7 +181,6 @@ export class FlightsService {
       await transaction.booking.update({
         where: { id: booking.id },
         data: {
-          status: BookingStatus.IN_PROGRESS,
           aircraftId: aircraft.id,
         },
       });

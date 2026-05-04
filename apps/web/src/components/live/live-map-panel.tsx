@@ -1071,12 +1071,17 @@ function buildAircraftTagMarker(
   L: LeafletModule,
   flight: LiveMapAircraft,
 ): ReturnType<LeafletModule["marker"]> | null {
-  const primaryLabel = flight.flightNumber ?? flight.callsign;
+  const primaryLabel = (flight.flightNumber ?? flight.callsign).trim();
 
   if (!primaryLabel) {
     return null;
   }
 
+  const pilotLabel = flight.pilotDisplayName?.trim() ?? "";
+  const hasPilotLabel =
+    pilotLabel.length > 0 &&
+    pilotLabel.toLocaleLowerCase("fr-FR") !==
+      primaryLabel.toLocaleLowerCase("fr-FR");
   const presentation = getPhasePresentation(flight.phase);
   const hasRoute = isDisplayableRoute(flight.simbriefRoute);
 
@@ -1089,8 +1094,19 @@ function buildAircraftTagMarker(
         <div class="live-map-aircraft-tag ${presentation.phaseClassName}${
           hasRoute ? " live-map-aircraft-tag--route-available" : ""
         }">
-          <span class="live-map-aircraft-tag__row">
-            ${escapeHtml(primaryLabel)}
+          <span class="live-map-aircraft-tag__labels${
+            hasPilotLabel ? " live-map-aircraft-tag__labels--alternating" : ""
+          }">
+            <span class="live-map-aircraft-tag__row live-map-aircraft-tag__row--flight">
+              ${escapeHtml(primaryLabel)}
+            </span>
+            ${
+              hasPilotLabel
+                ? `<span class="live-map-aircraft-tag__row live-map-aircraft-tag__row--pilot">${escapeHtml(
+                    pilotLabel,
+                  )}</span>`
+                : ""
+            }
           </span>
           <span class="live-map-aircraft-tag__meta">
             ${escapeHtml(formatRadarAltitude(flight.altitude))} · ${escapeHtml(

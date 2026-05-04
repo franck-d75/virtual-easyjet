@@ -1812,17 +1812,89 @@ small {
   animation: live-map-tag-pulse 1.7s ease-in-out infinite;
 }
 
+.live-map-aircraft-tag__labels {
+  position: relative;
+  z-index: 1;
+  display: block;
+  min-height: 0.75rem;
+  overflow: hidden;
+}
+
 .live-map-aircraft-tag__row {
   position: relative;
   z-index: 1;
+  display: block;
+  max-width: 7.2rem;
+  overflow: hidden;
   color: #f8fafc;
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.1em;
   line-height: 1.1;
   text-transform: uppercase;
+  text-overflow: ellipsis;
   white-space: nowrap;
   text-align: center;
+}
+
+.live-map-aircraft-tag__labels--alternating .live-map-aircraft-tag__row {
+  position: absolute;
+  inset: 0;
+}
+
+.live-map-aircraft-tag__labels--alternating .live-map-aircraft-tag__row--flight {
+  animation: live-map-tag-flight-label 5.6s ease-in-out infinite;
+}
+
+.live-map-aircraft-tag__labels--alternating .live-map-aircraft-tag__row--pilot {
+  opacity: 0;
+  transform: translateY(0.32rem);
+  animation: live-map-tag-pilot-label 5.6s ease-in-out infinite;
+}
+
+@keyframes live-map-tag-flight-label {
+  0%,
+  44%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  50%,
+  94% {
+    opacity: 0;
+    transform: translateY(-0.32rem);
+  }
+}
+
+@keyframes live-map-tag-pilot-label {
+  0%,
+  44%,
+  100% {
+    opacity: 0;
+    transform: translateY(0.32rem);
+  }
+
+  50%,
+  94% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-map-aircraft-tag__labels--alternating .live-map-aircraft-tag__row {
+    animation: none;
+  }
+
+  .live-map-aircraft-tag__labels--alternating .live-map-aircraft-tag__row--flight {
+    opacity: 1;
+    transform: none;
+  }
+
+  .live-map-aircraft-tag__labels--alternating .live-map-aircraft-tag__row--pilot {
+    opacity: 0;
+  }
 }
 
 .live-map-route-line {

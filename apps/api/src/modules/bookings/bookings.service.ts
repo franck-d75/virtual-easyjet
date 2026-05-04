@@ -53,8 +53,17 @@ const bookingInclude = {
   },
   departureAirport: true,
   arrivalAirport: true,
-  flight: true,
+  flight: {
+    include: {
+      acarsSession: true,
+    },
+  },
 } satisfies Prisma.BookingInclude;
+
+const CANCELLABLE_FLIGHT_STATUSES: FlightStatus[] = [
+  FlightStatus.PLANNED,
+  FlightStatus.IN_PROGRESS,
+];
 
 const pilotProfileForBookingInclude = {
   rank: true,
@@ -324,7 +333,10 @@ export class BookingsService {
         },
       });
 
-      if (booking.flight?.status === FlightStatus.PLANNED) {
+      if (
+        booking.flight &&
+        CANCELLABLE_FLIGHT_STATUSES.includes(booking.flight.status)
+      ) {
         await transaction.flight.update({
           where: { id: booking.flight.id },
           data: {
@@ -412,17 +424,29 @@ export class BookingsService {
   }
 
   private assertBookingIsCancellable(booking: BookingRecord): void {
-    if (
-      booking.flight &&
-      booking.flight.status !== FlightStatus.PLANNED
-    ) {
-      throw new ConflictException(
-        "This booking already has a canonical flight and cannot be cancelled.",
-      );
+    if (booking.flight) {
+      if (booking.flight.acarsSession) {
+        throw new ConflictException(
+          "This booking already has an ACARS session and cannot be cancelled.",
+        );
+      }
+
+      if (
+        !CANCELLABLE_FLIGHT_STATUSES.includes(booking.flight.status)
+      ) {
+        throw new ConflictException(
+          "This booking already has a canonical flight and cannot be cancelled.",
+        );
+      }
     }
 
-    if (booking.status !== BookingStatus.RESERVED) {
-      throw new BadRequestException("Only reserved bookings can be cancelled.");
+    if (
+      booking.status !== BookingStatus.RESERVED &&
+      booking.status !== BookingStatus.IN_PROGRESS
+    ) {
+      throw new BadRequestException(
+        "Only reserved or ready bookings can be cancelled.",
+      );
     }
 
     if (booking.cancelledAt) {
