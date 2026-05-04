@@ -1,0 +1,94 @@
+.live-map-aircraft-tag-shell {
+  background: transparent;
+  border: 0;
+}
+
+.live-map-aircraft-tag {
+  position: relative;
+  display: inline-grid;
+  gap: 0.08rem;
+  min-width: 7.6rem;
+  max-width: 9.25rem;
+  padding: 0.34rem 0.52rem 0.34rem 0.6rem;
+  border: 1px solid rgba(125, 211, 252, 0.34);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.82)),
+    rgba(2, 6, 23, 0.86);
+  box-shadow:
+    0 10px 22px rgba(2, 6, 23, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  cursor: default;
+  overflow: visible;
+}
+
+.live-map-aircraft-tag::before {
+  content: "";
+  position: absolute;
+  top: 1.52rem;
+  left: -1.05rem;
+  width: 1.05rem;
+  height: 1px;
+  background: rgba(125, 211, 252, 0.48);
+  box-shadow: 0 0 0.55rem rgba(125, 211, 252, 0.2);
+}
+
+.live-map-aircraft-tag::after {
+  content: "";
+  position: absolute;
+  top: 1.37rem;
+  left: -1.22rem;
+  width: 0.32rem;
+  height: 0.32rem;
+  border: 1px solid rgba(125, 211, 252, 0.62);
+  border-radius: 999px;
+  background: rgba(8, 15, 28, 0.94);
+}
+
+.live-map-aircraft-tag--route-available {
+  border-color: rgba(56, 189, 248, 0.7);
+}
+
+.live-map-aircraft-tag--route-available::after {
+  background: #38bdf8;
+  box-shadow: 0 0 0.7rem rgba(56, 189, 248, 0.45);
+}
+
+.live-map-aircraft-tag__row,
+.live-map-aircraft-tag__meta {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-map-aircraft-tag__row {
+  color: #e0f2fe;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.live-map-aircraft-tag__meta {
+  color: #93c5fd;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.live-map-route-line {
+  filter: drop-shadow(0 0 14px rgba(56, 189, 248, 0.24));
+}
+
+.live-map-route-waypoint-label {
+  border-radius: 6px;
+}
+
+.live-map-route-swatch {
+  opacity: 0.72;
+}
