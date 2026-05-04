@@ -6,7 +6,7 @@ import { getAcarsCurrentVersion } from "@/lib/config/env";
 export type AcarsDownloadTarget =
   | {
       status: "redirect";
-      source: "configured-url";
+      source: "configured-url" | "github-release";
       fileName: string;
       downloadUrl: string;
       version: string;
@@ -27,6 +27,8 @@ export type AcarsDownloadTarget =
     };
 
 const INSTALLER_FILE_PREFIX = "Virtual-Easyjet-ACARS-Setup-";
+const GITHUB_RELEASE_DOWNLOAD_BASE_URL =
+  "https://github.com/franck-d75/virtual-easyjet/releases/download";
 
 function getCandidateDirectories(): string[] {
   return [
@@ -104,6 +106,12 @@ function resolveLocalInstaller(version: string): AcarsDownloadTarget | null {
   return null;
 }
 
+function getGithubReleaseDownloadUrl(version: string): string {
+  const fileName = `${INSTALLER_FILE_PREFIX}${version}-x64.exe`;
+
+  return `${GITHUB_RELEASE_DOWNLOAD_BASE_URL}/v${version}/${fileName}`;
+}
+
 export function resolveAcarsDownloadTarget(): AcarsDownloadTarget {
   const version = getAcarsCurrentVersion();
   const configuredDownloadUrl = getConfiguredDownloadUrl();
@@ -124,12 +132,13 @@ export function resolveAcarsDownloadTarget(): AcarsDownloadTarget {
     return localInstaller;
   }
 
+  const githubReleaseDownloadUrl = getGithubReleaseDownloadUrl(version);
+
   return {
-    status: "missing",
-    source: "missing",
-    fileName: null,
+    status: "redirect",
+    source: "github-release",
+    fileName: getFileNameFromUrl(githubReleaseDownloadUrl),
+    downloadUrl: githubReleaseDownloadUrl,
     version,
-    message:
-      "Aucun installateur ACARS Windows n'est disponible pour le moment. Générez un build avec pnpm --filter @va/acars package ou publiez ACARS_DOWNLOAD_URL.",
   };
 }
