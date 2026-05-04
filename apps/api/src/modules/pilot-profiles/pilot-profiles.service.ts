@@ -182,6 +182,12 @@ function buildSimbriefStaticId(bookingId: string): string {
   return `VEZY_${bookingId}`.replace(/[^A-Z0-9_]/gi, "_").toUpperCase();
 }
 
+function isSimbriefInternalAirframeId(
+  value: string | null | undefined,
+): value is string {
+  return /^\d+_\d+$/u.test(value?.trim() ?? "");
+}
+
 @Injectable()
 @Dependencies(PrismaService, SimbriefClient)
 export class PilotProfilesService {
@@ -1431,9 +1437,17 @@ export class PilotProfilesService {
     const arrivalIcao = booking.arrivalAirport.icao.trim().toUpperCase();
     const flightNumber = booking.reservedFlightNumber.trim().toUpperCase();
     const flightNumberParts = splitSimbriefFlightNumber(flightNumber);
-    const aircraftTypeInput =
-      booking.aircraft.simbriefAirframe?.simbriefAirframeId?.trim() ||
-      booking.aircraft.aircraftType.icaoCode.trim().toUpperCase();
+    const airframeMetadata = booking.aircraft.simbriefAirframe
+      ? readSimbriefAirframeMetadata(booking.aircraft.simbriefAirframe.rawJson)
+      : null;
+    const persistedAirframeId =
+      booking.aircraft.simbriefAirframe?.simbriefAirframeId?.trim() ?? null;
+    const externalAirframeId = airframeMetadata?.externalAirframeId ?? null;
+    const aircraftTypeInput = isSimbriefInternalAirframeId(persistedAirframeId)
+      ? persistedAirframeId
+      : isSimbriefInternalAirframeId(externalAirframeId)
+        ? externalAirframeId
+        : booking.aircraft.aircraftType.icaoCode.trim().toUpperCase();
     const params = new URLSearchParams({
       userid: simbriefPilotId.trim(),
       static_id: buildSimbriefStaticId(booking.id),
@@ -1444,6 +1458,9 @@ export class PilotProfilesService {
       dest: arrivalIcao,
       type: aircraftTypeInput,
       reg: booking.aircraft.registration.trim().toUpperCase(),
+      altn: "AUTO",
+      toaltn: "AUTO",
+      eualtn: "AUTO",
       units: "KGS",
       navlog: "1",
       planformat: "LIDO",
