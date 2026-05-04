@@ -1,10 +1,17 @@
-import { readFile } from "node:fs/promises";
-
 import { NextResponse } from "next/server";
-import { resolveAcarsDownloadTarget } from "@/lib/acars/download";
+import {
+  type AcarsDownloadVariant,
+  resolveAcarsDownloadTarget,
+} from "@/lib/acars/download";
 
-export async function GET() {
-  const target = resolveAcarsDownloadTarget();
+function parseDownloadVariant(request: Request): AcarsDownloadVariant {
+  const requestedVariant = new URL(request.url).searchParams.get("variant");
+
+  return requestedVariant === "portable" ? "portable" : "installer";
+}
+
+export async function GET(request: Request) {
+  const target = resolveAcarsDownloadTarget(parseDownloadVariant(request));
 
   if (target.status === "redirect") {
     return NextResponse.redirect(target.downloadUrl, 307);
@@ -24,15 +31,15 @@ export async function GET() {
     );
   }
 
-  const installerBuffer = await readFile(target.filePath);
-
-  return new NextResponse(new Uint8Array(installerBuffer), {
-    status: 200,
-    headers: {
-      "Content-Type": "application/vnd.microsoft.portable-executable",
-      "Content-Disposition": `attachment; filename="${target.fileName}"`,
-      "Cache-Control": "public, max-age=300",
-      "Content-Length": String(installerBuffer.byteLength),
+  return NextResponse.json(
+    {
+      error: "ACARS download is not available.",
     },
-  });
+    {
+      status: 503,
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    },
+  );
 }

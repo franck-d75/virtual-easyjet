@@ -8,6 +8,11 @@ out/
 release/
 tmp/
 temp/
+.tmp/
+.codex-runtime/
+_tmp*/
+test-results/
+.tools/
 *.log
 .env
 .env.local
@@ -18,3 +23,9 @@ prisma/dev.db
 *.tsbuildinfo
 Thumbs.db
 Desktop.ini
+
+.vercel
+.env*.local
+.home-new-aircraft*.png
+.layout-*.png
+.tmp-tree-elements*.json

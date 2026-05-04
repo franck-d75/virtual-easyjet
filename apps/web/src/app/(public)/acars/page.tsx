@@ -5,7 +5,11 @@ import { HeroSection } from "@/components/marketing/hero-section";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { resolveAcarsDownloadTarget } from "@/lib/acars/download";
+import {
+  type AcarsDownloadTarget,
+  type AcarsDownloadVariant,
+  resolveAcarsDownloadTargets,
+} from "@/lib/acars/download";
 import { getBackendAcarsLiveTraffic } from "@/lib/api/public";
 import {
   ACARS_DOWNLOAD_PROXY_PATH,
@@ -21,13 +25,45 @@ type AcarsAvailabilityState = "ONLINE" | "IDLE" | "UNAVAILABLE";
 
 export const dynamic = "force-dynamic";
 
+function getDownloadHref(variant: AcarsDownloadVariant): string {
+  return `${ACARS_DOWNLOAD_PROXY_PATH}?variant=${variant}`;
+}
+
+function getDownloadSourceLabel(target: AcarsDownloadTarget): string {
+  if (target.status === "redirect") {
+    return target.source === "configured-url"
+      ? "lien public configure"
+      : "GitHub Releases";
+  }
+
+  return "indisponible";
+}
+
 export default async function AcarsPage({
   searchParams,
 }: AcarsPageProps): Promise<JSX.Element> {
   await searchParams;
 
   const version = getAcarsCurrentVersion();
-  const downloadTarget = resolveAcarsDownloadTarget();
+  const downloadTargets = resolveAcarsDownloadTargets();
+  const downloadCards = [
+    {
+      variant: "installer" as const,
+      eyebrow: "Installation",
+      title: "Version installation",
+      helper: "Setup Windows avec raccourcis et integration systeme.",
+      buttonLabel: "Telecharger l'installateur",
+      target: downloadTargets.installer,
+    },
+    {
+      variant: "portable" as const,
+      eyebrow: "Portable",
+      title: "Version portable",
+      helper: "Executable autonome, pratique pour tester sans installation.",
+      buttonLabel: "Telecharger la portable",
+      target: downloadTargets.portable,
+    },
+  ];
 
   let availability: AcarsAvailabilityState = "IDLE";
   let activeFlightsCount = 0;
@@ -49,15 +85,12 @@ export default async function AcarsPage({
         actions={
           <>
             <Button href="/live-map">Ouvrir la carte en direct</Button>
-            {downloadTarget.status === "missing" ? (
-              <Button href="/profil" variant="secondary">
-                Build Windows indisponible
-              </Button>
-            ) : (
-              <Button href={ACARS_DOWNLOAD_PROXY_PATH} variant="secondary">
-                Telecharger ACARS
-              </Button>
-            )}
+            <Button href={getDownloadHref("installer")} variant="secondary">
+              Version installation
+            </Button>
+            <Button href={getDownloadHref("portable")} variant="ghost">
+              Version portable
+            </Button>
             <Button href="/connexion" variant="ghost">
               Acceder a l'espace pilote
             </Button>
@@ -91,19 +124,9 @@ export default async function AcarsPage({
                 </small>
               </div>
               <div className="hero-summary-card">
-                <span>Package Windows</span>
-                <strong>
-                  {downloadTarget.status === "missing"
-                    ? "Non publie"
-                    : downloadTarget.fileName}
-                </strong>
-                <small>
-                  {downloadTarget.status === "redirect"
-                    ? "telecharge depuis une release"
-                    : downloadTarget.status === "local"
-                      ? "installeur local detecte"
-                      : "generez un build ou configurez ACARS_DOWNLOAD_URL"}
-                </small>
+                <span>Packages Windows</span>
+                <strong>2 versions</strong>
+                <small>installation et portable</small>
               </div>
               <div className="hero-summary-card">
                 <span>Simulateur cible</span>
@@ -112,13 +135,63 @@ export default async function AcarsPage({
               </div>
             </div>
             <p className="hero-aside-note">
-              {downloadTarget.status === "missing"
-                ? `Aucun build Windows n'est publie pour ${ACARS_PRODUCT_NAME} sur cet environnement. Générez un package avec pnpm --filter @va/acars package ou configurez ACARS_DOWNLOAD_URL.`
-                : `${ACARS_PRODUCT_NAME} est distribue comme un vrai client Windows. Il se connecte au compte pilote, charge les operations reelles, transmet la telemetrie SimConnect et prepare le PIREP sans trafic fictif.`}
+              {`${ACARS_PRODUCT_NAME} est distribue en version installation et portable. Il se connecte au compte pilote, charge les operations reelles, transmet la telemetrie SimConnect et prepare le PIREP sans trafic fictif.`}
             </p>
           </div>
         }
       />
+
+      <section className="section-band">
+        <div className="section-band__header">
+          <div>
+            <span className="section-eyebrow">Telechargement</span>
+            <h2>Choisissez votre package ACARS</h2>
+          </div>
+          <p>
+            Les deux packages pointent vers la version {version}. Les anciennes
+            releases restent conservees dans GitHub Releases.
+          </p>
+        </div>
+
+        <section className="panel-grid">
+          {downloadCards.map((downloadCard) => (
+            <Card className="ops-card" key={downloadCard.variant}>
+              <span className="section-eyebrow">{downloadCard.eyebrow}</span>
+              <h2>{downloadCard.title}</h2>
+              <p>{downloadCard.helper}</p>
+              <div className="definition-grid">
+                <div>
+                  <span>Version</span>
+                  <strong>{version}</strong>
+                </div>
+                <div>
+                  <span>Source</span>
+                  <strong>{getDownloadSourceLabel(downloadCard.target)}</strong>
+                </div>
+                <div>
+                  <span>Fichier</span>
+                  <strong>
+                    {downloadCard.target.status === "missing"
+                      ? "Non disponible"
+                      : downloadCard.target.fileName}
+                  </strong>
+                </div>
+              </div>
+              <div className="inline-actions">
+                {downloadCard.target.status === "missing" ? (
+                  <Button href="/profil" variant="secondary">
+                    Package indisponible
+                  </Button>
+                ) : (
+                  <Button href={getDownloadHref(downloadCard.variant)}>
+                    {downloadCard.buttonLabel}
+                  </Button>
+                )}
+              </div>
+            </Card>
+          ))}
+        </section>
+      </section>
 
       <section className="section-band">
         <div className="section-band__header">
@@ -160,15 +233,10 @@ export default async function AcarsPage({
 
           <Card className="ops-card">
             <span className="section-eyebrow">Distribution</span>
-            <h2>
-              {downloadTarget.status === "missing"
-                ? "Aucun package publie"
-                : "Installeur Windows disponible"}
-            </h2>
+            <h2>Deux packages Windows disponibles</h2>
             <p>
-              {downloadTarget.status === "missing"
-                ? downloadTarget.message
-                : `Le telechargement pointe vers ${downloadTarget.fileName}. Le client Electron pilote l'authentification, SimBrief, SimConnect et la session ACARS reelle.`}
+              Choisissez l'installateur pour une utilisation reguliere, ou la
+              portable pour lancer ACARS sans installation.
             </p>
           </Card>
         </section>

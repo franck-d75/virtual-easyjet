@@ -67,9 +67,9 @@ WEB_API_BASE_URL="https://api.virtual-easyjet.fr/api"
 NEXT_PUBLIC_API_BASE_URL="https://api.virtual-easyjet.fr/api"
 NEXT_PUBLIC_API_URL="https://api.virtual-easyjet.fr"
 NEXT_PUBLIC_APP_URL="https://www.virtual-easyjet.fr"
-NEXT_PUBLIC_ACARS_CURRENT_VERSION="0.1.0"
-ACARS_DOWNLOAD_URL="https://downloads.virtual-easyjet.fr/Virtual-Easyjet-ACARS-Setup-0.1.0-x64.exe"
-NEXT_PUBLIC_ACARS_DOWNLOAD_URL="https://downloads.virtual-easyjet.fr/Virtual-Easyjet-ACARS-Setup-0.1.0-x64.exe"
+NEXT_PUBLIC_ACARS_CURRENT_VERSION="0.1.2"
+ACARS_INSTALLER_DOWNLOAD_URL="https://github.com/franck-d75/virtual-easyjet/releases/download/v0.1.2/Virtual-Easyjet-ACARS-Setup-0.1.2-x64.exe"
+ACARS_PORTABLE_DOWNLOAD_URL="https://github.com/franck-d75/virtual-easyjet/releases/download/v0.1.2/Virtual-Easyjet-ACARS-Portable-0.1.2-x64.exe"
 ```
 
 ### API
@@ -202,7 +202,7 @@ pnpm start:acars-service:prod
 8. Run `pnpm build`.
 9. Start the three application processes behind a supervisor.
 10. Publish the ACARS Windows binaries separately.
-11. Set `ACARS_DOWNLOAD_URL` and `NEXT_PUBLIC_ACARS_CURRENT_VERSION`.
+11. Set `NEXT_PUBLIC_ACARS_CURRENT_VERSION`, `ACARS_INSTALLER_DOWNLOAD_URL`, and `ACARS_PORTABLE_DOWNLOAD_URL`.
 
 ## Reverse proxy example
 
@@ -230,8 +230,8 @@ Keep these rules:
 
 ### Publish separately
 
-- `apps/acars-desktop/release/Virtual-Easyjet-ACARS-Setup-0.1.0-x64.exe`
-- `apps/acars-desktop/release/Virtual-Easyjet-ACARS-Portable-0.1.0-x64.exe`
+- `apps/acars-desktop/release/Virtual-Easyjet-ACARS-Setup-0.1.2-x64.exe`
+- `apps/acars-desktop/release/Virtual-Easyjet-ACARS-Portable-0.1.2-x64.exe`
 
 ## Notes before public launch
 

@@ -109,8 +109,8 @@ pnpm --filter @va/acars package
 
 Sorties attendues :
 
-- `apps/acars-desktop/release/Virtual-Easyjet-ACARS-Setup-0.1.0-x64.exe`
-- `apps/acars-desktop/release/Virtual-Easyjet-ACARS-Portable-0.1.0-x64.exe`
+- `apps/acars-desktop/release/Virtual-Easyjet-ACARS-Setup-0.1.2-x64.exe`
+- `apps/acars-desktop/release/Virtual-Easyjet-ACARS-Portable-0.1.2-x64.exe`
 
 Commande alternative pour verifier seulement le package sans installateur :
 
@@ -124,7 +124,7 @@ Limites actuelles de distribution :
 - `signAndEditExecutable` est desactive pour eviter un echec `winCodeSign` sur certaines machines Windows sans privilege symlink
 - pas d'auto-update
 - SmartScreen ou certains antivirus peuvent afficher un avertissement tant que le binaire n'est pas signe
-- le lien public du telechargement doit etre branche via `ACARS_DOWNLOAD_URL`
+- les liens publics peuvent etre branches via les variables ACARS dediees
 
 Build simple du client :
 
@@ -132,7 +132,7 @@ Build simple du client :
 pnpm --filter @va/acars build
 ```
 
-Le telechargement web `/acars` et `/api/acars/download` ne sert plus le preview zip. Il redirige vers `ACARS_DOWNLOAD_URL` quand une release publique est configuree, ou sert localement le vrai build Windows si un installateur existe dans `apps/acars-desktop/release`.
+Le telechargement web `/acars` propose maintenant deux packages : installation et portable. `/api/acars/download?variant=installer` sert l'installateur, `/api/acars/download?variant=portable` sert la version portable. Si aucune URL publique n'est configuree, le site utilise la release GitHub correspondant a `NEXT_PUBLIC_ACARS_CURRENT_VERSION`.
 
 Note PowerShell :
 
@@ -140,14 +140,20 @@ Note PowerShell :
 
 Variables web pour activer le telechargement public :
 
-- `ACARS_DOWNLOAD_URL`
 - `NEXT_PUBLIC_ACARS_CURRENT_VERSION`
+- `ACARS_INSTALLER_DOWNLOAD_URL`
+- `ACARS_PORTABLE_DOWNLOAD_URL`
+
+Compatibilite historique :
+
+- `ACARS_DOWNLOAD_URL` pour l'installateur uniquement
 
 Exemple :
 
 ```dotenv
-ACARS_DOWNLOAD_URL="https://github.com/virtualeasyjet/virtual-easyjet-acars/releases/download/v0.1.0/Virtual-Easyjet-ACARS-Setup-0.1.0-x64.exe"
-NEXT_PUBLIC_ACARS_CURRENT_VERSION="0.1.0"
+NEXT_PUBLIC_ACARS_CURRENT_VERSION="0.1.2"
+ACARS_INSTALLER_DOWNLOAD_URL="https://github.com/franck-d75/virtual-easyjet/releases/download/v0.1.2/Virtual-Easyjet-ACARS-Setup-0.1.2-x64.exe"
+ACARS_PORTABLE_DOWNLOAD_URL="https://github.com/franck-d75/virtual-easyjet/releases/download/v0.1.2/Virtual-Easyjet-ACARS-Portable-0.1.2-x64.exe"
 ```
 
 ## Validation locale web
@@ -199,5 +205,6 @@ Hors Sprint 1 :
 - `docs/data-model.md`
 - `docs/manual-validation.md`
 - `docs/acars-distribution.md`
+- `docs/pilot-flight-validation.md`
 - `docs/deployment.md`
 - `packages/database/prisma/schema.prisma`

@@ -29,8 +29,8 @@ test("MVP flow completes from booking to automatic PIREP", async () => {
     bookingId: booking.id,
   });
 
-  assert.equal(flight.status, FlightStatus.IN_PROGRESS);
-  assert.equal(flight.booking.status, BookingStatus.IN_PROGRESS);
+  assert.equal(flight.status, FlightStatus.PLANNED);
+  assert.equal(flight.booking.status, BookingStatus.RESERVED);
 
   await assert.rejects(
     () =>
@@ -48,6 +48,8 @@ test("MVP flow completes from booking to automatic PIREP", async () => {
 
   assert.equal(session.status, SessionStatus.CONNECTED);
   assert.equal(session.detectedPhase, FlightPhase.PRE_FLIGHT);
+  assert.equal(harness.prisma.store.flights[0]?.status, FlightStatus.IN_PROGRESS);
+  assert.equal(harness.prisma.store.bookings[0]?.status, BookingStatus.IN_PROGRESS);
 
   const telemetrySequence = [
     {
@@ -299,4 +301,23 @@ test("MVP flow completes from booking to automatic PIREP", async () => {
   assert.ok(eventTypes.includes(FlightEventType.PHASE_CHANGED));
   assert.ok(eventTypes.includes(FlightEventType.PIREP_GENERATED));
   assert.ok(eventTypes.includes(FlightEventType.FLIGHT_COMPLETED));
+
+  const cancellableBooking = await harness.bookingsService.create(harness.user, {
+    scheduleId: "schedule-afr100-daily",
+    bookedFor: "2030-01-03T08:00:00.000Z",
+    notes: "Cancellation before ACARS",
+  });
+  const cancellableFlight = await harness.flightsService.create(harness.user, {
+    bookingId: cancellableBooking.id,
+  });
+
+  assert.equal(cancellableFlight.status, FlightStatus.PLANNED);
+
+  const cancelledBooking = await harness.bookingsService.cancel(
+    cancellableBooking.id,
+    harness.user,
+  );
+
+  assert.equal(cancelledBooking.status, BookingStatus.CANCELLED);
+  assert.equal(cancelledBooking.flight?.status, FlightStatus.CANCELLED);
 });

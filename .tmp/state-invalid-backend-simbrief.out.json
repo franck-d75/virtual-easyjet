@@ -1,1 +1,0 @@
-{"status":"NOT_FOUND","pilotId":"0000000","detail":"Error: Unknown UserID","fetchStatus":"Error: Unknown UserID","fetchedAt":"2026-04-21T14:51:48.892Z","source":{"pilotId":"0000000","latestOfpJsonUrl":"https://www.simbrief.com/api/xml.fetcher.php?userid=0000000&json=v2","latestOfpXmlUrl":"https://www.simbrief.com/api/xml.fetcher.php?userid=0000000"},"plan":null}

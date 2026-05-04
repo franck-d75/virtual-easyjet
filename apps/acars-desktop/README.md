@@ -32,8 +32,8 @@ pnpm --filter @va/acars package
 
 Artefacts generes :
 
-- `C:\Users\franc\Documents\Codex\2026-04-21-tu-es-un-ing-nieur-logiciel\apps\acars-desktop\release\Virtual-Easyjet-ACARS-Setup-0.1.0-x64.exe`
-- `C:\Users\franc\Documents\Codex\2026-04-21-tu-es-un-ing-nieur-logiciel\apps\acars-desktop\release\Virtual-Easyjet-ACARS-Portable-0.1.0-x64.exe`
+- `C:\Users\franc\Documents\Codex\2026-04-21-tu-es-un-ing-nieur-logiciel\apps\acars-desktop\release\Virtual-Easyjet-ACARS-Setup-0.1.2-x64.exe`
+- `C:\Users\franc\Documents\Codex\2026-04-21-tu-es-un-ing-nieur-logiciel\apps\acars-desktop\release\Virtual-Easyjet-ACARS-Portable-0.1.2-x64.exe`
 
 ## Configuration desktop
 
