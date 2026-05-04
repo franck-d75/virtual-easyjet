@@ -1,0 +1,176 @@
+:root {
+  --site-gutter: clamp(0.75rem, 1.45vw, 1.5rem);
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100svh;
+}
+
+.site-frame {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100svh;
+}
+
+.site-frame > .page-shell,
+.site-frame > main {
+  flex: 1 0 auto;
+}
+
+.page-shell,
+.page-shell--wide,
+.page-shell--narrow,
+.site-footer__inner,
+.live-map-page {
+  width: calc(100% - (var(--site-gutter) * 2));
+  max-width: none;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.site-header {
+  width: 100%;
+  padding-right: var(--site-gutter);
+  padding-left: var(--site-gutter);
+}
+
+.site-header .page-shell,
+.site-header__inner {
+  width: 100%;
+  max-width: none;
+  margin-right: 0;
+  margin-left: 0;
+}
+
+.site-header__inner {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  gap: clamp(0.65rem, 1vw, 1rem);
+  overflow-x: auto;
+  overflow-y: visible;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.42) transparent;
+}
+
+.site-header__inner::-webkit-scrollbar {
+  height: 0.35rem;
+}
+
+.site-header__inner::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.site-header__inner::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.28);
+}
+
+.brand-mark,
+.pilot-chip,
+.site-header__login,
+.site-nav__link {
+  flex: 0 0 auto;
+}
+
+.site-nav {
+  flex: 1 0 auto;
+  width: auto;
+  min-width: max-content;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  overflow: visible;
+}
+
+.site-nav__link,
+.site-header__login {
+  width: auto;
+  white-space: nowrap;
+}
+
+.pilot-chip {
+  width: auto;
+  max-width: none;
+  flex-wrap: nowrap;
+}
+
+.pilot-chip__identity {
+  flex: 0 1 auto;
+}
+
+.pilot-chip__actions {
+  width: auto;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+
+.site-header--compact .site-nav {
+  display: flex;
+}
+
+.live-map-shell {
+  width: 100%;
+}
+
+.live-map-experience {
+  width: 100%;
+  max-width: none;
+  margin-right: 0;
+  margin-left: 0;
+}
+
+body.live-map-immersive-active .live-map-page,
+.live-map-experience--immersive {
+  width: 100%;
+}
+
+@media (max-width: 1120px) {
+  .site-header__inner {
+    flex-wrap: nowrap;
+  }
+}
+
+@media (max-width: 900px) {
+  .site-header--compact .site-nav {
+    display: flex;
+  }
+
+  .live-map-page {
+    width: calc(100% - (var(--site-gutter) * 2));
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --site-gutter: 0.65rem;
+  }
+
+  .page-shell,
+  .page-shell--wide,
+  .page-shell--narrow,
+  .site-footer__inner,
+  .live-map-page {
+    width: calc(100% - (var(--site-gutter) * 2));
+  }
+
+  .site-header__inner {
+    padding: 0.74rem;
+  }
+
+  .site-nav {
+    width: auto;
+  }
+
+  .site-nav__link,
+  .site-header__login,
+  .pilot-chip {
+    width: auto;
+  }
+}
