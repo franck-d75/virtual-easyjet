@@ -4,7 +4,6 @@ import { LiveMapPanel } from "@/components/live/live-map-panel";
 import { getAcarsLiveTraffic } from "@/lib/api/public";
 import type { LiveMapAircraft } from "@/lib/api/types";
 import { logWebError } from "@/lib/observability/log";
-import type { SimbriefRouteOverlay } from "@/lib/utils/simbrief-route";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +11,6 @@ export default async function LiveMapPage(): Promise<JSX.Element> {
   let initialTraffic: LiveMapAircraft[] = [];
   let initialError: string | null = null;
   let initialFetchedAt: string | null = null;
-  let initialSimbriefRoute: SimbriefRouteOverlay | null = null;
 
   try {
     initialTraffic = await getAcarsLiveTraffic();
@@ -28,7 +26,6 @@ export default async function LiveMapPage(): Promise<JSX.Element> {
       <LiveMapPanel
         initialError={initialError}
         initialFetchedAt={initialFetchedAt}
-        initialSimbriefRoute={initialSimbriefRoute}
         initialTraffic={initialTraffic}
       />
     </div>
