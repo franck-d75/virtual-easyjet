@@ -22,7 +22,7 @@ function HeroAircraftArtwork(): JSX.Element {
         fill
         priority
         sizes="(max-width: 900px) 100vw, 66vw"
-        src="/images/hero/easyjet-switzerland-a320-hero-bg.png"
+        src="/images/hero/a320-easyjet-switzerland-hero.webp"
       />
     </div>
   );
