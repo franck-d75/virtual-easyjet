@@ -250,6 +250,36 @@ export interface SimbriefImportedRouteResponse {
   route: RouteResponse;
 }
 
+export interface PrepareSimbriefFlightPayload {
+  bookingId?: string | null;
+  detectedRegistration?: string | null;
+  detectedAircraftIcao?: string | null;
+}
+
+export interface PreparedSimbriefFlightResponse {
+  action: "created" | "updated" | "reused";
+  message: string;
+  status: "READY";
+  flightId: string;
+  bookingId: string;
+  persistedStatus: string;
+  flightNumber: string;
+  departureIcao: string;
+  arrivalIcao: string;
+  route: string | null;
+  distanceNm: number | null;
+  blockTimeMinutes: number | null;
+  aircraft: {
+    id: string;
+    registration: string;
+    label: string | null;
+    aircraftType: {
+      icaoCode: string;
+      name: string;
+    };
+  };
+}
+
 export interface PilotProfileResponse {
   id: string;
   pilotNumber: string;
