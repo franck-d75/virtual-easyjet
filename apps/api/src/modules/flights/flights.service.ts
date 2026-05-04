@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import {
+  AircraftStatus,
   BookingStatus,
   FlightStatus,
   Prisma,
@@ -46,8 +47,51 @@ const flightInclude = {
   pirep: true,
 } satisfies Prisma.FlightInclude;
 
+const flightCreationBookingInclude = {
+  flight: true,
+  pilotProfile: {
+    include: {
+      rank: true,
+    },
+  },
+  route: {
+    include: {
+      aircraftType: {
+        include: {
+          minRank: true,
+        },
+      },
+    },
+  },
+  aircraft: {
+    include: {
+      aircraftType: {
+        include: {
+          minRank: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.BookingInclude;
+
+const aircraftForFlightCreationInclude = {
+  aircraftType: {
+    include: {
+      minRank: true,
+    },
+  },
+} satisfies Prisma.AircraftInclude;
+
 type FlightRecord = Prisma.FlightGetPayload<{
   include: typeof flightInclude;
+}>;
+
+type FlightCreationBooking = Prisma.BookingGetPayload<{
+  include: typeof flightCreationBookingInclude;
+}>;
+
+type AircraftForFlightCreation = Prisma.AircraftGetPayload<{
+  include: typeof aircraftForFlightCreationInclude;
 }>;
 
 const ACTIVE_FLIGHT_STATUSES: FlightStatus[] = [
@@ -102,9 +146,7 @@ export class FlightsService {
     const flight = await this.prisma.$transaction(async (transaction) => {
       const booking = await transaction.booking.findUnique({
         where: { id: payload.bookingId },
-        include: {
-          flight: true,
-        },
+        include: flightCreationBookingInclude,
       });
 
       if (!booking) {
@@ -114,12 +156,20 @@ export class FlightsService {
       this.assertBookingOwnershipForFlightCreation(booking, pilotProfileId);
       this.assertBookingIsUsableForFlightCreation(booking);
 
+      const aircraft = payload.aircraftId
+        ? await this.resolveAircraftOverrideForFlightCreation(
+            transaction,
+            booking,
+            payload.aircraftId,
+          )
+        : booking.aircraft;
+
       const createdFlight = await transaction.flight.create({
         data: {
           bookingId: booking.id,
           pilotProfileId: booking.pilotProfileId,
           routeId: booking.routeId,
-          aircraftId: booking.aircraftId,
+          aircraftId: aircraft.id,
           departureAirportId: booking.departureAirportId,
           arrivalAirportId: booking.arrivalAirportId,
           flightNumber: booking.reservedFlightNumber,
@@ -132,6 +182,7 @@ export class FlightsService {
         where: { id: booking.id },
         data: {
           status: BookingStatus.IN_PROGRESS,
+          aircraftId: aircraft.id,
         },
       });
 
@@ -142,6 +193,57 @@ export class FlightsService {
     });
 
     return this.serializeFlight(flight);
+  }
+
+  private async resolveAircraftOverrideForFlightCreation(
+    transaction: Prisma.TransactionClient,
+    booking: FlightCreationBooking,
+    aircraftId: string,
+  ): Promise<AircraftForFlightCreation> {
+    if (aircraftId === booking.aircraftId) {
+      return booking.aircraft;
+    }
+
+    const aircraft = await transaction.aircraft.findUnique({
+      where: { id: aircraftId },
+      include: aircraftForFlightCreationInclude,
+    });
+
+    if (!aircraft || aircraft.status !== AircraftStatus.ACTIVE) {
+      throw new BadRequestException(
+        "The SimBrief linked aircraft is not available in the active fleet.",
+      );
+    }
+
+    if (
+      booking.route?.aircraftTypeId &&
+      aircraft.aircraftTypeId !== booking.route.aircraftTypeId
+    ) {
+      throw new BadRequestException(
+        "The SimBrief linked aircraft does not match the booked route type.",
+      );
+    }
+
+    this.assertRankAllowsAircraftOverride(
+      booking.pilotProfile,
+      aircraft.aircraftType.minRank ?? booking.route?.aircraftType?.minRank ?? null,
+    );
+
+    return aircraft;
+  }
+
+  private assertRankAllowsAircraftOverride(
+    pilotProfile: Pick<FlightCreationBooking["pilotProfile"], "rank">,
+    requiredRank: { sortOrder: number } | null,
+  ): void {
+    if (
+      requiredRank &&
+      (!pilotProfile.rank || pilotProfile.rank.sortOrder < requiredRank.sortOrder)
+    ) {
+      throw new ForbiddenException(
+        "Your current rank does not allow flying the SimBrief linked aircraft.",
+      );
+    }
   }
 
   public async abort(id: string, requester: AuthenticatedUser) {

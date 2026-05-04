@@ -171,8 +171,9 @@ export async function getMyFlights(
 export async function createBooking(
   accessToken: string,
   payload: {
-    scheduleId: string;
-    bookedFor: string;
+    scheduleId?: string;
+    routeId?: string;
+    bookedFor?: string;
     notes?: string;
   },
 ): Promise<BookingResponse> {
@@ -202,6 +203,7 @@ export async function createFlight(
   accessToken: string,
   payload: {
     bookingId: string;
+    aircraftId?: string;
   },
 ): Promise<FlightResponse> {
   return apiRequest<FlightResponse>("/flights", {

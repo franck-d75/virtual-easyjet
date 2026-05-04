@@ -25,18 +25,31 @@ export async function POST(request: Request) {
   try {
     const payload = (await request.json()) as {
       scheduleId?: string;
+      routeId?: string;
       bookedFor?: string;
       notes?: string;
     };
 
     const scheduleId = payload.scheduleId?.trim();
+    const routeId = payload.routeId?.trim();
     const bookedFor = payload.bookedFor?.trim();
     const notes = payload.notes?.trim();
 
-    if (!scheduleId || !bookedFor) {
+    if (!scheduleId && !routeId) {
       return NextResponse.json(
         {
-          message: "Le planning et la date de réservation sont requis.",
+          message: "La route ou le planning est requis.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (scheduleId && !bookedFor) {
+      return NextResponse.json(
+        {
+          message: "La date de reservation est requise pour ce planning.",
         },
         {
           status: 400,
@@ -46,8 +59,9 @@ export async function POST(request: Request) {
 
     const result = await executeWithBackendAccess((accessToken) =>
       createBooking(accessToken, {
-        scheduleId,
-        bookedFor,
+        ...(scheduleId ? { scheduleId } : {}),
+        ...(routeId ? { routeId } : {}),
+        ...(bookedFor ? { bookedFor } : {}),
         ...(notes ? { notes } : {}),
       }),
     );

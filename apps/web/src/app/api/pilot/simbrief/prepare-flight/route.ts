@@ -4,6 +4,7 @@ import type {
   BookingResponse,
   PrepareSimbriefFlightPayload,
   PreparedSimbriefFlightResponse,
+  SimbriefLatestOfpResponse,
 } from "@/lib/api/types";
 import {
   createBackendErrorResponse,
@@ -55,6 +56,12 @@ function findRequestedBooking(
   }
 
   return booking;
+}
+
+function findLinkedSimbriefAircraftId(
+  latestOfp: SimbriefLatestOfpResponse,
+): string | undefined {
+  return latestOfp.plan?.aircraft?.matchedAirframe?.linkedAircraft?.id ?? undefined;
 }
 
 export async function POST(request: Request) {
@@ -109,7 +116,11 @@ export async function POST(request: Request) {
         throw new ApiError(simbriefMatch.detail, 400, simbriefMatch);
       }
 
-      const flight = await createFlight(accessToken, { bookingId: booking.id });
+      const linkedAircraftId = findLinkedSimbriefAircraftId(latestOfp);
+      const flight = await createFlight(accessToken, {
+        bookingId: booking.id,
+        ...(linkedAircraftId ? { aircraftId: linkedAircraftId } : {}),
+      });
 
       return {
         action: "created",

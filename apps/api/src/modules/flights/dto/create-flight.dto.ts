@@ -1,5 +1,5 @@
 import { Transform } from "class-transformer";
-import { IsNotEmpty, IsString } from "class-validator";
+import { IsNotEmpty, IsOptional, IsString } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 
 export class CreateFlightDto {
@@ -12,5 +12,16 @@ export class CreateFlightDto {
     typeof value === "string" ? value.trim() : value,
   )
   public bookingId!: string;
-}
 
+  @ApiProperty({
+    description:
+      "Optional aircraft identifier to align the flight with a linked SimBrief airframe.",
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim() : value,
+  )
+  public aircraftId?: string;
+}

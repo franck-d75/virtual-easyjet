@@ -1,33 +1,40 @@
 import { Transform } from "class-transformer";
-import {
-  IsISO8601,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  MaxLength,
-} from "class-validator";
+import { IsISO8601, IsOptional, IsString, MaxLength } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class CreateBookingDto {
   @ApiProperty({
     description: "Active schedule identifier used to derive route and aircraft.",
+    required: false,
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
   @Transform(({ value }) =>
     typeof value === "string" ? value.trim() : value,
   )
-  public scheduleId!: string;
+  public scheduleId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Route identifier used for direct route booking when no schedule exists.",
+  })
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim() : value,
+  )
+  public routeId?: string;
 
   @ApiProperty({
     description: "Requested UTC datetime for the booked flight.",
+    required: false,
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsISO8601({
     strict: true,
     strictSeparator: true,
   })
-  public bookedFor!: string;
+  public bookedFor?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -38,4 +45,3 @@ export class CreateBookingDto {
   )
   public notes?: string;
 }
-

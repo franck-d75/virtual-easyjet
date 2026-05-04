@@ -30,6 +30,7 @@ type RouteReservationContext = {
   isPilotSignedIn: boolean;
   activeBooking: BookingResponse | null;
   opportunityByRouteId: Map<string, BookingOpportunity>;
+  pilotRankSortOrder: number | null;
   failedToLoad: boolean;
 };
 
@@ -43,6 +44,7 @@ async function getRouteReservationContext(
       isPilotSignedIn: false,
       activeBooking: null,
       opportunityByRouteId: new Map(),
+      pilotRankSortOrder: null,
       failedToLoad: false,
     };
   }
@@ -63,6 +65,7 @@ async function getRouteReservationContext(
       isPilotSignedIn: true,
       activeBooking,
       opportunityByRouteId: buildFirstOpportunityByRouteId(opportunities),
+      pilotRankSortOrder: profile.rank?.sortOrder ?? null,
       failedToLoad: false,
     };
   } catch (error) {
@@ -71,9 +74,23 @@ async function getRouteReservationContext(
       isPilotSignedIn: true,
       activeBooking: null,
       opportunityByRouteId: new Map(),
+      pilotRankSortOrder: null,
       failedToLoad: true,
     };
   }
+}
+
+function isRouteRankAllowed(
+  route: RouteDetailResponse,
+  reservationContext: RouteReservationContext,
+): boolean {
+  const requiredRank = route.aircraftType?.minRank ?? null;
+
+  return (
+    !requiredRank ||
+    (reservationContext.pilotRankSortOrder !== null &&
+      reservationContext.pilotRankSortOrder >= requiredRank.sortOrder)
+  );
 }
 
 function renderRouteAction(
@@ -112,10 +129,44 @@ function renderRouteAction(
   const opportunity = reservationContext.opportunityByRouteId.get(route.id);
 
   if (!opportunity) {
+    const requiredRank = route.aircraftType?.minRank ?? null;
+    const isRankAllowed = isRouteRankAllowed(route, reservationContext);
+
     return (
-      <p className="table-muted">
-        Aucune rotation réservable n'est disponible pour cette route.
-      </p>
+      <>
+        <div className="definition-grid">
+          <div>
+            <span>Réservation</span>
+            <strong>Vol libre</strong>
+          </div>
+          <div>
+            <span>Planning</span>
+            <strong>À préparer via SimBrief</strong>
+          </div>
+          <div>
+            <span>Appareil</span>
+            <strong>{route.aircraftType?.icaoCode ?? "Attribué automatiquement"}</strong>
+          </div>
+          <div>
+            <span>Rang requis</span>
+            <strong>{requiredRank?.name ?? "Aucune contrainte"}</strong>
+          </div>
+        </div>
+        <div className="inline-actions">
+          <ApiActionButton
+            body={{
+              routeId: route.id,
+              notes: "Réservation directe depuis la page Routes.",
+            }}
+            disabled={!isRankAllowed}
+            endpoint="/api/pilot/bookings"
+            label="Réserver ce vol"
+            pendingLabel="Réservation..."
+            redirectTo="/reservation"
+            successMessage="Vol réservé. Ouverture de la page Réservation."
+          />
+        </div>
+      </>
     );
   }
 
