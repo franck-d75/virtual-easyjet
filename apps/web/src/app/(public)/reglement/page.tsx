@@ -1,12 +1,9 @@
 import type { JSX } from "react";
 
-import { AdminRulesEditor } from "@/components/public/admin-rules-editor";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
-import { getAdminRules } from "@/lib/api/admin";
 import { getPublicRules } from "@/lib/api/public";
 import type { RulesContentResponse } from "@/lib/api/types";
-import { getServerSession } from "@/lib/auth/session";
 import { logWebError } from "@/lib/observability/log";
 
 export const dynamic = "force-dynamic";
@@ -31,12 +28,7 @@ function RulesSectionGrid({ rules }: { rules: RulesContentResponse }): JSX.Eleme
 
 export default async function RulesPage(): Promise<JSX.Element> {
   try {
-    const session = await getServerSession();
-    const isAdmin = session?.user.role === "ADMIN";
-
-    const rules = isAdmin
-      ? await getAdminRules(session.accessToken).catch(() => getPublicRules())
-      : await getPublicRules();
+    const rules = await getPublicRules();
 
     return (
       <>
@@ -50,11 +42,7 @@ export default async function RulesPage(): Promise<JSX.Element> {
           </p>
         </section>
 
-        {isAdmin ? (
-          <AdminRulesEditor initialRules={rules} />
-        ) : (
-          <RulesSectionGrid rules={rules} />
-        )}
+        <RulesSectionGrid rules={rules} />
       </>
     );
   } catch (error) {
