@@ -14,61 +14,17 @@ import {
   getMyLatestSimbriefOfp,
   getMyPilotProfile,
 } from "@/lib/api/pilot";
-import type { RouteDetailResponse } from "@/lib/api/types";
 import { requirePilotSession } from "@/lib/auth/guards";
 import { formatDateTime, formatDaysOfWeek } from "@/lib/utils/format";
-import { buildNextBookedForIso } from "@/lib/utils/schedule";
+import {
+  buildBookingOpportunities,
+  isActiveBooking,
+} from "@/lib/utils/booking-opportunities";
 import {
   buildBookingSimbriefCandidate,
   buildSimbriefMatchMap,
   summarizeSimbriefMatches,
 } from "@/lib/utils/simbrief-match";
-
-type BookingOpportunity = {
-  route: RouteDetailResponse;
-  schedule: RouteDetailResponse["schedules"][number];
-  bookedFor: string;
-  isRankAllowed: boolean;
-  requiredRankName: string | null;
-};
-
-function buildBookingOpportunities(
-  routes: RouteDetailResponse[],
-  pilotRankSortOrder: number | null,
-): BookingOpportunity[] {
-  const opportunities = routes.flatMap((route) =>
-    route.schedules.flatMap((schedule) => {
-      if (!schedule.isActive || !schedule.aircraft) {
-        return [];
-      }
-
-      const bookedFor = buildNextBookedForIso(schedule);
-
-      if (!bookedFor) {
-        return [];
-      }
-
-      const requiredRank = route.aircraftType?.minRank ?? null;
-
-      return [
-        {
-          route,
-          schedule,
-          bookedFor,
-          isRankAllowed:
-            !requiredRank ||
-            (pilotRankSortOrder !== null &&
-              pilotRankSortOrder >= requiredRank.sortOrder),
-          requiredRankName: requiredRank?.name ?? null,
-        },
-      ];
-    }),
-  );
-
-  return opportunities.sort((left, right) =>
-    left.bookedFor.localeCompare(right.bookedFor),
-  );
-}
 
 export default async function BookingsPage(): Promise<JSX.Element> {
   const session = await requirePilotSession();
@@ -85,9 +41,7 @@ export default async function BookingsPage(): Promise<JSX.Element> {
     routeCatalog,
     profile.rank?.sortOrder ?? null,
   );
-  const activeBookings = visibleBookings.filter((booking) =>
-    ["RESERVED", "IN_PROGRESS"].includes(booking.status),
-  );
+  const activeBookings = visibleBookings.filter(isActiveBooking);
   const readyBookings = visibleBookings.filter(
     (booking) => booking.status === "RESERVED" && booking.flight === null,
   );
