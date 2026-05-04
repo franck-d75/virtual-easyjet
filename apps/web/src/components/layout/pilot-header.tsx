@@ -18,6 +18,7 @@ const pilotLinks = [
   { href: "/acars", label: "ACARS" },
   { href: "/live-map", label: "Carte en direct" },
   { href: "/pireps", label: "PIREPs" },
+  { href: "/reglement", label: "Règlement" },
 ];
 
 type PilotHeaderProps = {
