@@ -224,8 +224,15 @@ export default async function ReservationPage(): Promise<JSX.Element> {
             </div>
           </div>
           <div className="inline-actions">
+            {featuredBooking.flight ? (
+              <SimbriefDispatchButton
+                aircraftIcao={featuredBooking.aircraft.aircraftType.icaoCode}
+                aircraftRegistration={featuredBooking.aircraft.registration}
+                bookingId={featuredBooking.id}
+              />
+            ) : null}
             <Button href="/profil" variant="ghost">
-              Gérer SimBrief
+              Paramètres SimBrief
             </Button>
           </div>
         </Card>

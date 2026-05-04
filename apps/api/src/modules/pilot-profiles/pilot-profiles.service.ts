@@ -1424,8 +1424,14 @@ export class PilotProfilesService {
       throw new BadRequestException("Cette reservation est expiree.");
     }
 
-    if (booking.flight) {
-      throw new BadRequestException("Un vol ACARS existe deja pour cette reservation.");
+    if (
+      booking.flight &&
+      booking.flight.status !== FlightStatus.PLANNED &&
+      booking.flight.status !== FlightStatus.IN_PROGRESS
+    ) {
+      throw new BadRequestException(
+        "Cette reservation a deja un vol ACARS termine ou annule.",
+      );
     }
   }
 
